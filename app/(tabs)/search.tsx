@@ -329,7 +329,13 @@ function ComingSoonSection({ title, description }: { title: string; description:
 }
 
 function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
-  results: any[];
+  results: {
+    bytes: any[];
+    comments: any[];
+    users: any[];
+    hubs: any[];
+    totalResults: number;
+  };
   isLoading: boolean;
   hasError: boolean;
   onRetry: () => void;
@@ -346,11 +352,12 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
   };
 
   console.log('🔍 SearchResults render:', { 
-    resultsCount: results.length, 
+    resultsCount: results.totalResults, 
     isLoading, 
     hasError, 
     searchQuery,
-    results: results.slice(0, 2) // Log first 2 results
+    bytesCount: results.bytes.length,
+    commentsCount: results.comments.length
   });
 
   if (isLoading) {
@@ -379,7 +386,7 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
     );
   }
 
-  if (results.length === 0) {
+  if (results.totalResults === 0) {
     return (
       <View style={styles.searchResultsContainer}>
         <MagnifyingGlass size={48} color={colors.secondary} />
@@ -394,9 +401,9 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
   }
 
   // Group results by type
-  const topics = results.filter(result => result.type === 'topic');
-  const categories = results.filter(result => result.type === 'category');
-  const users = results.filter(result => result.type === 'user');
+  const topics = results.bytes || [];
+  const categories = results.hubs || [];
+  const users = results.users || [];
 
   return (
     <ScrollView style={styles.searchResultsList} showsVerticalScrollIndicator={false}>
@@ -601,7 +608,7 @@ export default function SearchScreen(): JSX.Element {
         {/* Removed suggestions section as per edit hint */}
 
         <SearchResults 
-          results={results}
+          results={results || { bytes: [], comments: [], users: [], hubs: [], totalResults: 0 }}
           isLoading={isSearchLoading}
           hasError={hasSearchError}
           onRetry={retrySearch}

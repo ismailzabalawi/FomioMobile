@@ -104,7 +104,7 @@ export default function HomeScreen(): JSX.Element {
       category={{
         name: item.category.name,
         color: item.category.color,
-        slug: item.category.slug,
+        slug: item.category.name.toLowerCase().replace(/\s+/g, '-'),
       }}
       tags={item.tags}
       timestamp={formatTimestamp(item.createdAt)}

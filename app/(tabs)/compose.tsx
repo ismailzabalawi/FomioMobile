@@ -16,10 +16,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
-import { useCategories } from '../../shared/useCategories';
-import { useCreateByte } from '../../shared/useCreateByte';
+import { useHubs } from '../../shared/useHubs';
 import { useAuth } from '../../shared/useAuth';
-import { discourseApi } from '../../shared/discourseApi';
+import { discourseApiService, Hub } from '../../shared/discourseApiService';
 import { 
   CaretDown, 
   Hash, 
@@ -34,24 +33,9 @@ import {
   SignIn
 } from 'phosphor-react-native';
 
-// Updated interface to match Discourse categories
-interface Hub {
-  id: number;
-  name: string;
-  description: string;
-  slug: string;
-  color: string;
-  text_color: string;
-  topic_count: number;
-  post_count: number;
-  read_restricted: boolean;
-  permission: number;
-}
-
 export default function ComposeScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
-  const { categories, isLoading: categoriesLoading, hasError: categoriesError, retry: retryCategories } = useCategories();
-  const { createByte, isCreating, hasError, errorMessage, successMessage, clearState } = useCreateByte();
+  const { hubs, isLoading: hubsLoading, error: hubsError, refreshHubs } = useHubs();
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
   
   const [content, setContent] = useState<string>('');
@@ -59,6 +43,10 @@ export default function ComposeScreen(): JSX.Element {
   const [selectedHub, setSelectedHub] = useState<Hub | null>(null);
   const [showHubDropdown, setShowHubDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -76,7 +64,7 @@ export default function ComposeScreen(): JSX.Element {
     overlay: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(0, 0, 0, 0.5)',
   };
 
-  const filteredHubs = categories.filter(hub =>
+  const filteredHubs = hubs.filter(hub =>
     hub.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     hub.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -88,21 +76,19 @@ export default function ComposeScreen(): JSX.Element {
       authLoading,
       user: user?.username,
       canPost: isAuthenticated && !authLoading,
-      discourseAuth: discourseApi.isAuthenticated(),
-      discourseConfig: {
-        baseUrl: discourseApi.getBaseUrl(),
-        hasApiKey: !!process.env.EXPO_PUBLIC_DISCOURSE_API_KEY,
-        hasApiUsername: !!process.env.EXPO_PUBLIC_DISCOURSE_API_USERNAME,
-      }
+      hasApiKey: !!process.env.EXPO_PUBLIC_DISCOURSE_API_KEY,
+      hasApiUsername: !!process.env.EXPO_PUBLIC_DISCOURSE_API_USERNAME,
     });
   }, [isAuthenticated, authLoading, user]);
 
   // Clear state when component unmounts
   React.useEffect(() => {
     return () => {
-      clearState();
+      setHasError(false);
+      setErrorMessage('');
+      setSuccessMessage('');
     };
-  }, [clearState]);
+  }, []);
 
   const toggleDropdown = useCallback(() => {
     setShowHubDropdown(!showHubDropdown);
@@ -164,25 +150,36 @@ export default function ComposeScreen(): JSX.Element {
         isAuthenticated
       });
 
-      const result = await createByte({
+      setIsCreating(true);
+      setHasError(false);
+      setErrorMessage('');
+
+      const response = await discourseApiService.createByte({
         title: title.trim(),
         content: content.trim(),
-        category: selectedHub.id, // Use the category ID for Discourse API
+        hubId: selectedHub.id,
       });
 
-      if (result.success) {
+      if (response.success) {
+        setSuccessMessage('Your post has been published!');
         Alert.alert('Success', 'Your post has been published!');
         setContent('');
         setTitle('');
         setSelectedHub(null);
         router.back();
       } else {
-        Alert.alert('Error', result.error || 'Failed to create post');
+        setHasError(true);
+        setErrorMessage(response.error || 'Failed to create post');
+        Alert.alert('Error', response.error || 'Failed to create post');
       }
     } catch (error) {
+      setHasError(true);
+      setErrorMessage('Failed to create post. Please try again.');
       Alert.alert('Error', 'Failed to create post. Please try again.');
+    } finally {
+      setIsCreating(false);
     }
-  }, [title, content, selectedHub, createByte, isAuthenticated, user, authLoading]);
+  }, [title, content, selectedHub, isAuthenticated, user, authLoading]);
 
   const handleCancel = useCallback((): void => {
     router.back();
@@ -216,7 +213,7 @@ export default function ComposeScreen(): JSX.Element {
             <Text style={[styles.hubName, { color: colors.text }]}>
               {item.name}
             </Text>
-            {item.topic_count > 100 && (
+            {item.topicsCount > 100 && (
               <View style={[styles.popularBadge, { backgroundColor: colors.warning }]}>
                 <Star size={12} color="#ffffff" weight="fill" />
               </View>
@@ -230,10 +227,10 @@ export default function ComposeScreen(): JSX.Element {
           <View style={styles.statItem}>
             <Users size={14} color={colors.secondary} weight="regular" />
             <Text style={[styles.statText, { color: colors.secondary }]}>
-              {formatCount(item.topic_count)} topics
+              {formatCount(item.topicsCount)} topics
             </Text>
           </View>
-          {item.topic_count > 50 && (
+          {item.topicsCount > 50 && (
             <View style={styles.statItem}>
               <TrendUp size={14} color={colors.warning} weight="fill" />
               <Text style={[styles.statText, { color: colors.warning }]}>
@@ -265,18 +262,18 @@ export default function ComposeScreen(): JSX.Element {
         Failed to load hubs
       </Text>
       <Text style={[styles.errorSubtext, { color: colors.secondary }]}>
-        {categoriesError || 'Please check your connection and try again'}
+        {hubsError || 'Please check your connection and try again'}
       </Text>
       <TouchableOpacity
         style={[styles.retryButton, { backgroundColor: colors.primary }]}
-        onPress={retryCategories}
+        onPress={refreshHubs}
       >
         <Text style={[styles.retryButtonText, { color: '#ffffff' }]}>
           Retry
         </Text>
       </TouchableOpacity>
     </View>
-  ), [colors, categoriesError, retryCategories]);
+  ), [colors, hubsError, refreshHubs]);
 
   const renderLoadingState = useCallback(() => (
     <View style={styles.loadingContainer}>
@@ -308,7 +305,7 @@ export default function ComposeScreen(): JSX.Element {
     </View>
   ), [colors]);
 
-  if (categoriesLoading) {
+  if (hubsLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
@@ -323,7 +320,7 @@ export default function ComposeScreen(): JSX.Element {
     );
   }
 
-  if (categoriesError) {
+  if (hubsError) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
@@ -402,7 +399,7 @@ export default function ComposeScreen(): JSX.Element {
           {/* Hub Selection */}
           <View style={styles.hubSection}>
             <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-              Post in Hub ({categories.length} available)
+              Post in Hub ({hubs.length} available)
             </Text>
             <TouchableOpacity
               style={[styles.hubSelector, { 
@@ -422,7 +419,7 @@ export default function ComposeScreen(): JSX.Element {
                     <Text style={[styles.selectedHubName, { color: colors.text }]}>
                       {selectedHub.name}
                     </Text>
-                    {selectedHub.topic_count > 100 && (
+                    {selectedHub.topicsCount > 100 && (
                       <View style={[styles.popularBadge, { backgroundColor: colors.warning }]}>
                         <Star size={12} color="#ffffff" weight="fill" />
                       </View>

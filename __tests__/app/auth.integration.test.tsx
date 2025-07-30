@@ -33,7 +33,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 
 // Test component that uses useAuth hook
 const TestAuthComponent = () => {
-  const { user, isLoading, isAuthenticated, signIn, signUp, signOut, updateUser } = useAuth();
+  const { user, isLoading, isAuthenticated, signIn, signUp, signOut } = useAuth();
 
   return (
     <View>
@@ -53,7 +53,7 @@ const TestAuthComponent = () => {
       </TouchableOpacity>
       <TouchableOpacity
         testID="sign-up-button"
-        onPress={() => signUp('Test User', 'test@example.com', 'testuser', 'password')}
+        onPress={() => signUp({ name: 'Test User', email: 'test@example.com', username: 'testuser', password: 'password' })}
       >
         <Text>Sign Up</Text>
       </TouchableOpacity>
@@ -62,12 +62,6 @@ const TestAuthComponent = () => {
         onPress={() => signOut()}
       >
         <Text>Sign Out</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        testID="update-user-button"
-        onPress={() => updateUser({ username: 'updateduser' })}
-      >
-        <Text>Update User</Text>
       </TouchableOpacity>
     </View>
   );
@@ -92,9 +86,8 @@ describe('Authentication Integration Tests', () => {
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateUser: jest.fn(),
-      refreshUser: jest.fn(),
-      getSecurityStatus: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -111,9 +104,12 @@ describe('Authentication Integration Tests', () => {
       email: 'test@example.com', 
       username: 'test@example.com',
       name: 'Test User',
+      avatar: '',
+      bio: '',
       followers: 0,
       following: 0,
       bytes: 0,
+      comments: 0,
       joinedDate: 'Joined January 2024'
     };
     
@@ -124,9 +120,8 @@ describe('Authentication Integration Tests', () => {
       signIn: mockSignIn,
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateUser: jest.fn(),
-      refreshUser: jest.fn(),
-      getSecurityStatus: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -154,9 +149,12 @@ describe('Authentication Integration Tests', () => {
       email: 'test@example.com', 
       username: 'testuser',
       name: 'Test User',
+      avatar: '',
+      bio: '',
       followers: 0,
       following: 0,
       bytes: 0,
+      comments: 0,
       joinedDate: 'Joined January 2024'
     };
     
@@ -167,9 +165,8 @@ describe('Authentication Integration Tests', () => {
       signIn: jest.fn(),
       signUp: mockSignUp,
       signOut: jest.fn(),
-      updateUser: jest.fn(),
-      refreshUser: jest.fn(),
-      getSecurityStatus: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -195,9 +192,12 @@ describe('Authentication Integration Tests', () => {
       email: 'test@example.com', 
       username: 'testuser',
       name: 'Test User',
+      avatar: '',
+      bio: '',
       followers: 0,
       following: 0,
       bytes: 0,
+      comments: 0,
       joinedDate: 'Joined January 2024'
     };
     
@@ -208,9 +208,8 @@ describe('Authentication Integration Tests', () => {
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: mockSignOut,
-      updateUser: jest.fn(),
-      refreshUser: jest.fn(),
-      getSecurityStatus: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -231,9 +230,12 @@ describe('Authentication Integration Tests', () => {
       email: 'test@example.com', 
       username: 'testuser',
       name: 'Test User',
+      avatar: '',
+      bio: '',
       followers: 0,
       following: 0,
       bytes: 0,
+      comments: 0,
       joinedDate: 'Joined January 2024'
     };
     
@@ -244,9 +246,8 @@ describe('Authentication Integration Tests', () => {
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateUser: mockUpdateUser,
-      refreshUser: jest.fn(),
-      getSecurityStatus: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -267,9 +268,12 @@ describe('Authentication Integration Tests', () => {
       email: 'stored@example.com', 
       username: 'storeduser',
       name: 'Stored User',
+      avatar: '',
+      bio: '',
       followers: 0,
       following: 0,
       bytes: 0,
+      comments: 0,
       joinedDate: 'Joined January 2024'
     };
     
@@ -280,9 +284,8 @@ describe('Authentication Integration Tests', () => {
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateUser: jest.fn(),
-      refreshUser: jest.fn(),
-      getSecurityStatus: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -301,9 +304,8 @@ describe('Authentication Integration Tests', () => {
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateUser: jest.fn(),
-      refreshUser: jest.fn(),
-      getSecurityStatus: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -321,9 +323,8 @@ describe('Authentication Integration Tests', () => {
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateUser: jest.fn(),
-      refreshUser: jest.fn(),
-      getSecurityStatus: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
     });
 
     render(<TestAuthComponent />);

@@ -31,6 +31,84 @@ export interface DiscourseConfig {
   apiUsername?: string;
 }
 
+// Simplified App Entity Types (Hubs → Bytes → Comments)
+export interface Hub {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  color: string;
+  textColor: string;
+  icon?: string;
+  parentId?: number;
+  topicsCount: number;
+  postsCount: number;
+  isSubscribed: boolean;
+  // Mapped from Discourse Category
+  discourseId: number;
+}
+
+export interface Byte {
+  id: number;
+  title: string;
+  excerpt?: string;
+  content: string;
+  rawContent?: string;
+  hubId: number;
+  hubName: string;
+  author: AppUser;
+  category: {
+    id: number;
+    name: string;
+    color: string;
+  };
+  commentCount: number;
+  replyCount: number;
+  lastActivity: string;
+  createdAt: string;
+  updatedAt: string;
+  isPinned: boolean;
+  isLocked: boolean;
+  isLiked: boolean;
+  likeCount: number;
+  viewCount: number;
+  tags: string[];
+  // Mapped from Discourse Topic
+  discourseId: number;
+}
+
+export interface Comment {
+  id: number;
+  content: string;
+  rawContent: string;
+  author: AppUser;
+  byteId: number;
+  byteTitle: string;
+  postNumber: number;
+  replyToPostNumber?: number;
+  replyToId?: number;
+  createdAt: string;
+  updatedAt: string;
+  likeCount: number;
+  isLiked: boolean;
+  // Mapped from Discourse Post
+  discourseId: number;
+}
+
+export interface AppUser {
+  id: string;
+  username: string;
+  name: string;
+  email: string;
+  avatar: string;
+  bio: string;
+  followers: number;
+  following: number;
+  bytes: number;
+  comments: number;
+  joinedDate: string;
+}
+
 // User Profile Types
 export interface DiscourseUser {
   id: number;
@@ -102,6 +180,14 @@ export interface LoginResponse {
   user: DiscourseUser;
   token: string;
   refresh_token?: string;
+}
+
+export interface SearchResult {
+  bytes: Byte[];
+  comments: Comment[];
+  users: AppUser[];
+  hubs: Hub[];
+  totalResults: number;
 }
 
 // Security validation functions
@@ -946,16 +1032,6 @@ class DiscourseApiService {
   }
 
   // Like/Bookmark Actions
-  async likePost(postId: number): Promise<DiscourseApiResponse<any>> {
-    return this.makeRequest<any>(`/post_actions`, {
-      method: 'POST',
-      body: JSON.stringify({
-        id: postId,
-        post_action_type_id: 2, // Like action type
-      }),
-    });
-  }
-
   async unlikePost(postId: number): Promise<DiscourseApiResponse<any>> {
     return this.makeRequest<any>(`/post_actions/${postId}`, {
       method: 'DELETE',
@@ -1135,6 +1211,314 @@ class DiscourseApiService {
   // Utility Methods
   getBaseUrl(): string {
     return this.config.baseUrl;
+  }
+
+  // Entity Mapping Methods for Simplified Structure
+  mapCategoryToHub(category: any): Hub {
+    return {
+      id: category.id,
+      name: category.name,
+      slug: category.slug || category.name.toLowerCase().replace(/\s+/g, '-'),
+      description: category.description || '',
+      color: `#${category.color}`,
+      textColor: category.text_color ? `#${category.text_color}` : '#000000',
+      icon: category.icon || undefined,
+      parentId: category.parent_category_id,
+      topicsCount: category.topic_count || 0,
+      postsCount: category.post_count || 0,
+      isSubscribed: false, // TODO: Determine from user preferences
+      discourseId: category.id
+    };
+  }
+
+  mapTopicToByte(topic: any): Byte {
+    return {
+      id: topic.id,
+      title: topic.title,
+      excerpt: topic.excerpt,
+      content: topic.post_stream?.posts?.[0]?.cooked || '', // First post content
+      rawContent: topic.post_stream?.posts?.[0]?.raw || '',
+      hubId: topic.category_id,
+      hubName: topic.category?.name || '',
+      author: this.mapDiscourseUserToAppUser(topic.details?.created_by || topic.last_poster),
+      category: {
+        id: topic.category_id,
+        name: topic.category?.name || '',
+        color: topic.category?.color || '000000'
+      },
+      commentCount: Math.max(0, (topic.posts_count || 1) - 1), // Exclude the original post
+      replyCount: Math.max(0, (topic.posts_count || 1) - 1),
+      lastActivity: topic.last_posted_at,
+      createdAt: topic.created_at,
+      updatedAt: topic.updated_at || topic.created_at,
+      isPinned: topic.pinned || false,
+      isLocked: topic.closed || false,
+      isLiked: topic.liked || false,
+      likeCount: topic.like_count || 0,
+      viewCount: topic.views || 0,
+      tags: topic.tags || [],
+      discourseId: topic.id
+    };
+  }
+
+  mapPostToComment(post: any, topic: any): Comment {
+    return {
+      id: post.id,
+      content: post.cooked, // HTML content
+      rawContent: post.raw || '', // Raw markdown content
+      author: this.mapDiscourseUserToAppUser(post.user),
+      byteId: post.topic_id,
+      byteTitle: topic.title,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      likeCount: post.like_count || 0,
+      isLiked: post.liked || false,
+      replyToPostNumber: post.reply_to_post_number,
+      replyToId: post.reply_to_post_number ? 
+        this.getPostIdByNumber(post.topic_id, post.reply_to_post_number) : 
+        undefined,
+      postNumber: post.post_number,
+      discourseId: post.id
+    };
+  }
+
+  mapDiscourseUserToAppUser(discourseUser: any): AppUser {
+    if (!discourseUser) {
+      return {
+        id: '0',
+        name: 'Unknown User',
+        username: 'unknown',
+        email: '',
+        avatar: '',
+        bio: '',
+        followers: 0,
+        following: 0,
+        bytes: 0,
+        comments: 0,
+        joinedDate: 'Unknown'
+      };
+    }
+
+    return {
+      id: discourseUser.id?.toString() || '0',
+      name: discourseUser.name || discourseUser.username || 'Unknown User',
+      username: discourseUser.username || 'unknown',
+      email: discourseUser.email || '',
+      avatar: this.getAvatarUrl(discourseUser.avatar_template, 120),
+      bio: discourseUser.bio_raw || '',
+      followers: 0, // Not available in Discourse
+      following: 0, // Not available in Discourse
+      bytes: discourseUser.post_count || 0,
+      comments: discourseUser.post_count || 0,
+      joinedDate: discourseUser.created_at ? 
+        `Joined ${new Date(discourseUser.created_at).toLocaleDateString('en-US', { 
+          month: 'long', 
+          year: 'numeric' 
+        })}` : 'Unknown'
+    };
+  }
+
+  private getPostIdByNumber(topicId: number, postNumber: number): number | undefined {
+    // This would need to be implemented with a lookup table or API call
+    // For now, return undefined
+    return undefined;
+  }
+
+  // Simplified API Methods for Hubs → Bytes → Comments structure
+  async getHubs(): Promise<DiscourseApiResponse<Hub[]>> {
+    try {
+      const response = await this.makeRequest<any>('/categories.json');
+      if (response.success && response.data?.category_list?.categories) {
+        const hubs = response.data.category_list.categories
+          .filter((cat: any) => !cat.parent_category_id) // Only top-level categories
+          .map((cat: any) => this.mapCategoryToHub(cat));
+        
+        return {
+          success: true,
+          data: hubs
+        };
+      }
+      return { success: false, error: 'Failed to load hubs' };
+    } catch (error) {
+      return { success: false, error: 'Network error loading hubs' };
+    }
+  }
+
+  async getHub(id: number): Promise<DiscourseApiResponse<Hub>> {
+    try {
+      const response = await this.makeRequest<any>(`/c/${id}/show.json`);
+      if (response.success && response.data?.category) {
+        const hub = this.mapCategoryToHub(response.data.category);
+        return {
+          success: true,
+          data: hub
+        };
+      }
+      return { success: false, error: 'Hub not found' };
+    } catch (error) {
+      return { success: false, error: 'Network error loading hub' };
+    }
+  }
+
+  async getBytes(hubId?: number, page: number = 0): Promise<DiscourseApiResponse<Byte[]>> {
+    try {
+      let endpoint = '/latest.json';
+      if (hubId) {
+        endpoint = `/c/${hubId}.json`;
+      }
+      if (page > 0) {
+        endpoint += `?page=${page}`;
+      }
+
+      const response = await this.makeRequest<any>(endpoint);
+      if (response.success && response.data?.topic_list?.topics) {
+        const bytes = response.data.topic_list.topics.map((topic: any) => 
+          this.mapTopicToByte(topic)
+        );
+        
+        return {
+          success: true,
+          data: bytes
+        };
+      }
+      return { success: false, error: 'Failed to load bytes' };
+    } catch (error) {
+      return { success: false, error: 'Network error loading bytes' };
+    }
+  }
+
+  async getByte(id: number): Promise<DiscourseApiResponse<Byte>> {
+    try {
+      const response = await this.makeRequest<any>(`/t/${id}.json`);
+      if (response.success && response.data) {
+        const byte = this.mapTopicToByte(response.data);
+        return {
+          success: true,
+          data: byte
+        };
+      }
+      return { success: false, error: 'Byte not found' };
+    } catch (error) {
+      return { success: false, error: 'Network error loading byte' };
+    }
+  }
+
+  async createByte(data: {
+    title: string;
+    content: string;
+    hubId: number;
+  }): Promise<DiscourseApiResponse<Byte>> {
+    try {
+      const response = await this.makeRequest<any>('/posts.json', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: data.title,
+          raw: data.content,
+          category: data.hubId,
+          archetype: 'regular'
+        })
+      });
+
+      if (response.success && response.data?.topic_id) {
+        // Fetch the created topic to return as Byte
+        return this.getByte(response.data.topic_id);
+      }
+      return { success: false, error: 'Failed to create byte' };
+    } catch (error) {
+      return { success: false, error: 'Network error creating byte' };
+    }
+  }
+
+  async getComments(byteId: number): Promise<DiscourseApiResponse<Comment[]>> {
+    try {
+      const response = await this.makeRequest<any>(`/t/${byteId}.json`);
+      if (response.success && response.data?.post_stream?.posts) {
+        const comments = response.data.post_stream.posts
+          .slice(1) // Skip the first post (it's the byte content)
+          .map((post: any) => this.mapPostToComment(post, response.data));
+        
+        return {
+          success: true,
+          data: comments
+        };
+      }
+      return { success: false, error: 'Failed to load comments' };
+    } catch (error) {
+      return { success: false, error: 'Network error loading comments' };
+    }
+  }
+
+  async createComment(data: {
+    content: string;
+    byteId: number;
+    replyToPostNumber?: number;
+  }): Promise<DiscourseApiResponse<Comment>> {
+    try {
+      const response = await this.makeRequest<any>('/posts.json', {
+        method: 'POST',
+        body: JSON.stringify({
+          raw: data.content,
+          topic_id: data.byteId,
+          reply_to_post_number: data.replyToPostNumber
+        })
+      });
+
+      if (response.success && response.data?.id) {
+        // Fetch the topic to get the new post
+        const topicResponse = await this.makeRequest<any>(`/t/${data.byteId}.json`);
+        if (topicResponse.success && topicResponse.data) {
+          const newPost = topicResponse.data.post_stream.posts.find((p: any) => p.id === response.data.id);
+          if (newPost) {
+            const comment = this.mapPostToComment(newPost, topicResponse.data);
+            return {
+              success: true,
+              data: comment
+            };
+          }
+        }
+      }
+      return { success: false, error: 'Failed to create comment' };
+    } catch (error) {
+      return { success: false, error: 'Network error creating comment' };
+    }
+  }
+
+  async likeByte(byteId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      // Get the topic to find the first post ID
+      const topicResponse = await this.makeRequest<any>(`/t/${byteId}.json`);
+      if (topicResponse.success && topicResponse.data?.post_stream?.posts?.[0]) {
+        const firstPostId = topicResponse.data.post_stream.posts[0].id;
+        return this.likePost(firstPostId);
+      }
+      return { success: false, error: 'Failed to find byte post' };
+    } catch (error) {
+      return { success: false, error: 'Network error liking byte' };
+    }
+  }
+
+  async likeComment(commentId: number): Promise<DiscourseApiResponse<void>> {
+    return this.likePost(commentId);
+  }
+
+  private async likePost(postId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      const response = await this.makeRequest<any>('/post_actions.json', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: postId,
+          post_action_type_id: 2, // Like action type
+          flag_topic: false
+        })
+      });
+
+      return {
+        success: response.success,
+        error: response.error
+      };
+    } catch (error) {
+      return { success: false, error: 'Network error liking post' };
+    }
   }
 }
 

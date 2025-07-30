@@ -59,7 +59,7 @@ export default function SignUpScreen() {
     setError('');
 
     try {
-      const result = await signUp(name, email, username, password);
+      const result = await signUp({ name, email, username, password });
       
       if (result.success) {
         // Navigate to main app
