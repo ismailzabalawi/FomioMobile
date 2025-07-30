@@ -30,11 +30,15 @@ import {
   Eye,
   EyeSlash,
   Bell,
-  BellSlash
+  BellSlash,
+  SignIn,
+  UserPlus
 } from 'phosphor-react-native';
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
-import { discourseApi, DiscourseUser } from '../../shared/discourseApi';
+import { useDiscourseUser } from '../../shared/useDiscourseUser';
+import { useAuth } from '../../shared/useAuth';
+import { discourseApi } from '../../shared/discourseApi';
 import { router } from 'expo-router';
 
 interface ProfileStats {
@@ -140,10 +144,73 @@ function ActionButton({
   );
 }
 
+function AuthPromptCard({ onSignIn, onSignUp }: { 
+  onSignIn: () => void; 
+  onSignUp: () => void; 
+}) {
+  const { isDark, isAmoled } = useTheme();
+  const colors = {
+    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
+    text: isDark ? '#f9fafb' : '#111827',
+    secondary: isDark ? '#9ca3af' : '#6b7280',
+    border: isDark ? '#374151' : '#e5e7eb',
+    primary: isDark ? '#3b82f6' : '#0ea5e9',
+    accent: isDark ? '#8b5cf6' : '#7c3aed',
+  };
+
+  return (
+    <View style={[styles.authPromptCard, { 
+      backgroundColor: colors.background, 
+      borderColor: colors.border 
+    }]}>
+      <View style={styles.authPromptHeader}>
+        <View style={[styles.authPromptAvatar, { backgroundColor: colors.secondary }]}>
+          <User size={32} color={colors.background} weight="regular" />
+        </View>
+        <View style={styles.authPromptContent}>
+          <Text style={[styles.authPromptTitle, { color: colors.text }]}>
+            Welcome to Fomio
+          </Text>
+          <Text style={[styles.authPromptSubtitle, { color: colors.secondary }]}>
+            Sign in to access your profile, create Bytes, and join the conversation
+          </Text>
+        </View>
+      </View>
+      
+      <View style={styles.authPromptActions}>
+        <TouchableOpacity
+          style={[styles.authButton, { backgroundColor: colors.primary }]}
+          onPress={onSignIn}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Sign In"
+        >
+          <SignIn size={20} color="#ffffff" weight="regular" />
+          <Text style={styles.authButtonText}>Sign In</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.authButton, styles.authButtonSecondary, { 
+            backgroundColor: 'transparent',
+            borderColor: colors.border 
+          }]}
+          onPress={onSignUp}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Sign Up"
+        >
+          <UserPlus size={20} color={colors.primary} weight="regular" />
+          <Text style={[styles.authButtonText, { color: colors.primary }]}>Sign Up</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 export default function ProfileScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
-  const [user, setUser] = useState<DiscourseUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user: discourseUser, loading, error, refreshUser } = useDiscourseUser();
+  const { user: authUser, isAuthenticated, signOut } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<ProfileStats>({
     posts: 0,
@@ -169,73 +236,108 @@ export default function ProfileScreen(): JSX.Element {
     error: isDark ? '#ef4444' : '#dc2626',
   };
 
+  // Use the authenticated user data (from useAuth) or fall back to Discourse user data
+  const user = authUser || discourseUser;
+
+  // Debug logging
   useEffect(() => {
-    loadProfile();
-  }, []);
+    console.log('🔍 Profile Debug:', {
+      isAuthenticated,
+      authUser: authUser ? 'present' : 'null',
+      discourseUser: discourseUser ? 'present' : 'null',
+      user: user ? 'present' : 'null',
+      loading,
+      error
+    });
+  }, [isAuthenticated, authUser, discourseUser, user, loading, error]);
 
-  const loadProfile = async () => {
-    setLoading(true);
-    try {
-      // Mock user data for now - replace with actual Discourse API call
-      const mockUser: DiscourseUser = {
-        id: 1,
-        username: 'alexchen',
-        name: 'Alex Chen',
-        email: 'alex@example.com',
-        avatar_template: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-        bio_raw: 'Mobile developer passionate about React Native and user experience. Building the future of social platforms.',
-        location: 'San Francisco, CA',
-        website: 'https://alexchen.dev',
-        date_of_birth: '1995-03-15',
-        trust_level: 3,
-        badge_count: 5,
-        post_count: 42,
-        topic_count: 8,
-        likes_given: 156,
-        likes_received: 89,
-        time_read: 86400,
-        days_visited: 45,
-        last_seen_at: '2024-01-15T10:30:00Z',
-        created_at: '2023-06-01T00:00:00Z',
-        can_edit: true,
-        can_edit_username: false,
-        can_edit_email: true,
-        can_edit_name: true,
-      };
-
-      setUser(mockUser);
-      
-      // Mock stats
+  // Update stats when user data changes
+  useEffect(() => {
+    if (discourseUser) {
       setStats({
-        posts: mockUser.post_count,
-        topics: mockUser.topic_count,
-        likes: mockUser.likes_received,
-        followers: 23,
-        following: 15,
-        trustLevel: mockUser.trust_level,
-        badges: mockUser.badge_count,
-        timeRead: Math.floor(mockUser.time_read / 3600), // Convert to hours
+        posts: discourseUser.post_count,
+        topics: discourseUser.topic_count,
+        likes: discourseUser.likes_received,
+        followers: 0, // Not available in Discourse
+        following: 0, // Not available in Discourse
+        trustLevel: discourseUser.trust_level,
+        badges: discourseUser.badge_count,
+        timeRead: Math.floor(discourseUser.time_read / 3600), // Convert to hours
       });
-    } catch (error) {
-      console.error('Failed to load profile:', error);
-      Alert.alert('Error', 'Failed to load profile data');
-    } finally {
-      setLoading(false);
+    } else if (authUser) {
+      // Use auth user data for stats
+      setStats({
+        posts: authUser.bytes,
+        topics: 0,
+        likes: 0,
+        followers: authUser.followers,
+        following: authUser.following,
+        trustLevel: 0,
+        badges: 0,
+        timeRead: 0,
+      });
     }
-  };
+  }, [discourseUser, authUser]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadProfile();
-    setRefreshing(false);
+    try {
+      if (isAuthenticated) {
+        await refreshUser();
+      }
+    } catch (error) {
+      console.error('Failed to refresh profile:', error);
+      Alert.alert('Error', 'Failed to refresh profile data');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleEditProfile = () => {
+    if (!isAuthenticated) {
+      handleSignIn();
+      return;
+    }
     router.push('/(profile)/edit-profile' as any);
   };
 
   const handleSettings = () => {
+    if (!isAuthenticated) {
+      handleSignIn();
+      return;
+    }
     router.push('/(profile)/settings' as any);
+  };
+
+  const handleSignIn = () => {
+    router.push('/(auth)/signin' as any);
+  };
+
+  const handleSignUp = () => {
+    router.push('/(auth)/signup' as any);
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Sign Out', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+              router.replace('/(tabs)' as any);
+            } catch (error) {
+              console.error('Sign out error:', error);
+              Alert.alert('Error', 'Failed to sign out');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleBack = () => {
@@ -264,7 +366,70 @@ export default function ProfileScreen(): JSX.Element {
     }
   };
 
-  if (loading) {
+  // Show authentication prompt for unsigned users
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <HeaderBar 
+          title="Profile" 
+          showBackButton={true}
+          showProfileButton={false}
+          onBack={handleBack}
+        />
+        
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <AuthPromptCard 
+            onSignIn={handleSignIn}
+            onSignUp={handleSignUp}
+          />
+          
+          {/* Preview of what's available after sign in */}
+          <ProfileSection title="What you'll get">
+            <View style={styles.previewGrid}>
+              <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <ChatCircle size={24} color={colors.primary} weight="fill" />
+                <Text style={[styles.previewTitle, { color: colors.text }]}>Create Bytes</Text>
+                <Text style={[styles.previewText, { color: colors.secondary }]}>
+                  Share your thoughts and ideas with the community
+                </Text>
+              </View>
+              
+              <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Heart size={24} color={colors.error} weight="fill" />
+                <Text style={[styles.previewTitle, { color: colors.text }]}>Like & Comment</Text>
+                <Text style={[styles.previewText, { color: colors.secondary }]}>
+                  Engage with content and build connections
+                </Text>
+              </View>
+              
+              <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Trophy size={24} color={colors.warning} weight="fill" />
+                <Text style={[styles.previewTitle, { color: colors.text }]}>Earn Badges</Text>
+                <Text style={[styles.previewText, { color: colors.secondary }]}>
+                  Build your reputation and unlock achievements
+                </Text>
+              </View>
+              
+              <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Users size={24} color={colors.success} weight="fill" />
+                <Text style={[styles.previewTitle, { color: colors.text }]}>Join Communities</Text>
+                <Text style={[styles.previewText, { color: colors.secondary }]}>
+                  Discover and participate in Terets
+                </Text>
+              </View>
+            </View>
+          </ProfileSection>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Show loading only if we're authenticated but don't have any user data yet
+  if (loading && !authUser && !discourseUser) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
@@ -280,6 +445,29 @@ export default function ProfileScreen(): JSX.Element {
     );
   }
 
+  // Show error only if we're authenticated but there's an error and no user data
+  if (error && !authUser && !discourseUser) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <HeaderBar 
+          title="Profile" 
+          showBackButton={true}
+          showProfileButton={false}
+          onBack={handleBack}
+        />
+        <View style={styles.errorContainer}>
+          <Text style={[styles.errorText, { color: colors.text }]}>
+            {error}
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refreshUser}>
+            <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // If we're authenticated but don't have any user data, show a fallback
   if (!user) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -291,7 +479,7 @@ export default function ProfileScreen(): JSX.Element {
         />
         <View style={styles.errorContainer}>
           <Text style={[styles.errorText, { color: colors.text }]}>Failed to load profile</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadProfile}>
+          <TouchableOpacity style={styles.retryButton} onPress={refreshUser}>
             <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -323,52 +511,76 @@ export default function ProfileScreen(): JSX.Element {
       >
         {/* Profile Header */}
         <View style={[styles.profileHeader, { backgroundColor: colors.card }]}>
-          <Image 
-            source={{ uri: user.avatar_template }} 
-            style={styles.avatar}
-            accessible
-            accessibilityLabel={`${user.name}'s profile picture`}
-          />
+          {discourseUser?.avatar_template ? (
+            <Image 
+              source={{ uri: discourseApi.getAvatarUrl(discourseUser.avatar_template, 120) }} 
+              style={styles.avatar}
+              accessible
+              accessibilityLabel={`${user.name || user.username}'s profile picture`}
+            />
+          ) : authUser?.avatar ? (
+            <Image 
+              source={{ uri: authUser.avatar }} 
+              style={styles.avatar}
+              accessible
+              accessibilityLabel={`${user.name}'s profile picture`}
+            />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={[styles.avatarFallback, { color: colors.background }]}>
+                {(user.name || user.username).charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
           
           <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: colors.text }]}>{user.name}</Text>
-            <Text style={[styles.profileUsername, { color: colors.secondary }]}>@{user.username}</Text>
+            <Text style={[styles.profileName, { color: colors.text }]}>
+              {user.name || user.username}
+            </Text>
+            <Text style={[styles.profileUsername, { color: colors.secondary }]}>
+              {discourseUser ? `@${discourseUser.username}` : `@${user.username}`}
+            </Text>
             
-            {user.bio_raw && (
+            {(discourseUser?.bio_raw || authUser?.bio) && (
               <Text style={[styles.profileBio, { color: colors.text }]} numberOfLines={3}>
-                {user.bio_raw}
+                {discourseUser?.bio_raw || authUser?.bio}
               </Text>
             )}
             
             <View style={styles.profileMeta}>
-              {user.location && (
+              {discourseUser?.location && (
                 <View style={styles.metaItem}>
                   <MapPin size={16} color={colors.secondary} weight="regular" />
-                  <Text style={[styles.metaText, { color: colors.secondary }]}>{user.location}</Text>
+                  <Text style={[styles.metaText, { color: colors.secondary }]}>{discourseUser.location}</Text>
                 </View>
               )}
               
-              {user.website && (
+              {discourseUser?.website && (
                 <View style={styles.metaItem}>
                   <Globe size={16} color={colors.secondary} weight="regular" />
-                  <Text style={[styles.metaText, { color: colors.secondary }]}>{user.website}</Text>
+                  <Text style={[styles.metaText, { color: colors.secondary }]}>{discourseUser.website}</Text>
                 </View>
               )}
               
               <View style={styles.metaItem}>
                 <Calendar size={16} color={colors.secondary} weight="regular" />
                 <Text style={[styles.metaText, { color: colors.secondary }]}>
-                  Joined {new Date(user.created_at).toLocaleDateString()}
+                  {discourseUser 
+                    ? `Joined ${new Date(discourseUser.created_at).toLocaleDateString()}`
+                    : authUser?.joinedDate || 'Member'
+                  }
                 </Text>
               </View>
             </View>
             
-            <View style={styles.trustLevel}>
-              <Crown size={16} color={getTrustLevelColor(user.trust_level)} weight="fill" />
-              <Text style={[styles.trustLevelText, { color: getTrustLevelColor(user.trust_level) }]}>
-                {getTrustLevelDisplay(user.trust_level)}
-              </Text>
-            </View>
+            {discourseUser && (
+              <View style={styles.trustLevel}>
+                <Crown size={16} color={getTrustLevelColor(discourseUser.trust_level)} weight="fill" />
+                <Text style={[styles.trustLevelText, { color: getTrustLevelColor(discourseUser.trust_level) }]}>
+                  {getTrustLevelDisplay(discourseUser.trust_level)}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -454,35 +666,57 @@ export default function ProfileScreen(): JSX.Element {
           <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.infoRow}>
               <Text style={[styles.infoLabel, { color: colors.secondary }]}>Email</Text>
-              <Text style={[styles.infoValue, { color: colors.text }]}>{user.email}</Text>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.secondary }]}>Trust Level</Text>
-              <Text style={[styles.infoValue, { color: getTrustLevelColor(user.trust_level) }]}>
-                {getTrustLevelDisplay(user.trust_level)}
+              <Text style={[styles.infoValue, { color: colors.text }]}>
+                {discourseUser?.email || authUser?.email || 'Not provided'}
               </Text>
             </View>
+            
+            {discourseUser && (
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoLabel, { color: colors.secondary }]}>Trust Level</Text>
+                <Text style={[styles.infoValue, { color: getTrustLevelColor(discourseUser.trust_level) }]}>
+                  {getTrustLevelDisplay(discourseUser.trust_level)}
+                </Text>
+              </View>
+            )}
             
             <View style={styles.infoRow}>
               <Text style={[styles.infoLabel, { color: colors.secondary }]}>Member Since</Text>
               <Text style={[styles.infoValue, { color: colors.text }]}>
-                {new Date(user.created_at).toLocaleDateString()}
+                {discourseUser 
+                  ? new Date(discourseUser.created_at).toLocaleDateString()
+                  : authUser?.joinedDate || 'Unknown'
+                }
               </Text>
             </View>
             
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.secondary }]}>Last Seen</Text>
-              <Text style={[styles.infoValue, { color: colors.text }]}>
-                {new Date(user.last_seen_at).toLocaleDateString()}
-              </Text>
-            </View>
-            
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: colors.secondary }]}>Days Visited</Text>
-              <Text style={[styles.infoValue, { color: colors.text }]}>{user.days_visited}</Text>
-            </View>
+            {discourseUser && (
+              <>
+                <View style={styles.infoRow}>
+                  <Text style={[styles.infoLabel, { color: colors.secondary }]}>Last Seen</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>
+                    {new Date(discourseUser.last_seen_at).toLocaleDateString()}
+                  </Text>
+                </View>
+                
+                <View style={styles.infoRow}>
+                  <Text style={[styles.infoLabel, { color: colors.secondary }]}>Days Visited</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{discourseUser.days_visited}</Text>
+                </View>
+              </>
+            )}
           </View>
+        </ProfileSection>
+
+        {/* Sign Out */}
+        <ProfileSection title="Account Actions">
+          <ActionButton
+            icon={<ArrowLeft size={24} color={colors.error} weight="regular" />}
+            title="Sign Out"
+            subtitle="Sign out of your account"
+            onPress={handleSignOut}
+            color={colors.error}
+          />
         </ProfileSection>
       </ScrollView>
     </SafeAreaView>
@@ -530,6 +764,75 @@ const styles = StyleSheet.create({
   retryText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  authPromptCard: {
+    margin: 16,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  authPromptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  authPromptAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  authPromptContent: {
+    flex: 1,
+  },
+  authPromptTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  authPromptSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  authPromptActions: {
+    gap: 12,
+  },
+  authButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+  },
+  authButtonSecondary: {
+    borderWidth: 1,
+  },
+  authButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  previewGrid: {
+    marginHorizontal: 16,
+    gap: 12,
+  },
+  previewCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  previewTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  previewText: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   profileHeader: {
     margin: 16,
@@ -681,6 +984,10 @@ const styles = StyleSheet.create({
   },
   infoValue: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  avatarFallback: {
+    fontSize: 24,
     fontWeight: '600',
   },
 }); 

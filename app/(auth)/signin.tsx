@@ -3,9 +3,11 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
+import { useAuth } from '../../shared/useAuth';
 
 export default function SignInScreen() {
   const { isDark } = useTheme();
+  const { signIn } = useAuth();
   const colors = {
     background: isDark ? '#18181b' : '#fff',
     primary: isDark ? '#38bdf8' : '#0ea5e9',
@@ -17,23 +19,36 @@ export default function SignInScreen() {
     divider: isDark ? '#334155' : '#e2e8f0',
     label: isDark ? '#f4f4f5' : '#1e293b',
     disabled: isDark ? '#64748b' : '#64748b',
+    error: isDark ? '#ef4444' : '#dc2626',
   };
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSignIn = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+    if (!identifier || !password) {
+      setError('Please fill in all fields');
       return;
     }
 
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    setError('');
+
+    try {
+      const result = await signIn(identifier, password);
+      
+      if (result.success) {
+        // Navigate to main app
+        router.replace('/(tabs)' as any);
+      } else {
+        setError(result.error || 'Sign in failed');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
       setLoading(false);
-      router.replace('/(tabs)');
-    }, 1000);
+    }
   };
 
   const handleSignUp = () => {
@@ -64,28 +79,42 @@ export default function SignInScreen() {
 
       <View style={styles.content}>
         <View style={styles.form}>
-          <Text style={[styles.label, { color: colors.label }]}>Email</Text>
+          {error ? (
+            <View style={[styles.errorContainer, { backgroundColor: `${colors.error}10`, borderColor: colors.error }]}>
+              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+            </View>
+          ) : null}
+
+          <Text style={[styles.label, { color: colors.label }]}>Email or Username</Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter your email"
+            value={identifier}
+            onChangeText={(text) => {
+              setIdentifier(text);
+              if (error) setError('');
+            }}
+            placeholder="Enter your email or username"
             placeholderTextColor={colors.secondary}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            editable={!loading}
           />
 
           <Text style={[styles.label, { color: colors.label }]}>Password</Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (error) setError('');
+            }}
             placeholder="Enter your password"
             placeholderTextColor={colors.secondary}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
+            editable={!loading}
           />
 
           <TouchableOpacity
@@ -112,6 +141,7 @@ export default function SignInScreen() {
           <TouchableOpacity
             style={[styles.secondaryButton, { borderColor: colors.primary }]}
             onPress={handleSignUp}
+            disabled={loading}
             accessible
             accessibilityRole="button"
             accessibilityLabel="Create Account"
@@ -158,6 +188,17 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     width: '100%',
     alignSelf: 'center',
+  },
+  errorContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  errorText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   label: {
     fontSize: 16,

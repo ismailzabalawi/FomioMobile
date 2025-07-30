@@ -1,6 +1,10 @@
 export { useAuth } from './useAuth';
 export { useCreateByte } from './useCreateByte';
 export { useFeed } from './useFeed';
+export { useSearch } from './useSearch';
+export { useCategories } from './useCategories';
+export { useTerets } from './useTerets';
+export { useRecentTopics } from './useRecentTopics';
 export { logger, logError, withLogging } from './logger';
 
 // Design System exports

@@ -9,7 +9,8 @@ import {
   Alert,
   Linking,
   Platform,
-  Animated 
+  Animated,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -37,6 +38,8 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
+import { useAuth } from '../../shared/useAuth';
+import { useDiscourseUser } from '../../shared/useDiscourseUser';
 
 interface SettingItemProps {
   title: string;
@@ -125,6 +128,8 @@ function SettingSection({ title, children }: { title: string; children: React.Re
 
 export default function SettingsScreen(): JSX.Element {
   const { isDark, isAmoled, theme, setTheme } = useTheme();
+  const { user, isAuthenticated, signOut } = useAuth();
+  const { user: discourseUser, loading: userLoading } = useDiscourseUser();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [offlineMode, setOfflineMode] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
@@ -217,9 +222,14 @@ export default function SettingsScreen(): JSX.Element {
       'Are you sure you want to sign out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign Out', style: 'destructive', onPress: () => {
-          console.log('User signed out');
-          // Implement sign out logic
+        { text: 'Sign Out', style: 'destructive', onPress: async () => {
+          try {
+            await signOut();
+            console.log('User signed out successfully');
+          } catch (error) {
+            console.error('Sign out failed:', error);
+            Alert.alert('Error', 'Failed to sign out. Please try again.');
+          }
         }},
       ]
     );

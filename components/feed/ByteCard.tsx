@@ -1,17 +1,24 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, Pressable, Alert } from 'react-native';
 import { Avatar } from '../ui/avatar';
 import { Heart, ChatCircle, BookmarkSimple, DotsThree, Share } from 'phosphor-react-native';
 import { useTheme } from '../../components/shared/theme-provider';
+import { usePostActions } from '../../shared/usePostActions';
 
 export interface ByteCardProps {
   id: string;
   content: string;
-  teretName: string;
   author: {
+    username: string;
     name: string;
     avatar: string;
   };
+  category: {
+    name: string;
+    color: string;
+    slug: string;
+  };
+  tags: string[];
   likes: number;
   comments: number;
   timestamp: string;
@@ -21,7 +28,8 @@ export interface ByteCardProps {
   onLike: () => void;
   onComment: () => void;
   onBookmark?: () => void;
-  onTeretPress?: () => void;
+  onCategoryPress?: () => void;
+  onTagPress?: (tag: string) => void;
   onShare?: () => void;
   onMore?: () => void;
   style?: ViewStyle;
@@ -32,8 +40,9 @@ export interface ByteCardProps {
 export function ByteCard({
   id,
   content,
-  teretName,
   author,
+  category,
+  tags,
   likes,
   comments,
   timestamp,
@@ -43,13 +52,25 @@ export function ByteCard({
   onLike,
   onComment,
   onBookmark,
-  onTeretPress,
+  onCategoryPress,
+  onTagPress,
   onShare,
   onMore,
   style,
 }: ByteCardProps) {
   const { isDark, isAmoled } = useTheme();
   const [pressed, setPressed] = useState<number | null>(null);
+  
+  // Use the post actions hook
+  const {
+    isLiked: currentIsLiked,
+    isBookmarked: currentIsBookmarked,
+    likeCount: currentLikeCount,
+    isLoading,
+    error,
+    toggleLike,
+    toggleBookmark,
+  } = usePostActions(parseInt(id), likes, isLiked, isBookmarked);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
@@ -64,6 +85,16 @@ export function ByteCard({
     pressed: isAmoled ? '#1a1a1a' : (isDark ? '#4b5563' : '#f3f4f6'),
   };
 
+  // Handle empty avatar URLs
+  const avatarSource = author.avatar && author.avatar.trim() !== '' 
+    ? { uri: author.avatar } 
+    : undefined;
+
+  // Parse content to separate title and excerpt
+  const contentParts = content.split('\n\n');
+  const title = contentParts[0] || '';
+  const excerpt = contentParts.slice(1).join('\n\n') || '';
+
   return (
     <TouchableOpacity 
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, style]} 
@@ -73,7 +104,7 @@ export function ByteCard({
       {/* Header with Author Info */}
       <View style={styles.header}>
         <View style={styles.authorSection}>
-          <Avatar source={{ uri: author.avatar }} size="md" />
+          <Avatar source={avatarSource} size="md" fallback={author.name} />
           <View style={styles.authorInfo}>
             <Text style={[styles.authorName, { color: colors.text }]}>{author.name}</Text>
             <Text style={[styles.timestamp, { color: colors.secondary }]}>{timestamp}</Text>
@@ -93,28 +124,70 @@ export function ByteCard({
 
       {/* Content */}
       <View style={styles.contentSection}>
-        <Text style={[styles.content, { color: colors.text }]} numberOfLines={6}>
-          {content}
-        </Text>
+        {title && (
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
+            {title}
+          </Text>
+        )}
+        {excerpt && (
+          <Text style={[styles.content, { color: colors.text }]} numberOfLines={4}>
+            {excerpt}
+          </Text>
+        )}
       </View>
 
-      {/* Teret Badge */}
-      <TouchableOpacity 
-        style={[styles.teretBadge, { backgroundColor: colors.teretBg }]} 
-        onPress={onTeretPress}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={`View all bytes in ${teretName}`}
-      >
-        <Text style={[styles.teretText, { color: colors.teretText }]}>
-          in {teretName}
-        </Text>
-      </TouchableOpacity>
+      {/* Category and Tags Section */}
+      <View style={styles.metadataSection}>
+        {/* Category Badge */}
+        <TouchableOpacity 
+          style={[styles.categoryBadge, { backgroundColor: category.color + '20' }]} 
+          onPress={onCategoryPress}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={`View all bytes in ${category.name}`}
+        >
+          <Text style={[styles.categoryText, { color: category.color }]}>
+            {category.name}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Tags */}
+        {tags.length > 0 && (
+          <View style={styles.tagsContainer}>
+            {tags.slice(0, 3).map((tag, index) => (
+              <TouchableOpacity
+                key={tag}
+                style={[styles.tagBadge, { backgroundColor: colors.teretBg }]}
+                onPress={() => onTagPress?.(tag)}
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={`View all bytes tagged with ${tag}`}
+              >
+                <Text style={[styles.tagText, { color: colors.teretText }]}>
+                  #{tag}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            {tags.length > 3 && (
+              <Text style={[styles.moreTagsText, { color: colors.secondary }]}>
+                +{tags.length - 3} more
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
 
       {/* Action Bar */}
       <View style={[styles.actionBar, { backgroundColor: colors.actionBg, borderTopColor: colors.border }]}>
         <Pressable
-          onPress={onLike}
+          onPress={async () => {
+            try {
+              await toggleLike();
+              if (onLike) onLike();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to update like status');
+            }
+          }}
           onPressIn={() => setPressed(0)}
           onPressOut={() => setPressed(null)}
           style={({ pressed: isPressed }) => [
@@ -123,18 +196,19 @@ export function ByteCard({
           ]}
           accessible
           accessibilityRole="button"
-          accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
+          accessibilityLabel={currentIsLiked ? 'Unlike' : 'Like'}
+          disabled={isLoading}
         >
           <Heart 
             size={20} 
-            weight={isLiked ? 'fill' : 'regular'} 
-            color={isLiked ? colors.accent : colors.secondary} 
+            weight={currentIsLiked ? 'fill' : 'regular'} 
+            color={currentIsLiked ? colors.accent : colors.secondary} 
           />
           <Text style={[
             styles.actionCount, 
-            { color: isLiked ? colors.accent : colors.secondary }
+            { color: currentIsLiked ? colors.accent : colors.secondary }
           ]}>
-            {likes > 0 ? likes : ''}
+            {currentLikeCount > 0 ? currentLikeCount : ''}
           </Text>
         </Pressable>
 
@@ -172,7 +246,14 @@ export function ByteCard({
         </Pressable>
 
         <Pressable
-          onPress={onBookmark}
+          onPress={async () => {
+            try {
+              await toggleBookmark();
+              if (onBookmark) onBookmark();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to update bookmark status');
+            }
+          }}
           onPressIn={() => setPressed(3)}
           onPressOut={() => setPressed(null)}
           style={({ pressed: isPressed }) => [
@@ -181,12 +262,13 @@ export function ByteCard({
           ]}
           accessible
           accessibilityRole="button"
-          accessibilityLabel={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
+          accessibilityLabel={currentIsBookmarked ? 'Remove bookmark' : 'Bookmark'}
+          disabled={isLoading}
         >
           <BookmarkSimple 
             size={20} 
-            weight={isBookmarked ? 'fill' : 'regular'} 
-            color={isBookmarked ? colors.accent : colors.secondary} 
+            weight={currentIsBookmarked ? 'fill' : 'regular'} 
+            color={currentIsBookmarked ? colors.accent : colors.secondary} 
           />
         </Pressable>
       </View>
@@ -248,24 +330,60 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   } as ViewStyle,
   
-  content: {
-    fontSize: 16,
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
     lineHeight: 24,
+  } as TextStyle,
+
+  content: {
+    fontSize: 15,
+    lineHeight: 22,
     fontWeight: '400',
+    opacity: 0.9,
   } as TextStyle,
   
-  teretBadge: {
+  metadataSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  } as ViewStyle,
+  
+  categoryBadge: {
     alignSelf: 'flex-start',
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   } as ViewStyle,
   
-  teretText: {
+  categoryText: {
     fontSize: 13,
     fontWeight: '600',
+  } as TextStyle,
+  
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  } as ViewStyle,
+  
+  tagBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  } as ViewStyle,
+  
+  tagText: {
+    fontSize: 12,
+    fontWeight: '500',
+  } as TextStyle,
+  
+  moreTagsText: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginLeft: 4,
   } as TextStyle,
   
   actionBar: {

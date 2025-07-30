@@ -1,134 +1,188 @@
 import React from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
 import { ByteCard } from '../../components/feed/ByteCard';
 import { HeaderBar } from '../../components/nav/HeaderBar';
-
-interface FeedItem {
-  id: string;
-  title: string;
-  content: string;
-  author: {
-    name: string;
-    avatar: string;
-  };
-  timestamp: string;
-  teretName: string;
-  likes: number;
-  comments: number;
-  isLiked: boolean;
-  isBookmarked: boolean;
-}
-
-const mockFeedData: FeedItem[] = [
-  {
-    id: '1',
-    title: 'Getting Started with React Native',
-    content: 'Just published my first React Native app! The development experience is amazing. The hot reload feature alone makes development so much faster. Can\'t wait to share more about the journey.',
-    author: {
-      name: 'Alex Chen',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-    },
-    timestamp: '2h ago',
-    teretName: 'React Native',
-    likes: 42,
-    comments: 8,
-    isLiked: false,
-    isBookmarked: false,
-  },
-  {
-    id: '2',
-    title: 'UI/UX Design Tips',
-    content: 'Remember: good design is invisible. Focus on user needs, not just aesthetics. The best interfaces disappear in use and make users feel smart.',
-    author: {
-      name: 'Sarah Kim',
-      avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-    },
-    timestamp: '4h ago',
-    teretName: 'Design',
-    likes: 28,
-    comments: 5,
-    isLiked: true,
-    isBookmarked: true,
-  },
-  {
-    id: '3',
-    title: 'Building Scalable Apps',
-    content: 'Architecture matters more than you think. Plan for scale from day one. Clean code, proper separation of concerns, and thoughtful data structures will save you countless hours later.',
-    author: {
-      name: 'Mike Johnson',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-    },
-    timestamp: '6h ago',
-    teretName: 'Architecture',
-    likes: 15,
-    comments: 3,
-    isLiked: false,
-    isBookmarked: false,
-  },
-];
+import { useFeed, FeedItem } from '../../shared/useFeed';
 
 export default function HomeScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
+  const { 
+    items, 
+    isLoading, 
+    isRefreshing, 
+    hasError, 
+    errorMessage, 
+    hasMore, 
+    refresh, 
+    loadMore, 
+    retry 
+  } = useFeed();
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
     text: isDark ? '#f4f4f5' : '#1e293b',
     secondary: isDark ? '#a1a1aa' : '#64748b',
     border: isDark ? '#334155' : '#e2e8f0',
+    error: isDark ? '#ef4444' : '#dc2626',
   };
 
-  const handleLike = (id: string): void => {
+  const handleLike = (id: number): void => {
     console.log('Like pressed for:', id);
+    // TODO: Implement like functionality with Discourse API
   };
 
-  const handleComment = (id: string): void => {
+  const handleComment = (id: number): void => {
     console.log('Comment pressed for:', id);
+    // Navigate to ByteBlogPage with comments visible
+    router.push(`/feed/${id}?showComments=true` as any);
   };
 
-  const handleBookmark = (id: string): void => {
+  const handleBookmark = (id: number): void => {
     console.log('Bookmark pressed for:', id);
+    // TODO: Implement bookmark functionality
   };
 
-  const handleShare = (id: string): void => {
+  const handleShare = (id: number): void => {
     console.log('Share pressed for:', id);
+    // TODO: Implement share functionality
   };
 
-  const handleMore = (id: string): void => {
+  const handleMore = (id: number): void => {
     console.log('More pressed for:', id);
+    // TODO: Show more options menu
   };
 
-  const handleBytePress = (byteId: string): void => {
+  const handleBytePress = (byteId: number): void => {
     console.log('Navigating to byte:', byteId);
-    router.push(`/feed/${byteId}`);
+    router.push(`/feed/${byteId}` as any);
   };
 
   const handleTeretPress = (teretName: string): void => {
     console.log('Teret pressed:', teretName);
+    // TODO: Navigate to teret/category screen
+  };
+
+  const handleTagPress = (tag: string): void => {
+    console.log('Tag pressed:', tag);
+    // TODO: Navigate to tag search screen
+  };
+
+  const formatTimestamp = (timestamp: string): string => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 1) {
+      return 'Just now';
+    } else if (diffInHours < 24) {
+      const hours = Math.floor(diffInHours);
+      return `${hours}h ago`;
+    } else if (diffInHours < 168) { // 7 days
+      const days = Math.floor(diffInHours / 24);
+      return `${days}d ago`;
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      });
+    }
   };
 
   const renderFeedItem = ({ item }: { item: FeedItem }): JSX.Element => (
     <ByteCard
-      id={item.id}
-      content={item.content}
-      teretName={item.teretName}
-      author={item.author}
-      likes={item.likes}
-      comments={item.comments}
-      timestamp={item.timestamp}
-      isLiked={item.isLiked}
-      isBookmarked={item.isBookmarked}
-      onPress={() => handleBytePress(item.id)}
+      id={item.id.toString()}
+      content={`${item.title}\n\n${item.excerpt}`}
+      author={{
+        username: item.author.username,
+        name: item.author.name || 'Unknown User',
+        avatar: item.author.avatar || '',
+      }}
+      category={{
+        name: item.category.name,
+        color: item.category.color,
+        slug: item.category.slug,
+      }}
+      tags={item.tags}
+      timestamp={formatTimestamp(item.createdAt)}
+      likes={item.likeCount}
+      comments={item.replyCount}
+      isLiked={false} // TODO: Implement like state
+      isBookmarked={false} // TODO: Implement bookmark state
       onLike={() => handleLike(item.id)}
       onComment={() => handleComment(item.id)}
       onBookmark={() => handleBookmark(item.id)}
       onShare={() => handleShare(item.id)}
       onMore={() => handleMore(item.id)}
-      onTeretPress={() => handleTeretPress(item.teretName)}
+      onPress={() => handleBytePress(item.id)}
+      onCategoryPress={() => handleTeretPress(item.category.name)}
+      onTagPress={(tag) => handleTagPress(tag)}
     />
   );
+
+  const renderFooter = () => {
+    if (!hasMore) {
+      return (
+        <View style={styles.footer}>
+          <Text style={[styles.footerText, { color: colors.secondary }]}>
+            No more posts to load
+          </Text>
+        </View>
+      );
+    }
+    
+    if (isLoading) {
+      return (
+        <View style={styles.footer}>
+          <ActivityIndicator size="small" color={colors.text} />
+          <Text style={[styles.footerText, { color: colors.secondary }]}>
+            Loading more posts...
+          </Text>
+        </View>
+      );
+    }
+    
+    return null;
+  };
+
+  const renderError = () => {
+    if (!hasError) return null;
+    
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          {errorMessage || 'Failed to load posts'}
+        </Text>
+        <Text 
+          style={[styles.retryText, { color: colors.text }]}
+          onPress={retry}
+        >
+          Tap to retry
+        </Text>
+      </View>
+    );
+  };
+
+  if (isLoading && items.length === 0) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <HeaderBar 
+          title="Feed" 
+          showBackButton={false}
+          showProfileButton={true}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.text} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Loading posts from Discourse...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -139,12 +193,23 @@ export default function HomeScreen(): JSX.Element {
       />
       
       <FlatList
-        data={mockFeedData}
+        data={items}
         renderItem={renderFeedItem}
-        keyExtractor={(item) => item.id}
-        style={styles.feedList}
-        contentContainerStyle={styles.feedContent}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.feedContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={refresh}
+            tintColor={colors.text}
+            colors={[colors.text]}
+          />
+        }
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.1}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderError}
       />
     </SafeAreaView>
   );
@@ -158,6 +223,39 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   feedContent: {
+    paddingVertical: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+  },
+  footer: {
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
+  },
+  errorContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  retryText: {
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  feedContainer: {
     paddingVertical: 8,
   },
 }); 

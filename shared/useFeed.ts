@@ -1,215 +1,267 @@
-import { useState, useEffect } from 'react';
-import { Byte } from './useCreateByte';
-import { useAuth } from './useAuth';
+import { useState, useEffect, useCallback } from 'react';
+import { discourseApi } from './discourseApi';
+import { logger } from './logger';
 
-export interface FeedState {
-  bytes: Byte[];
-  isLoading: boolean;
-  isRefreshing: boolean;
-  hasMore: boolean;
-  error: string | null;
+// Feed item types
+export interface FeedItem {
+  id: number;
+  title: string;
+  excerpt: string;
+  author: {
+    username: string;
+    name: string;
+    avatar: string;
+  };
+  category: {
+    id: number;
+    name: string;
+    color: string;
+    slug: string;
+  };
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  replyCount: number;
+  likeCount: number;
+  isPinned: boolean;
+  isClosed: boolean;
+  isArchived: boolean;
+  lastPostedAt: string;
+  lastPoster: {
+    username: string;
+    name: string;
+  };
+  views: number;
+  slug: string;
+  url: string;
 }
 
-// Mock data for initial feed
-const mockFeedData: Byte[] = [
-  {
-    id: '1',
-    author: {
-      id: '2',
-      name: 'John Doe',
-      username: '@johndoe',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-    },
-    content: 'Just discovered this amazing new coffee shop downtown! The atmosphere is perfect for working and the coffee is incredible. ☕️',
-    teretId: 'coffee',
-    teretName: 'Coffee Lovers',
-    tags: ['coffee', 'lifestyle'],
-    timestamp: '2h ago',
-    likes: 24,
-    comments: 8,
-    isLiked: false,
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-  },
-  {
-    id: '2',
-    author: {
-      id: '3',
-      name: 'Sarah Wilson',
-      username: '@sarahw',
-      avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-    },
-    content: 'Working on a new React Native project and loving the developer experience with Expo Router. The file-based routing is so intuitive! 🚀',
-    teretId: 'react-native',
-    teretName: 'React Native',
-    tags: ['tech', 'react-native'],
-    timestamp: '4h ago',
-    likes: 42,
-    comments: 15,
-    isLiked: true,
-    createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
-  },
-  {
-    id: '3',
-    author: {
-      id: '4',
-      name: 'Mike Chen',
-      username: '@mikechen',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-    },
-    content: 'Beautiful sunset from my evening walk. Sometimes the simple moments are the most meaningful. 🌅',
-    teretId: 'nature',
-    teretName: 'Nature & Outdoors',
-    tags: ['nature', 'photography'],
-    timestamp: '6h ago',
-    likes: 67,
-    comments: 12,
-    isLiked: false,
-    createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
-  },
-];
+export interface FeedFilters {
+  category?: string;
+  tags?: string[];
+  author?: string;
+  search?: string;
+  sort?: 'latest' | 'popular' | 'unread' | 'top';
+  period?: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'all';
+}
 
-export function useFeed() {
-  const [feedState, setFeedState] = useState<FeedState>({
-    bytes: [],
-    isLoading: true,
+export interface FeedState {
+  items: FeedItem[];
+  isLoading: boolean;
+  isRefreshing: boolean;
+  hasError: boolean;
+  errorMessage?: string;
+  hasMore: boolean;
+  currentPage: number;
+  totalItems: number;
+}
+
+const ITEMS_PER_PAGE = 20;
+
+export function useFeed(filters: FeedFilters = {}) {
+  const [state, setState] = useState<FeedState>({
+    items: [],
+    isLoading: false,
     isRefreshing: false,
+    hasError: false,
     hasMore: true,
-    error: null,
+    currentPage: 0,
+    totalItems: 0,
   });
 
-  const { user } = useAuth();
+  const [filtersState, setFiltersState] = useState<FeedFilters>(filters);
 
+  // Load feed items
+  const loadFeed = useCallback(async (page: number = 0, isRefresh: boolean = false) => {
+    try {
+      setState(prev => ({
+        ...prev,
+        isLoading: !isRefresh,
+        isRefreshing: isRefresh,
+        hasError: false,
+        errorMessage: undefined,
+      }));
+
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('per_page', ITEMS_PER_PAGE.toString());
+
+      // Add filters
+      if (filtersState.category) {
+        params.append('category', filtersState.category);
+      }
+      if (filtersState.tags && filtersState.tags.length > 0) {
+        params.append('tags', filtersState.tags.join(','));
+      }
+      if (filtersState.author) {
+        params.append('author', filtersState.author);
+      }
+      if (filtersState.search) {
+        params.append('q', filtersState.search);
+      }
+      if (filtersState.sort) {
+        params.append('order', filtersState.sort);
+      }
+      if (filtersState.period) {
+        params.append('period', filtersState.period);
+      }
+
+      // Get topics from Discourse
+      const response = await discourseApi.getTopics(params.toString());
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Failed to load feed');
+      }
+
+             // Get categories for better category information
+      let categoriesMap = new Map();
+      try {
+        const categoriesResponse = await discourseApi.getCategories();
+        if (categoriesResponse.success && categoriesResponse.data) {
+          categoriesResponse.data.category_list.categories.forEach((cat: any) => {
+            categoriesMap.set(cat.id, {
+              id: cat.id,
+              name: cat.name,
+              color: cat.color || '#000000',
+              slug: cat.slug,
+            });
+          });
+        }
+      } catch (error) {
+        console.log('Failed to fetch categories:', error);
+      }
+
+      // Transform Discourse topics to FeedItems
+      const transformedItems = response.data.topic_list.topics.map((topic: any) => {
+        // Debug: Log the first topic to see the structure
+        if (topic.id === response.data.topic_list.topics[0].id) {
+          console.log('🔍 First topic structure:', JSON.stringify(topic, null, 2));
+        }
+        
+        // Get the topic creator from posters array
+        const creator = topic.posters?.find((poster: any) => 
+          poster.description?.includes('Original Poster') || poster.extras?.includes('single')
+        ) || topic.posters?.[0];
+        
+        // Get category information
+        const categoryInfo = categoriesMap.get(topic.category_id) || {
+          id: topic.category_id,
+          name: 'Uncategorized',
+          color: '#000000',
+          slug: 'uncategorized',
+        };
+        
+        // Get user information from last_poster_username
+        const authorInfo = {
+          username: topic.last_poster_username || 'unknown',
+          name: topic.last_poster_username || 'Unknown User',
+          avatar: discourseApi.getAvatarUrl('', 40), // Will be updated when we get user details
+        };
+        
+        const transformedItem = {
+          id: topic.id,
+          title: topic.title,
+          excerpt: topic.excerpt || '',
+          author: authorInfo,
+          category: categoryInfo,
+          tags: topic.tags || [],
+          createdAt: topic.created_at,
+          updatedAt: topic.updated_at,
+          replyCount: topic.reply_count,
+          likeCount: topic.like_count,
+          isPinned: topic.pinned,
+          isClosed: topic.closed,
+          isArchived: topic.archived,
+          lastPostedAt: topic.last_posted_at,
+          lastPoster: {
+            username: topic.last_poster_username || 'unknown',
+            name: topic.last_poster_username || 'Unknown User',
+          },
+          views: topic.views,
+          slug: topic.slug,
+          url: `${discourseApi.getBaseUrl()}/t/${topic.slug}/${topic.id}`,
+        };
+        
+        // Debug: Log the transformed item
+        if (topic.id === response.data.topic_list.topics[0].id) {
+          console.log('🔍 Transformed item:', JSON.stringify(transformedItem, null, 2));
+        }
+        
+        return transformedItem;
+      });
+
+      setState(prev => ({
+        ...prev,
+        items: isRefresh ? transformedItems : [...prev.items, ...transformedItems],
+        isLoading: false,
+        isRefreshing: false,
+        hasMore: transformedItems.length === ITEMS_PER_PAGE,
+        currentPage: page,
+        totalItems: response.data.topic_list.topics.length,
+      }));
+
+    } catch (error) {
+      logger.error('Failed to load feed', error);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        isRefreshing: false,
+        hasError: true,
+        errorMessage: error instanceof Error ? error.message : 'Failed to load feed',
+      }));
+    }
+  }, [filtersState]);
+
+  // Load initial feed
   useEffect(() => {
-    loadFeed();
+    loadFeed(0, true);
+  }, [loadFeed]);
+
+  // Refresh feed
+  const refresh = useCallback(() => {
+    loadFeed(0, true);
+  }, [loadFeed]);
+
+  // Load more items
+  const loadMore = useCallback(() => {
+    if (!state.isLoading && state.hasMore && !state.hasError) {
+      loadFeed(state.currentPage + 1, false);
+    }
+  }, [state.isLoading, state.hasMore, state.hasError, state.currentPage, loadFeed]);
+
+  // Update filters
+  const updateFilters = useCallback((newFilters: Partial<FeedFilters>) => {
+    setFiltersState(prev => ({ ...prev, ...newFilters }));
   }, []);
 
-  const loadFeed = async () => {
-    try {
-      setFeedState(prev => ({ ...prev, isLoading: true, error: null }));
-      
-      // TODO: Implement actual API call
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setFeedState(prev => ({
-        ...prev,
-        bytes: mockFeedData,
-        isLoading: false,
-        hasMore: false,
-      }));
-    } catch (error) {
-      console.error('Load feed error:', error);
-      setFeedState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: 'Failed to load feed',
-      }));
-    }
-  };
-
-  const refreshFeed = async () => {
-    try {
-      setFeedState(prev => ({ ...prev, isRefreshing: true, error: null }));
-      
-      // TODO: Implement actual API call
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setFeedState(prev => ({
-        ...prev,
-        bytes: mockFeedData,
-        isRefreshing: false,
-        hasMore: true,
-      }));
-    } catch (error) {
-      console.error('Refresh feed error:', error);
-      setFeedState(prev => ({
-        ...prev,
-        isRefreshing: false,
-        error: 'Failed to refresh feed',
-      }));
-    }
-  };
-
-  const loadMoreBytes = async () => {
-    if (!feedState.hasMore || feedState.isLoading) return;
-
-    try {
-      setFeedState(prev => ({ ...prev, isLoading: true }));
-      
-      // TODO: Implement actual API call for pagination
-      // For now, just mark as no more data
-      setFeedState(prev => ({
-        ...prev,
-        isLoading: false,
-        hasMore: false,
-      }));
-    } catch (error) {
-      console.error('Load more bytes error:', error);
-      setFeedState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: 'Failed to load more bytes',
-      }));
-    }
-  };
-
-  const toggleLike = async (byteId: string) => {
-    if (!user) return;
-
-    try {
-      setFeedState(prev => ({
-        ...prev,
-        bytes: prev.bytes.map(byte => 
-          byte.id === byteId 
-            ? {
-                ...byte,
-                isLiked: !byte.isLiked,
-                likes: byte.isLiked ? byte.likes - 1 : byte.likes + 1,
-              }
-            : byte
-        ),
-      }));
-
-      // TODO: Implement actual API call
-      // For now, just update local state
-    } catch (error) {
-      console.error('Toggle like error:', error);
-      // Revert the optimistic update
-      setFeedState(prev => ({
-        ...prev,
-        bytes: prev.bytes.map(byte => 
-          byte.id === byteId 
-            ? {
-                ...byte,
-                isLiked: !byte.isLiked,
-                likes: byte.isLiked ? byte.likes + 1 : byte.likes - 1,
-              }
-            : byte
-        ),
-      }));
-    }
-  };
-
-  const addByte = (newByte: Byte) => {
-    setFeedState(prev => ({
+  // Clear feed
+  const clearFeed = useCallback(() => {
+    setState(prev => ({
       ...prev,
-      bytes: [newByte, ...prev.bytes],
+      items: [],
+      currentPage: 0,
+      hasMore: true,
+      hasError: false,
+      errorMessage: undefined,
     }));
-  };
+  }, []);
 
-  const getByteById = (byteId: string): Byte | undefined => {
-    return feedState.bytes.find(byte => byte.id === byteId);
-  };
+  // Retry loading
+  const retry = useCallback(() => {
+    if (state.hasError) {
+      loadFeed(state.currentPage, true);
+    }
+  }, [state.hasError, state.currentPage, loadFeed]);
 
   return {
-    ...feedState,
-    loadFeed,
-    refreshFeed,
-    loadMoreBytes,
-    toggleLike,
-    addByte,
-    getByteById,
+    ...state,
+    refresh,
+    loadMore,
+    updateFilters,
+    clearFeed,
+    retry,
+    filters: filtersState,
   };
 }
 

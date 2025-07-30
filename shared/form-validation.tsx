@@ -14,7 +14,13 @@ import {
   animation,
 } from './design-system';
 
-const { width: screenWidth } = Dimensions.get('window');
+const getScreenWidth = () => {
+  try {
+    return Dimensions.get('window').width;
+  } catch {
+    return 375; // Default fallback for test environment
+  }
+};
 
 // =============================================================================
 // VALIDATION TYPES AND INTERFACES

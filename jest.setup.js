@@ -99,6 +99,15 @@ global.console = {
   // error: jest.fn(),
 };
 
+// Setup environment variables for testing
+process.env.EXPO_PUBLIC_DISCOURSE_URL = 'https://meta.techrebels.info';
+process.env.EXPO_PUBLIC_DISCOURSE_API_KEY = 'test_api_key_for_testing';
+process.env.EXPO_PUBLIC_DISCOURSE_API_USERNAME = 'test_user';
+process.env.EXPO_PUBLIC_ENABLE_HTTPS_ONLY = 'true';
+process.env.EXPO_PUBLIC_ENABLE_RATE_LIMITING = 'true';
+process.env.EXPO_PUBLIC_ENABLE_DEBUG_MODE = 'false';
+process.env.EXPO_PUBLIC_ENABLE_MOCK_DATA = 'false';
+
 // Setup fake timers
 beforeEach(() => {
   jest.useFakeTimers();

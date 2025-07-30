@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -7,7 +7,10 @@ import {
   ScrollView, 
   TextInput,
   FlatList,
-  Image 
+  Image,
+  ActivityIndicator,
+  RefreshControl,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -21,62 +24,53 @@ import {
   BookmarkSimple,
   Heart,
   ChatCircle,
-  Share
+  Share,
+  Warning,
+  ArrowClockwise,
+  CaretDown,
+  CaretUp,
+  Clock,
+  Rocket
 } from 'phosphor-react-native';
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
+import { useSearch } from '../../shared/useSearch';
+import { useCategories } from '../../shared/useCategories';
+import { useTerets } from '../../shared/useTerets';
+import { useRecentTopics } from '../../shared/useRecentTopics';
+import { router } from 'expo-router';
 
-interface Hub {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  memberCount: number;
-  teretCount: number;
-  isPopular: boolean;
-}
-
-interface Teret {
-  id: string;
-  name: string;
-  description: string;
-  hubName: string;
-  memberCount: number;
-  isTrending: boolean;
-}
-
-interface Byte {
-  id: string;
-  title: string;
-  content: string;
-  author: {
-    name: string;
-    avatar: string;
-  };
-  teretName: string;
-  hubName: string;
-  likes: number;
-  comments: number;
-  timestamp: string;
-  isLiked: boolean;
-  isBookmarked: boolean;
-}
-
-function DiscoverSection({ title, children }: { title: string; children: React.ReactNode }) {
+// UI Components
+function DiscoverSection({ title, children, isLoading, hasError, onRetry }: { 
+  title: string; 
+  children: React.ReactNode;
+  isLoading?: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
+}) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
     text: isDark ? '#9ca3af' : '#6b7280',
+    error: '#ef4444',
   };
 
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+        {isLoading && <ActivityIndicator size="small" color={colors.text} />}
+        {hasError && onRetry && (
+          <TouchableOpacity onPress={onRetry} style={styles.retryButton}>
+            <ArrowClockwise size={16} color={colors.error} />
+          </TouchableOpacity>
+        )}
+      </View>
       {children}
     </View>
   );
 }
 
-function HubCard({ hub, onPress }: { hub: Hub; onPress: () => void }) {
+function HubCard({ category, onPress }: { category: any; onPress: () => void }) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
@@ -95,19 +89,23 @@ function HubCard({ hub, onPress }: { hub: Hub; onPress: () => void }) {
       onPress={onPress}
       accessible
       accessibilityRole="button"
-      accessibilityLabel={`${hub.name} hub`}
+      accessibilityLabel={`${category.name} hub`}
     >
       <View style={styles.hubHeader}>
-        <View style={styles.hubIcon}>
-          <Text style={[styles.hubIconText, { color: colors.accent }]}>{hub.icon}</Text>
-        </View>
-        <View style={styles.hubInfo}>
-          <Text style={[styles.hubName, { color: colors.text }]}>{hub.name}</Text>
-          <Text style={[styles.hubDescription, { color: colors.secondary }]} numberOfLines={2}>
-            {hub.description}
+        <View style={[styles.hubIcon, { backgroundColor: category.color + '20' }]}>
+          <Text style={[styles.hubIconText, { color: category.color }]}>
+            {category.name.charAt(0).toUpperCase()}
           </Text>
         </View>
-        {hub.isPopular && (
+        <View style={styles.hubInfo}>
+          <Text style={[styles.hubName, { color: colors.text }]} numberOfLines={1}>
+            {category.name}
+          </Text>
+          <Text style={[styles.hubDescription, { color: colors.secondary }]} numberOfLines={2}>
+            {category.description || 'No description available'}
+          </Text>
+        </View>
+        {category.topic_count > 5 && (
           <View style={styles.popularBadge}>
             <Fire size={12} color={colors.accent} weight="fill" />
           </View>
@@ -115,17 +113,17 @@ function HubCard({ hub, onPress }: { hub: Hub; onPress: () => void }) {
       </View>
       <View style={styles.hubStats}>
         <Text style={[styles.hubStat, { color: colors.secondary }]}>
-          {hub.memberCount.toLocaleString()} members
+          {category.topic_count} topics
         </Text>
         <Text style={[styles.hubStat, { color: colors.secondary }]}>
-          {hub.teretCount} terets
+          {category.post_count} posts
         </Text>
       </View>
     </TouchableOpacity>
   );
 }
 
-function TeretCard({ teret, onPress }: { teret: Teret; onPress: () => void }) {
+function TeretCard({ teret, onPress }: { teret: any; onPress: () => void }) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
@@ -148,26 +146,35 @@ function TeretCard({ teret, onPress }: { teret: Teret; onPress: () => void }) {
     >
       <View style={styles.teretHeader}>
         <View style={styles.teretInfo}>
-          <Text style={[styles.teretName, { color: colors.text }]}>#{teret.name}</Text>
-          <Text style={[styles.teretHub, { color: colors.secondary }]}>in {teret.hubName}</Text>
+          <Text style={[styles.teretName, { color: colors.text }]} numberOfLines={1}>
+            #{teret.name}
+          </Text>
+          <Text style={[styles.teretHub, { color: colors.secondary }]}>
+            in {teret.parent_category.name}
+          </Text>
         </View>
-        {teret.isTrending && (
+        {teret.topic_count > 5 && (
           <View style={styles.trendingBadge}>
             <TrendUp size={12} color={colors.accent} weight="fill" />
           </View>
         )}
       </View>
       <Text style={[styles.teretDescription, { color: colors.secondary }]} numberOfLines={2}>
-        {teret.description}
+        {teret.description || 'No description available'}
       </Text>
-      <Text style={[styles.teretStats, { color: colors.secondary }]}>
-        {teret.memberCount.toLocaleString()} members
-      </Text>
+      <View style={styles.teretStats}>
+        <Text style={[styles.teretStat, { color: colors.secondary }]}>
+          {teret.topic_count} topics
+        </Text>
+        <Text style={[styles.teretStat, { color: colors.secondary }]}>
+          {teret.post_count} posts
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 }
 
-function ByteCard({ byte, onPress }: { byte: Byte; onPress: () => void }) {
+function ByteCard({ topic, onPress }: { topic: any; onPress: () => void }) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
@@ -175,6 +182,47 @@ function ByteCard({ byte, onPress }: { byte: Byte; onPress: () => void }) {
     secondary: isDark ? '#9ca3af' : '#6b7280',
     border: isDark ? '#374151' : '#e5e7eb',
     accent: isDark ? '#3b82f6' : '#0ea5e9',
+  };
+
+  // Handle empty avatar URLs
+  const avatarSource = topic.author?.avatar && topic.author.avatar.trim() !== '' 
+    ? { uri: topic.author.avatar } 
+    : undefined;
+
+  // Format the date
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+      
+      if (diffInHours < 1) {
+        return 'Just now';
+      } else if (diffInHours < 24) {
+        return `${diffInHours}h ago`;
+      } else if (diffInHours < 168) { // 7 days
+        const days = Math.floor(diffInHours / 24);
+        return `${days}d ago`;
+      } else {
+        return date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric',
+          year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+        });
+      }
+    } catch (error) {
+      return 'Unknown time';
+    }
+  };
+
+  // Format numbers for display
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+      return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toString();
   };
 
   return (
@@ -186,38 +234,66 @@ function ByteCard({ byte, onPress }: { byte: Byte; onPress: () => void }) {
       onPress={onPress}
       accessible
       accessibilityRole="button"
-      accessibilityLabel={`${byte.title} byte`}
+      accessibilityLabel={`${topic.title} topic`}
     >
       <View style={styles.byteHeader}>
-        <Image source={{ uri: byte.author.avatar }} style={styles.byteAvatar} />
+        {avatarSource ? (
+          <Image source={avatarSource} style={styles.byteAvatar} />
+        ) : (
+          <View style={[styles.byteAvatar, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+            <Text style={[styles.byteAvatarFallback, { color: colors.background }]}>
+              {(topic.author?.name || 'U').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
         <View style={styles.byteInfo}>
-          <Text style={[styles.byteAuthor, { color: colors.text }]}>{byte.author.name}</Text>
+          <Text style={[styles.byteAuthor, { color: colors.text }]}>{topic.author?.name || 'Unknown'}</Text>
           <Text style={[styles.byteMeta, { color: colors.secondary }]}>
-            {byte.timestamp} • in {byte.teretName}
+            {topic.category?.name || 'Uncategorized'} • {formatDate(topic.createdAt)}
           </Text>
         </View>
+        {topic.isPinned && (
+          <View style={styles.pinnedBadge}>
+            <Star size={12} color={colors.accent} weight="fill" />
+          </View>
+        )}
       </View>
       <Text style={[styles.byteTitle, { color: colors.text }]} numberOfLines={2}>
-        {byte.title}
+        {topic.title}
       </Text>
       <Text style={[styles.byteContent, { color: colors.secondary }]} numberOfLines={3}>
-        {byte.content}
+        {topic.excerpt || 'No content available'}
       </Text>
+      {topic.tags && topic.tags.length > 0 && (
+        <View style={styles.tagsContainer}>
+          {topic.tags.slice(0, 3).map((tag: string, index: number) => (
+            <View key={index} style={[styles.tag, { backgroundColor: colors.border }]}>
+              <Text style={[styles.tagText, { color: colors.secondary }]}>#{tag}</Text>
+            </View>
+          ))}
+        </View>
+      )}
       <View style={styles.byteActions}>
         <View style={styles.byteAction}>
-          <Heart size={16} weight={byte.isLiked ? 'fill' : 'regular'} color={colors.secondary} />
+          <Heart size={16} weight="regular" color={colors.secondary} />
           <Text style={[styles.byteActionText, { color: colors.secondary }]}>
-            {byte.likes}
+            {formatNumber(topic.likeCount)}
           </Text>
         </View>
         <View style={styles.byteAction}>
           <ChatCircle size={16} weight="regular" color={colors.secondary} />
           <Text style={[styles.byteActionText, { color: colors.secondary }]}>
-            {byte.comments}
+            {formatNumber(topic.replyCount)}
           </Text>
         </View>
         <View style={styles.byteAction}>
-          <BookmarkSimple size={16} weight={byte.isBookmarked ? 'fill' : 'regular'} color={colors.secondary} />
+          <Users size={14} weight="regular" color={colors.secondary} />
+          <Text style={[styles.byteActionText, { color: colors.secondary }]}>
+            {formatNumber(topic.views || 0)}
+          </Text>
+        </View>
+        <View style={styles.byteAction}>
+          <BookmarkSimple size={16} weight="regular" color={colors.secondary} />
         </View>
         <View style={styles.byteAction}>
           <Share size={16} weight="regular" color={colors.secondary} />
@@ -227,10 +303,196 @@ function ByteCard({ byte, onPress }: { byte: Byte; onPress: () => void }) {
   );
 }
 
+function ComingSoonSection({ title, description }: { title: string; description: string }) {
+  const { isDark, isAmoled } = useTheme();
+  const colors = {
+    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
+    text: isDark ? '#f9fafb' : '#111827',
+    secondary: isDark ? '#9ca3af' : '#6b7280',
+    border: isDark ? '#374151' : '#e5e7eb',
+    accent: isDark ? '#3b82f6' : '#0ea5e9',
+  };
+
+  return (
+    <View style={[styles.comingSoonContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+      <View style={styles.comingSoonIcon}>
+        <Rocket size={48} color={colors.accent} weight="fill" />
+      </View>
+      <Text style={[styles.comingSoonTitle, { color: colors.text }]}>{title}</Text>
+      <Text style={[styles.comingSoonDescription, { color: colors.secondary }]}>{description}</Text>
+      <View style={styles.comingSoonBadge}>
+        <Clock size={16} color={colors.accent} />
+        <Text style={[styles.comingSoonBadgeText, { color: colors.accent }]}>Coming Soon</Text>
+      </View>
+    </View>
+  );
+}
+
+function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
+  results: any[];
+  isLoading: boolean;
+  hasError: boolean;
+  onRetry: () => void;
+  searchQuery: string;
+}) {
+  const { isDark, isAmoled } = useTheme();
+  const colors = {
+    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
+    text: isDark ? '#f9fafb' : '#111827',
+    secondary: isDark ? '#9ca3af' : '#6b7280',
+    border: isDark ? '#374151' : '#e5e7eb',
+    error: '#ef4444',
+    accent: isDark ? '#3b82f6' : '#0ea5e9',
+  };
+
+  console.log('🔍 SearchResults render:', { 
+    resultsCount: results.length, 
+    isLoading, 
+    hasError, 
+    searchQuery,
+    results: results.slice(0, 2) // Log first 2 results
+  });
+
+  if (isLoading) {
+    return (
+      <View style={styles.searchResultsContainer}>
+        <ActivityIndicator size="large" color={colors.text} />
+        <Text style={[styles.searchResultsText, { color: colors.secondary }]}>
+          Searching...
+        </Text>
+      </View>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <View style={styles.searchResultsContainer}>
+        <Warning size={48} color={colors.error} />
+        <Text style={[styles.searchResultsText, { color: colors.error }]}>
+          Search failed
+        </Text>
+        <TouchableOpacity onPress={onRetry} style={styles.retryButton}>
+          <ArrowClockwise size={16} color={colors.error} />
+          <Text style={[styles.retryText, { color: colors.error }]}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (results.length === 0) {
+    return (
+      <View style={styles.searchResultsContainer}>
+        <MagnifyingGlass size={48} color={colors.secondary} />
+        <Text style={[styles.searchResultsText, { color: colors.secondary }]}>
+          {searchQuery.length > 0 && searchQuery.length < 3 
+            ? 'Type at least 3 characters to search'
+            : 'No results found'
+          }
+        </Text>
+      </View>
+    );
+  }
+
+  // Group results by type
+  const topics = results.filter(result => result.type === 'topic');
+  const categories = results.filter(result => result.type === 'category');
+  const users = results.filter(result => result.type === 'user');
+
+  return (
+    <ScrollView style={styles.searchResultsList} showsVerticalScrollIndicator={false}>
+      {/* Topics */}
+      {topics.length > 0 && (
+        <View style={styles.searchSection}>
+          <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
+            Topics ({topics.length})
+          </Text>
+          {topics.map((result) => (
+            <ByteCard key={`topic-${result.id}`} topic={result} onPress={() => {
+              router.push(`/feed/${result.id}`);
+            }} />
+          ))}
+        </View>
+      )}
+
+      {/* Categories */}
+      {categories.length > 0 && (
+        <View style={styles.searchSection}>
+          <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
+            Categories ({categories.length})
+          </Text>
+          {categories.map((result) => (
+            <HubCard key={`category-${result.id}`} category={result} onPress={() => {
+              router.push(`/feed?category=${result.slug}`);
+            }} />
+          ))}
+        </View>
+      )}
+
+      {/* Users */}
+      {users.length > 0 && (
+        <View style={styles.searchSection}>
+          <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
+            Users ({users.length})
+          </Text>
+          {users.map((result) => (
+            <TouchableOpacity
+              key={`user-${result.id}`}
+              style={[styles.userCard, { backgroundColor: colors.background, borderColor: colors.border }]}
+              onPress={() => {
+                // Navigate to user profile (you can implement this later)
+                console.log('Navigate to user:', result.author?.username);
+              }}
+            >
+              <View style={styles.userCardHeader}>
+                {result.author?.avatar ? (
+                  <Image source={{ uri: result.author.avatar }} style={styles.userAvatar} />
+                ) : (
+                  <View style={[styles.userAvatar, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+                    <Text style={[styles.userAvatarFallback, { color: colors.background }]}>
+                      {result.author?.name?.charAt(0).toUpperCase() || 'U'}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.userInfo}>
+                  <Text style={[styles.userName, { color: colors.text }]}>{result.title}</Text>
+                  <Text style={[styles.userUsername, { color: colors.secondary }]}>
+                    @{result.author?.username}
+                  </Text>
+                </View>
+              </View>
+              {result.content && (
+                <Text style={[styles.userBio, { color: colors.secondary }]} numberOfLines={2}>
+                  {result.content}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
 export default function SearchScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'hubs' | 'terets' | 'bytes'>('all');
+  
+  // Enhanced hooks for real data
+  const { 
+    search, 
+    quickSearch,
+    advancedSearch,
+    results, 
+    isLoading: isSearchLoading, 
+    hasError: hasSearchError, 
+    retry: retrySearch,
+    searchType,
+    filters
+  } = useSearch();
+  const { categories, isLoading: isCategoriesLoading, hasError: hasCategoriesError, retry: retryCategories } = useCategories();
+  const { terets, isLoading: isTeretsLoading, hasError: hasTeretsError, retry: retryTerets } = useTerets();
+  const { topics: recentTopics, isLoading: isRecentLoading, hasError: hasRecentError, retry: retryRecent } = useRecentTopics();
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -242,110 +504,52 @@ export default function SearchScreen(): JSX.Element {
     input: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
   };
 
-  // Mock data
-  const popularHubs: Hub[] = [
-    {
-      id: '1',
-      name: 'Technology',
-      description: 'Discuss the latest in tech, programming, and digital innovation',
-      icon: '💻',
-      memberCount: 15420,
-      teretCount: 45,
-      isPopular: true,
-    },
-    {
-      id: '2',
-      name: 'Design',
-      description: 'Share design inspiration, tips, and creative discussions',
-      icon: '🎨',
-      memberCount: 8920,
-      teretCount: 32,
-      isPopular: true,
-    },
-    {
-      id: '3',
-      name: 'Gaming',
-      description: 'Everything about games, esports, and gaming culture',
-      icon: '🎮',
-      memberCount: 12340,
-      teretCount: 28,
-      isPopular: false,
-    },
-  ];
+  // Enhanced search handling with debouncing
+  const handleSearch = useCallback((query: string) => {
+    console.log('🔍 Search triggered:', query);
+    setSearchQuery(query);
+    
+    if (query.trim()) {
+      if (query.trim().length >= 3) {
+        console.log('🔍 Performing full search for:', query.trim());
+        // Full search for longer queries
+        search(query);
+      } else {
+        console.log('🔍 Performing quick search for:', query.trim());
+        // Quick search for shorter queries
+        quickSearch(query);
+      }
+    }
+  }, [search, quickSearch]);
 
-  const trendingTerets: Teret[] = [
-    {
-      id: '1',
-      name: 'react-native',
-      description: 'Mobile app development with React Native',
-      hubName: 'Technology',
-      memberCount: 5430,
-      isTrending: true,
-    },
-    {
-      id: '2',
-      name: 'ui-design',
-      description: 'User interface design principles and best practices',
-      hubName: 'Design',
-      memberCount: 3210,
-      isTrending: true,
-    },
-    {
-      id: '3',
-      name: 'indie-games',
-      description: 'Independent game development and indie games',
-      hubName: 'Gaming',
-      memberCount: 2100,
-      isTrending: false,
-    },
-  ];
+  // Handle search input
+  const handleSearchInput = useCallback((query: string) => {
+    console.log('🔍 Search input changed:', query);
+    setSearchQuery(query);
+    
+    if (query.trim().length >= 2) {
+      // getSuggestions(query); // Removed as per edit hint
+    }
+  }, []);
 
-  const recentBytes: Byte[] = [
-    {
-      id: '1',
-      title: 'Getting Started with React Native',
-      content: 'Just published my first React Native app! The development experience is amazing...',
-      author: {
-        name: 'Alex Chen',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-      },
-      teretName: 'react-native',
-      hubName: 'Technology',
-      likes: 42,
-      comments: 8,
-      timestamp: '2h ago',
-      isLiked: false,
-      isBookmarked: false,
-    },
-    {
-      id: '2',
-      title: 'UI/UX Design Tips',
-      content: 'Remember: good design is invisible. Focus on user needs, not just aesthetics...',
-      author: {
-        name: 'Sarah Kim',
-        avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-      },
-      teretName: 'ui-design',
-      hubName: 'Design',
-      likes: 28,
-      comments: 5,
-      timestamp: '4h ago',
-      isLiked: true,
-      isBookmarked: true,
-    },
-  ];
+  // Handle navigation
+  const handleHubPress = useCallback((category: any) => {
+    console.log('Hub pressed:', category.name);
+    // Navigate to category feed
+    router.push(`/feed?category=${category.slug}`);
+  }, []);
 
-  const handleHubPress = (hub: Hub) => {
-    console.log('Hub pressed:', hub.name);
-  };
-
-  const handleTeretPress = (teret: Teret) => {
+  const handleTeretPress = useCallback((teret: any) => {
     console.log('Teret pressed:', teret.name);
-  };
+    // Navigate to teret (subcategory) feed
+    router.push(`/feed?category=${teret.slug}`);
+  }, []);
 
-  const handleBytePress = (byte: Byte) => {
-    console.log('Byte pressed:', byte.id);
-  };
+  const handleBytePress = useCallback((topic: any) => {
+    console.log('Byte pressed:', topic.id);
+    // Navigate to topic detail
+    router.push(`/feed/${topic.id}`);
+  }, []);
 
   const renderTabButton = (tab: 'all' | 'hubs' | 'terets' | 'bytes', label: string) => (
     <TouchableOpacity
@@ -370,6 +574,43 @@ export default function SearchScreen(): JSX.Element {
     </TouchableOpacity>
   );
 
+  // Show search results if there's a query
+  if (searchQuery.trim()) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <HeaderBar 
+          title="Search Results" 
+          showBackButton={true}
+          showProfileButton={true}
+        />
+        
+        <View style={styles.searchContainer}>
+          <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search topics, categories, or users..."
+            placeholderTextColor={colors.secondary}
+            value={searchQuery}
+            onChangeText={handleSearch}
+            accessible
+            accessibilityLabel="Search input"
+          />
+        </View>
+
+        {/* Search Suggestions */}
+        {/* Removed suggestions section as per edit hint */}
+
+        <SearchResults 
+          results={results}
+          isLoading={isSearchLoading}
+          hasError={hasSearchError}
+          onRetry={retrySearch}
+          searchQuery={searchQuery}
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <HeaderBar 
@@ -382,16 +623,27 @@ export default function SearchScreen(): JSX.Element {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isCategoriesLoading || isTeretsLoading || isRecentLoading}
+            onRefresh={() => {
+              retryCategories();
+              retryTerets();
+              retryRecent();
+            }}
+            tintColor={colors.secondary}
+          />
+        }
       >
         {/* Search Bar */}
         <View style={[styles.searchContainer, { backgroundColor: colors.input }]}>
           <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search hubs, terets, or bytes..."
+            placeholder="Search topics, categories, or users..."
             placeholderTextColor={colors.secondary}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={handleSearch}
             accessible
             accessibilityLabel="Search input"
           />
@@ -405,30 +657,62 @@ export default function SearchScreen(): JSX.Element {
           {renderTabButton('bytes', 'Bytes')}
         </View>
 
-        {/* Popular Hubs */}
-        <DiscoverSection title="Popular Hubs">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {popularHubs.map((hub) => (
-              <HubCard key={hub.id} hub={hub} onPress={() => handleHubPress(hub)} />
-            ))}
-          </ScrollView>
-        </DiscoverSection>
+        {/* Content based on active tab */}
+        {activeTab === 'all' && (
+          <>
+            {/* Popular Hubs */}
+            <DiscoverSection 
+              title="Popular Hubs" 
+              isLoading={isCategoriesLoading}
+              hasError={hasCategoriesError}
+              onRetry={retryCategories}
+            >
+                          <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              style={styles.horizontalScroll}
+              contentContainerStyle={styles.horizontalScrollContent}
+            >
+              {categories.map((category) => (
+                <HubCard key={category.id} category={category} onPress={() => handleHubPress(category)} />
+              ))}
+            </ScrollView>
+            </DiscoverSection>
 
-        {/* Trending Terets */}
-        <DiscoverSection title="Trending Terets">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {trendingTerets.map((teret) => (
-              <TeretCard key={teret.id} teret={teret} onPress={() => handleTeretPress(teret)} />
-            ))}
-          </ScrollView>
-        </DiscoverSection>
+            {/* Recent Bytes */}
+            <DiscoverSection 
+              title="Recent Bytes" 
+              isLoading={isRecentLoading}
+              hasError={hasRecentError}
+              onRetry={retryRecent}
+            >
+              {recentTopics.map((topic) => (
+                <ByteCard key={topic.id} topic={topic} onPress={() => handleBytePress(topic)} />
+              ))}
+            </DiscoverSection>
+          </>
+        )}
 
-        {/* Recent Bytes */}
-        <DiscoverSection title="Recent Bytes">
-          {recentBytes.map((byte) => (
-            <ByteCard key={byte.id} byte={byte} onPress={() => handleBytePress(byte)} />
-          ))}
-        </DiscoverSection>
+        {activeTab === 'hubs' && (
+          <ComingSoonSection 
+            title="Hub Navigation"
+            description="Browse and explore different hubs with their terets. Navigate through the TechRebels community structure."
+          />
+        )}
+
+        {activeTab === 'terets' && (
+          <ComingSoonSection 
+            title="Teret Discovery"
+            description="Discover trending terets and explore subcategories within each hub. Find your niche communities."
+          />
+        )}
+
+        {activeTab === 'bytes' && (
+          <ComingSoonSection 
+            title="Latest Bytes"
+            description="Browse the most recent bytes from across all terets. Stay updated with the latest discussions."
+          />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -467,12 +751,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tabButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     flex: 1,
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
-    alignItems: 'center',
+    borderColor: '#e5e7eb',
   },
   tabButtonText: {
     fontSize: 14,
@@ -481,21 +768,29 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    marginHorizontal: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 12,
-    marginHorizontal: 16,
   },
   horizontalScroll: {
     paddingHorizontal: 16,
   },
+  horizontalScrollContent: {
+    paddingRight: 16,
+  },
   hubCard: {
-    width: 200,
     marginRight: 12,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
+    alignSelf: 'flex-start',
   },
   hubHeader: {
     flexDirection: 'row',
@@ -506,25 +801,28 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f3f4f6',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   hubIconText: {
     fontSize: 20,
+    fontWeight: '600',
   },
   hubInfo: {
     flex: 1,
+    minWidth: 0, // Allows text to shrink
   },
   hubName: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
+    flexShrink: 1, // Allows text to shrink if needed
   },
   hubDescription: {
     fontSize: 14,
     lineHeight: 20,
+    flexShrink: 1, // Allows text to shrink if needed
   },
   popularBadge: {
     marginLeft: 8,
@@ -570,6 +868,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   teretStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  teretStat: {
     fontSize: 12,
     fontWeight: '500',
   },
@@ -626,5 +928,195 @@ const styles = StyleSheet.create({
   byteActionText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  byteAvatarFallback: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  searchResultsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  searchResultsText: {
+    fontSize: 16,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  searchResultsList: {
+    paddingHorizontal: 16,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 8,
+  },
+  retryText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pinnedBadge: {
+    marginLeft: 8,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+    gap: 6,
+  },
+  tag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  tagText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownContainer: {
+    width: '80%',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  dropdownTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  dropdownLoading: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  dropdownLoadingText: {
+    marginTop: 10,
+    fontSize: 16,
+  },
+  dropdownError: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  dropdownErrorText: {
+    marginTop: 10,
+    fontSize: 16,
+  },
+  dropdownEmpty: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  dropdownEmptyText: {
+    fontSize: 16,
+  },
+  dropdownList: {
+    maxHeight: 300, // Limit height for dropdown
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  comingSoonContainer: {
+    marginHorizontal: 16,
+    marginBottom: 24,
+    padding: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  comingSoonIcon: {
+    marginBottom: 16,
+  },
+  comingSoonTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  comingSoonDescription: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  comingSoonBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#e0f2fe',
+  },
+  comingSoonBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  searchSection: {
+    marginBottom: 24,
+  },
+  searchSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+    marginHorizontal: 16,
+  },
+  userCard: {
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  userCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  userAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 12,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  userUsername: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  userBio: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  userAvatarFallback: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 }); 

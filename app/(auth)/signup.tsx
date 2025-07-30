@@ -3,9 +3,11 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
+import { useAuth } from '../../shared/useAuth';
 
 export default function SignUpScreen() {
   const { isDark } = useTheme();
+  const { signUp } = useAuth();
   const colors = {
     background: isDark ? '#18181b' : '#fff',
     primary: isDark ? '#38bdf8' : '#0ea5e9',
@@ -17,30 +19,59 @@ export default function SignUpScreen() {
     divider: isDark ? '#334155' : '#e2e8f0',
     label: isDark ? '#f4f4f5' : '#1e293b',
     disabled: isDark ? '#64748b' : '#64748b',
+    error: isDark ? '#ef4444' : '#dc2626',
   };
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSignUp = async () => {
-    if (!name || !email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
+    if (!name || !email || !username || !password || !confirmPassword) {
+      setError('Please fill in all fields');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
+    if (name.length < 2) {
+      setError('Name must be at least 2 characters');
+      return;
+    }
+
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters');
       return;
     }
 
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    setError('');
+
+    try {
+      const result = await signUp(name, email, username, password);
+      
+      if (result.success) {
+        // Navigate to main app
+        router.replace('/(tabs)' as any);
+      } else {
+        setError(result.error || 'Sign up failed');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
       setLoading(false);
-      router.replace('/(tabs)');
-    }, 1000);
+    }
   };
 
   const handleSignIn = () => {
@@ -71,51 +102,88 @@ export default function SignUpScreen() {
 
       <View style={styles.content}>
         <View style={styles.form}>
+          {error ? (
+            <View style={[styles.errorContainer, { backgroundColor: `${colors.error}10`, borderColor: colors.error }]}>
+              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+            </View>
+          ) : null}
+
           <Text style={[styles.label, { color: colors.label }]}>Full Name</Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
             value={name}
-            onChangeText={setName}
+            onChangeText={(text) => {
+              setName(text);
+              if (error) setError('');
+            }}
             placeholder="Enter your full name"
             placeholderTextColor={colors.secondary}
             autoCapitalize="words"
             autoCorrect={false}
+            editable={!loading}
+          />
+
+          <Text style={[styles.label, { color: colors.label }]}>Username</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+            value={username}
+            onChangeText={(text) => {
+              setUsername(text);
+              if (error) setError('');
+            }}
+            placeholder="Choose a username"
+            placeholderTextColor={colors.secondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!loading}
           />
 
           <Text style={[styles.label, { color: colors.label }]}>Email</Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (error) setError('');
+            }}
             placeholder="Enter your email"
             placeholderTextColor={colors.secondary}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            editable={!loading}
           />
 
           <Text style={[styles.label, { color: colors.label }]}>Password</Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (error) setError('');
+            }}
             placeholder="Enter your password"
             placeholderTextColor={colors.secondary}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
+            editable={!loading}
           />
 
           <Text style={[styles.label, { color: colors.label }]}>Confirm Password</Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
             value={confirmPassword}
-            onChangeText={setConfirmPassword}
+            onChangeText={(text) => {
+              setConfirmPassword(text);
+              if (error) setError('');
+            }}
             placeholder="Confirm your password"
             placeholderTextColor={colors.secondary}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
+            editable={!loading}
           />
 
           <TouchableOpacity
@@ -125,7 +193,7 @@ export default function SignUpScreen() {
             accessible
             accessibilityRole="button"
             accessibilityLabel="Create Account"
-            accessibilityHint="Create a new Fomio account"
+            accessibilityHint="Create your Fomio account"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Text style={[styles.primaryButtonText, { color: colors.background }]}>
@@ -140,15 +208,16 @@ export default function SignUpScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.secondaryButton]}
+            style={[styles.secondaryButton, { borderColor: colors.primary }]}
             onPress={handleSignIn}
+            disabled={loading}
             accessible
             accessibilityRole="button"
-            accessibilityLabel="Already have an account? Sign In"
+            accessibilityLabel="Sign In"
             accessibilityHint="Go to sign in screen"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Already have an account? Sign In</Text>
+            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Sign In</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -165,7 +234,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    borderBottomWidth: 1,
   },
   backButton: {
     padding: 8,
@@ -189,6 +257,17 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     width: '100%',
     alignSelf: 'center',
+  },
+  errorContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  errorText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   label: {
     fontSize: 16,
@@ -231,6 +310,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
+    borderWidth: 1,
   },
   secondaryButtonText: {
     fontSize: 16,

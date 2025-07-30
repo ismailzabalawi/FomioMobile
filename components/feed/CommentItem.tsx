@@ -32,9 +32,22 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
     action: isDark ? '#a1a1aa' : '#17131B',
     divider: isDark ? '#23232b' : '#e2e8f0',
   };
+  // Handle empty avatar URLs
+  const avatarSource = comment.author.avatar && comment.author.avatar.trim() !== '' 
+    ? { uri: comment.author.avatar } 
+    : undefined;
+
   return (
     <View style={[styles.row, { borderBottomColor: colors.divider }, isReply && styles.replyRow]}> 
-      <Image source={{ uri: comment.author.avatar }} style={styles.avatar} accessibilityLabel={`${comment.author.name}'s avatar`} />
+      {avatarSource ? (
+        <Image source={avatarSource} style={styles.avatar} accessibilityLabel={`${comment.author.name}'s avatar`} />
+      ) : (
+        <View style={[styles.avatar, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={[styles.avatarFallback, { color: colors.background }]}>
+            {comment.author.name.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+      )}
       <View style={styles.contentBlock}>
         <View style={styles.headerRow}>
           <Text style={[styles.author, { color: colors.text }]}>{comment.author.name}</Text>
@@ -124,5 +137,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginLeft: 4,
     fontWeight: '500',
+  },
+  avatarFallback: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 }); 

@@ -8,7 +8,8 @@ import {
   FlatList,
   Image,
   RefreshControl,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -28,25 +29,7 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
-
-interface Notification {
-  id: string;
-  type: 'like' | 'reply' | 'mention' | 'follow' | 'bookmark' | 'quote' | 'system';
-  title: string;
-  message: string;
-  timestamp: string;
-  isRead: boolean;
-  isActionable: boolean;
-  data?: {
-    postId?: string;
-    topicId?: string;
-    userId?: string;
-    username?: string;
-    avatar?: string;
-    hubName?: string;
-    teretName?: string;
-  };
-}
+import { useNotifications, Notification } from '../../shared/useNotifications';
 
 interface NotificationSection {
   title: string;
@@ -79,20 +62,18 @@ function NotificationItem({
 
   const getNotificationIcon = () => {
     switch (notification.type) {
-      case 'like':
+      case 'liked':
         return <Heart size={20} color={colors.error} weight="fill" />;
-      case 'reply':
+      case 'replied':
         return <ChatCircle size={20} color={colors.accent} weight="fill" />;
-      case 'mention':
+      case 'mentioned':
         return <At size={20} color={colors.warning} weight="fill" />;
-      case 'follow':
+      case 'invited_to_private_message':
         return <UserPlus size={20} color={colors.success} weight="fill" />;
-      case 'bookmark':
+      case 'bookmark_reminder':
         return <Bookmark size={20} color={colors.accent} weight="fill" />;
-      case 'quote':
+      case 'quoted':
         return <Share size={20} color={colors.warning} weight="fill" />;
-      case 'system':
-        return <Bell size={20} color={colors.secondary} weight="fill" />;
       default:
         return <Bell size={20} color={colors.secondary} weight="regular" />;
     }
@@ -100,20 +81,18 @@ function NotificationItem({
 
   const getNotificationColor = () => {
     switch (notification.type) {
-      case 'like':
+      case 'liked':
         return colors.error;
-      case 'reply':
+      case 'replied':
         return colors.accent;
-      case 'mention':
+      case 'mentioned':
         return colors.warning;
-      case 'follow':
+      case 'invited_to_private_message':
         return colors.success;
-      case 'bookmark':
+      case 'bookmark_reminder':
         return colors.accent;
-      case 'quote':
+      case 'quoted':
         return colors.warning;
-      case 'system':
-        return colors.secondary;
       default:
         return colors.secondary;
     }
@@ -129,62 +108,49 @@ function NotificationItem({
         }
       ]}
       onPress={onPress}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${notification.title} notification`}
+      activeOpacity={0.7}
     >
-      <View style={styles.notificationHeader}>
-        <View style={styles.notificationIcon}>
+      <View style={styles.notificationContent}>
+        <View style={[styles.iconContainer, { backgroundColor: `${getNotificationColor()}20` }]}>
           {getNotificationIcon()}
         </View>
-        <View style={styles.notificationContent}>
-          <Text style={[styles.notificationTitle, { color: colors.text }]}>
+        
+        <View style={styles.notificationText}>
+          <Text style={[styles.notificationTitle, { color: colors.text }]} numberOfLines={2}>
             {notification.title}
           </Text>
           <Text style={[styles.notificationMessage, { color: colors.secondary }]} numberOfLines={2}>
             {notification.message}
           </Text>
-          <View style={styles.notificationMeta}>
-            <Text style={[styles.notificationTime, { color: colors.secondary }]}>
-              {notification.timestamp}
-            </Text>
-            {notification.data?.hubName && (
-              <Text style={[styles.notificationContext, { color: colors.accent }]}>
-                in {notification.data.hubName}
-              </Text>
-            )}
-          </View>
+          <Text style={[styles.timestamp, { color: colors.secondary }]}>
+            {new Date(notification.createdAt).toLocaleDateString()}
+          </Text>
         </View>
-        {!notification.isRead && (
-          <View style={[styles.unreadIndicator, { backgroundColor: getNotificationColor() }]} />
-        )}
-      </View>
-      
-      {notification.isActionable && (
+        
         <View style={styles.notificationActions}>
-          <TouchableOpacity
-            style={[styles.actionButton, { borderColor: colors.border }]}
-            onPress={onMarkRead}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Mark as read"
-          >
-            <Check size={16} color={colors.success} weight="regular" />
-            <Text style={[styles.actionText, { color: colors.success }]}>Mark Read</Text>
-          </TouchableOpacity>
+          {!notification.isRead && (
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.accent }]}
+              onPress={onMarkRead}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Mark as read"
+            >
+              <Check size={16} color="#ffffff" weight="bold" />
+            </TouchableOpacity>
+          )}
           
           <TouchableOpacity
-            style={[styles.actionButton, { borderColor: colors.border }]}
+            style={[styles.actionButton, { backgroundColor: colors.error }]}
             onPress={onDelete}
             accessible
             accessibilityRole="button"
             accessibilityLabel="Delete notification"
           >
-            <Trash size={16} color={colors.error} weight="regular" />
-            <Text style={[styles.actionText, { color: colors.error }]}>Delete</Text>
+            <Trash size={16} color="#ffffff" weight="bold" />
           </TouchableOpacity>
         </View>
-      )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -205,8 +171,14 @@ function NotificationSection({ title, children }: { title: string; children: Rea
 
 export default function NotificationsScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { 
+    notifications, 
+    isLoading: loading, 
+    hasError: hasError, 
+    errorMessage, 
+    loadNotifications: fetchNotifications, 
+    markAsRead 
+  } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   
@@ -220,121 +192,13 @@ export default function NotificationsScreen(): JSX.Element {
     error: isDark ? '#ef4444' : '#dc2626',
   };
 
-  // Mock notifications data
-  const mockNotifications: Notification[] = [
-    {
-      id: '1',
-      type: 'like',
-      title: 'Alex Chen liked your post',
-      message: 'Alex Chen liked your post "Getting Started with React Native" in #react-native',
-      timestamp: '2m ago',
-      isRead: false,
-      isActionable: true,
-      data: {
-        postId: '123',
-        userId: 'alex-chen',
-        username: 'Alex Chen',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-        hubName: 'Technology',
-        teretName: 'react-native',
-      },
-    },
-    {
-      id: '2',
-      type: 'reply',
-      title: 'Sarah Kim replied to your post',
-      message: 'Sarah Kim replied to your post "UI/UX Design Tips" in #ui-design',
-      timestamp: '15m ago',
-      isRead: false,
-      isActionable: true,
-      data: {
-        postId: '124',
-        userId: 'sarah-kim',
-        username: 'Sarah Kim',
-        avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-        hubName: 'Design',
-        teretName: 'ui-design',
-      },
-    },
-    {
-      id: '3',
-      type: 'mention',
-      title: 'You were mentioned in a post',
-      message: 'Mike Johnson mentioned you in "Best practices for mobile development"',
-      timestamp: '1h ago',
-      isRead: true,
-      isActionable: true,
-      data: {
-        postId: '125',
-        userId: 'mike-johnson',
-        username: 'Mike Johnson',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-        hubName: 'Technology',
-        teretName: 'mobile-dev',
-      },
-    },
-    {
-      id: '4',
-      type: 'follow',
-      title: 'New follower',
-      message: 'Emma Wilson started following you',
-      timestamp: '2h ago',
-      isRead: true,
-      isActionable: true,
-      data: {
-        userId: 'emma-wilson',
-        username: 'Emma Wilson',
-        avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face',
-      },
-    },
-    {
-      id: '5',
-      type: 'bookmark',
-      title: 'Your post was bookmarked',
-      message: 'David Lee bookmarked your post "Advanced TypeScript Patterns"',
-      timestamp: '3h ago',
-      isRead: true,
-      isActionable: true,
-      data: {
-        postId: '126',
-        userId: 'david-lee',
-        username: 'David Lee',
-        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face',
-        hubName: 'Technology',
-        teretName: 'typescript',
-      },
-    },
-    {
-      id: '6',
-      type: 'system',
-      title: 'Welcome to Fomio!',
-      message: 'Your account has been successfully created. Start exploring hubs and terets!',
-      timestamp: '1d ago',
-      isRead: true,
-      isActionable: false,
-    },
-  ];
-
   useEffect(() => {
-    loadNotifications();
+    fetchNotifications();
   }, []);
-
-  const loadNotifications = async () => {
-    setLoading(true);
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setNotifications(mockNotifications);
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadNotifications();
+    await fetchNotifications();
     setRefreshing(false);
   };
 
@@ -350,17 +214,11 @@ export default function NotificationsScreen(): JSX.Element {
     }
   };
 
-  const handleMarkRead = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(notification => 
-        notification.id === notificationId 
-          ? { ...notification, isRead: true }
-          : notification
-      )
-    );
+  const handleMarkRead = (notificationId: number) => {
+    markAsRead(notificationId);
   };
 
-  const handleDelete = (notificationId: string) => {
+  const handleDelete = (notificationId: number) => {
     Alert.alert(
       'Delete Notification',
       'Are you sure you want to delete this notification?',
@@ -370,9 +228,8 @@ export default function NotificationsScreen(): JSX.Element {
           text: 'Delete', 
           style: 'destructive', 
           onPress: () => {
-            setNotifications(prev => 
-              prev.filter(notification => notification.id !== notificationId)
-            );
+            // TODO: Implement delete functionality
+            console.log('Delete notification:', notificationId);
           }
         },
       ]
@@ -388,9 +245,7 @@ export default function NotificationsScreen(): JSX.Element {
         { 
           text: 'Mark Read', 
           onPress: () => {
-            setNotifications(prev => 
-              prev.map(notification => ({ ...notification, isRead: true }))
-            );
+            notifications.forEach(notification => markAsRead(notification.id));
           }
         },
       ]
@@ -407,7 +262,9 @@ export default function NotificationsScreen(): JSX.Element {
           text: 'Clear All', 
           style: 'destructive', 
           onPress: () => {
-            setNotifications([]);
+            // In a real app, you'd call a clear all endpoint
+            // For now, we'll just reset the local state
+            // setNotifications([]); 
           }
         },
       ]
@@ -464,6 +321,40 @@ export default function NotificationsScreen(): JSX.Element {
     </View>
   );
 
+  if (loading && notifications.length === 0) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <HeaderBar 
+          title="Notifications" 
+          showBackButton={false}
+          showProfileButton={true}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>Loading notifications...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <HeaderBar 
+          title="Notifications" 
+          showBackButton={false}
+          showProfileButton={true}
+        />
+        <View style={styles.errorContainer}>
+          <Text style={[styles.errorText, { color: colors.text }]}>Error loading notifications: {errorMessage}</Text>
+          <TouchableOpacity onPress={fetchNotifications} style={styles.retryButton}>
+            <Text style={[styles.retryButtonText, { color: colors.primary }]}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <HeaderBar 
@@ -510,7 +401,7 @@ export default function NotificationsScreen(): JSX.Element {
       {/* Notifications List */}
       <FlatList
         data={filteredNotifications}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
           <NotificationItem
             notification={item}
@@ -587,22 +478,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 8,
-  },
-  notificationHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
-  notificationIcon: {
+  notificationContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  notificationContent: {
+  notificationText: {
     flex: 1,
+    marginRight: 12,
   },
   notificationTitle: {
     fontSize: 16,
@@ -614,42 +508,20 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 8,
   },
-  notificationMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  notificationTime: {
+  timestamp: {
     fontSize: 12,
     fontWeight: '500',
-  },
-  notificationContext: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  unreadIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginLeft: 8,
   },
   notificationActions: {
     flexDirection: 'row',
-    marginTop: 12,
     gap: 8,
   },
   actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 6,
-    borderWidth: 1,
-    gap: 4,
-  },
-  actionText: {
-    fontSize: 12,
-    fontWeight: '500',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   section: {
     marginBottom: 24,
@@ -678,5 +550,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 64,
+    paddingHorizontal: 32,
+  },
+  loadingText: {
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 64,
+    paddingHorizontal: 32,
+  },
+  errorText: {
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 

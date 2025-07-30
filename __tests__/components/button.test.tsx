@@ -39,8 +39,8 @@ describe('Button Component', () => {
   });
 
   it('should render different variants', () => {
-    const { rerender } = render(<Button variant="primary">Primary</Button>);
-    expect(screen.getByText('Primary')).toBeTruthy();
+    const { rerender } = render(<Button variant="default">Default</Button>);
+    expect(screen.getByText('Default')).toBeTruthy();
 
     rerender(<Button variant="secondary">Secondary</Button>);
     expect(screen.getByText('Secondary')).toBeTruthy();
@@ -56,7 +56,7 @@ describe('Button Component', () => {
     const { rerender } = render(<Button size="sm">Small</Button>);
     expect(screen.getByText('Small')).toBeTruthy();
 
-    rerender(<Button size="md">Medium</Button>);
+    rerender(<Button size="default">Medium</Button>);
     expect(screen.getByText('Medium')).toBeTruthy();
 
     rerender(<Button size="lg">Large</Button>);
@@ -88,17 +88,10 @@ describe('Button Component', () => {
     expect(onPressMock).not.toHaveBeenCalled();
   });
 
-  it('should render with icon', () => {
-    const IconComponent = () => <></>;
-    render(<Button icon={IconComponent}>Button with Icon</Button>);
+  it('should render with custom styles', () => {
+    render(<Button style={{ backgroundColor: 'red' }}>Custom Style</Button>);
     
-    expect(screen.getByText('Button with Icon')).toBeTruthy();
-  });
-
-  it('should handle full width', () => {
-    render(<Button fullWidth>Full Width Button</Button>);
-    
-    expect(screen.getByText('Full Width Button')).toBeTruthy();
+    expect(screen.getByText('Custom Style')).toBeTruthy();
   });
 
   it('should apply custom styles', () => {
@@ -108,19 +101,11 @@ describe('Button Component', () => {
     expect(screen.getByText('Custom Style')).toBeTruthy();
   });
 
-  it('should have proper accessibility props', () => {
-    render(
-      <Button 
-        accessibilityLabel="Custom accessibility label"
-        accessibilityHint="Custom accessibility hint"
-      >
-        Accessible Button
-      </Button>
-    );
+  it('should have proper accessibility role', () => {
+    render(<Button>Accessible Button</Button>);
     
     const button = screen.getByTestId('button-touchable');
-    expect(button.props.accessibilityLabel).toBe('Custom accessibility label');
-    expect(button.props.accessibilityHint).toBe('Custom accessibility hint');
+    expect(button.props.accessibilityRole).toBe('button');
   });
 
   it('should have default accessibility role', () => {

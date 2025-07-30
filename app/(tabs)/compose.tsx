@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -9,114 +9,56 @@ import {
   ScrollView,
   Modal,
   FlatList,
-  Animated,
-  Dimensions
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
+import { useCategories } from '../../shared/useCategories';
+import { useCreateByte } from '../../shared/useCreateByte';
+import { useAuth } from '../../shared/useAuth';
+import { discourseApi } from '../../shared/discourseApi';
 import { 
   CaretDown, 
   Hash, 
   Users, 
   TrendUp, 
   Star,
+  X,
+  MagnifyingGlass,
   Check,
-  X
+  Warning,
+  Info,
+  SignIn
 } from 'phosphor-react-native';
 
-interface Teret {
-  id: string;
+// Updated interface to match Discourse categories
+interface Hub {
+  id: number;
   name: string;
   description: string;
-  memberCount: number;
-  isPopular: boolean;
-  isVerified: boolean;
-  category: string;
+  slug: string;
+  color: string;
+  text_color: string;
+  topic_count: number;
+  post_count: number;
+  read_restricted: boolean;
+  permission: number;
 }
-
-const mockTerets: Teret[] = [
-  {
-    id: '1',
-    name: 'react-native',
-    description: 'React Native development, tips, and best practices',
-    memberCount: 15420,
-    isPopular: true,
-    isVerified: true,
-    category: 'Technology'
-  },
-  {
-    id: '2',
-    name: 'mobile-design',
-    description: 'Mobile UI/UX design inspiration and discussions',
-    memberCount: 8920,
-    isPopular: true,
-    isVerified: true,
-    category: 'Design'
-  },
-  {
-    id: '3',
-    name: 'expo-dev',
-    description: 'Expo development and troubleshooting',
-    memberCount: 12340,
-    isPopular: true,
-    isVerified: true,
-    category: 'Technology'
-  },
-  {
-    id: '4',
-    name: 'typescript',
-    description: 'TypeScript tips, tricks, and advanced patterns',
-    memberCount: 9870,
-    isPopular: false,
-    isVerified: true,
-    category: 'Technology'
-  },
-  {
-    id: '5',
-    name: 'ui-components',
-    description: 'Reusable UI components and design systems',
-    memberCount: 6540,
-    isPopular: false,
-    isVerified: false,
-    category: 'Design'
-  },
-  {
-    id: '6',
-    name: 'performance',
-    description: 'Mobile app performance optimization',
-    memberCount: 4320,
-    isPopular: false,
-    isVerified: false,
-    category: 'Technology'
-  },
-  {
-    id: '7',
-    name: 'accessibility',
-    description: 'Making apps accessible for everyone',
-    memberCount: 2100,
-    isPopular: false,
-    isVerified: false,
-    category: 'Design'
-  },
-  {
-    id: '8',
-    name: 'testing',
-    description: 'Mobile app testing strategies and tools',
-    memberCount: 3450,
-    isPopular: false,
-    isVerified: false,
-    category: 'Technology'
-  }
-];
 
 export default function ComposeScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
+  const { categories, isLoading: categoriesLoading, hasError: categoriesError, retry: retryCategories } = useCategories();
+  const { createByte, isCreating, hasError, errorMessage, successMessage, clearState } = useCreateByte();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  
   const [content, setContent] = useState<string>('');
-  const [selectedTeret, setSelectedTeret] = useState<Teret | null>(null);
-  const [showTeretDropdown, setShowTeretDropdown] = useState(false);
+  const [title, setTitle] = useState<string>('');
+  const [selectedHub, setSelectedHub] = useState<Hub | null>(null);
+  const [showHubDropdown, setShowHubDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const animatedValue = useRef(new Animated.Value(0)).current;
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -127,272 +69,499 @@ export default function ComposeScreen(): JSX.Element {
     accent: isDark ? '#8b5cf6' : '#7c3aed',
     success: isDark ? '#10b981' : '#059669',
     warning: isDark ? '#f59e0b' : '#d97706',
+    error: isDark ? '#ef4444' : '#dc2626',
     inputBg: isDark ? '#27272a' : '#ffffff',
     inputBorder: isDark ? '#334155' : '#d1d5db',
     border: isDark ? '#334155' : '#e2e8f0',
     overlay: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(0, 0, 0, 0.5)',
   };
 
-  const filteredTerets = mockTerets.filter(teret =>
-    teret.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    teret.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredHubs = categories.filter(hub =>
+    hub.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    hub.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const toggleDropdown = () => {
-    setShowTeretDropdown(!showTeretDropdown);
-    Animated.timing(animatedValue, {
-      toValue: showTeretDropdown ? 0 : 1,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  };
+  // Debug authentication state
+  React.useEffect(() => {
+    console.log('🔐 Compose Screen Auth State:', {
+      isAuthenticated,
+      authLoading,
+      user: user?.username,
+      canPost: isAuthenticated && !authLoading,
+      discourseAuth: discourseApi.isAuthenticated(),
+      discourseConfig: {
+        baseUrl: discourseApi.getBaseUrl(),
+        hasApiKey: !!process.env.EXPO_PUBLIC_DISCOURSE_API_KEY,
+        hasApiUsername: !!process.env.EXPO_PUBLIC_DISCOURSE_API_USERNAME,
+      }
+    });
+  }, [isAuthenticated, authLoading, user]);
 
-  const selectTeret = (teret: Teret) => {
-    setSelectedTeret(teret);
-    setShowTeretDropdown(false);
-    Animated.timing(animatedValue, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  };
+  // Clear state when component unmounts
+  React.useEffect(() => {
+    return () => {
+      clearState();
+    };
+  }, [clearState]);
 
-  const clearSelection = () => {
-    setSelectedTeret(null);
-  };
+  const toggleDropdown = useCallback(() => {
+    setShowHubDropdown(!showHubDropdown);
+    if (!showHubDropdown) {
+      setSearchQuery(''); // Clear search when opening
+    }
+  }, [showHubDropdown]);
 
-  const handlePost = (): void => {
+  const selectHub = useCallback((hub: Hub) => {
+    setSelectedHub(hub);
+    setShowHubDropdown(false);
+    setSearchQuery(''); // Clear search when selecting
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedHub(null);
+  }, []);
+
+  const handlePost = useCallback(async (): Promise<void> => {
+    // Wait for auth to load before checking
+    if (authLoading) {
+      Alert.alert('Please wait', 'Authentication is still loading...');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      Alert.alert(
+        'Authentication Required', 
+        'You need to be logged in to create posts. Please sign in first.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/(auth)/signin' as any) }
+        ]
+      );
+      return;
+    }
+
+    if (!title.trim()) {
+      Alert.alert('Error', 'Please enter a title for your post');
+      return;
+    }
+    
     if (!content.trim()) {
       Alert.alert('Error', 'Please enter some content');
       return;
     }
     
-    if (!selectedTeret) {
-      Alert.alert('Error', 'Please select a teret to post in');
+    if (!selectedHub) {
+      Alert.alert('Error', 'Please select a hub to post in');
       return;
     }
-    
-    Alert.alert('Success', `Your post has been published in ${selectedTeret.name}!`);
-    setContent('');
-    setSelectedTeret(null);
-    router.back();
-  };
 
-  const handleCancel = (): void => {
-    router.back();
-  };
+    try {
+      console.log('📝 Creating post with hub:', {
+        hubId: selectedHub.id,
+        hubName: selectedHub.name,
+        hubSlug: selectedHub.slug,
+        user: user?.username,
+        isAuthenticated
+      });
 
-  const formatMemberCount = (count: number): string => {
+      const result = await createByte({
+        title: title.trim(),
+        content: content.trim(),
+        category: selectedHub.id, // Use the category ID for Discourse API
+      });
+
+      if (result.success) {
+        Alert.alert('Success', 'Your post has been published!');
+        setContent('');
+        setTitle('');
+        setSelectedHub(null);
+        router.back();
+      } else {
+        Alert.alert('Error', result.error || 'Failed to create post');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create post. Please try again.');
+    }
+  }, [title, content, selectedHub, createByte, isAuthenticated, user, authLoading]);
+
+  const handleCancel = useCallback((): void => {
+    router.back();
+  }, []);
+
+  const formatCount = useCallback((count: number): string => {
     if (count >= 1000000) {
       return `${(count / 1000000).toFixed(1)}M`;
     } else if (count >= 1000) {
       return `${(count / 1000).toFixed(1)}K`;
     }
     return count.toString();
-  };
+  }, []);
 
-  const renderTeretItem = ({ item }: { item: Teret }) => (
+  const renderHubItem = useCallback(({ item }: { item: Hub }) => (
     <TouchableOpacity
-      style={[styles.teretItem, { 
+      style={[styles.hubItem, { 
         backgroundColor: colors.card,
         borderColor: colors.border 
       }]}
-      onPress={() => selectTeret(item)}
+      onPress={() => selectHub(item)}
       accessible
       accessibilityRole="button"
-      accessibilityLabel={`Select teret ${item.name}`}
+      accessibilityLabel={`Select hub ${item.name}`}
+      activeOpacity={0.7}
     >
-      <View style={styles.teretHeader}>
-        <View style={styles.teretInfo}>
-          <View style={styles.teretNameRow}>
+      <View style={styles.hubHeader}>
+        <View style={styles.hubInfo}>
+          <View style={styles.hubNameRow}>
             <Hash size={16} color={colors.primary} weight="fill" />
-            <Text style={[styles.teretName, { color: colors.text }]}>
+            <Text style={[styles.hubName, { color: colors.text }]}>
               {item.name}
             </Text>
-            {item.isVerified && (
-              <View style={[styles.verifiedBadge, { backgroundColor: colors.success }]}>
-                <Check size={12} color="#ffffff" weight="bold" />
+            {item.topic_count > 100 && (
+              <View style={[styles.popularBadge, { backgroundColor: colors.warning }]}>
+                <Star size={12} color="#ffffff" weight="fill" />
               </View>
             )}
           </View>
-          <Text style={[styles.teretDescription, { color: colors.secondary }]} numberOfLines={2}>
+          <Text style={[styles.hubDescription, { color: colors.secondary }]} numberOfLines={2}>
             {item.description}
           </Text>
         </View>
-        <View style={styles.teretStats}>
+        <View style={styles.hubStats}>
           <View style={styles.statItem}>
             <Users size={14} color={colors.secondary} weight="regular" />
             <Text style={[styles.statText, { color: colors.secondary }]}>
-              {formatMemberCount(item.memberCount)}
+              {formatCount(item.topic_count)} topics
             </Text>
           </View>
-                     {item.isPopular && (
-             <View style={styles.statItem}>
-               <TrendUp size={14} color={colors.warning} weight="fill" />
-               <Text style={[styles.statText, { color: colors.warning }]}>
-                 Popular
-               </Text>
-             </View>
-           )}
+          {item.topic_count > 50 && (
+            <View style={styles.statItem}>
+              <TrendUp size={14} color={colors.warning} weight="fill" />
+              <Text style={[styles.statText, { color: colors.warning }]}>
+                Active
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </TouchableOpacity>
-  );
+  ), [colors, selectHub, formatCount]);
+
+  const renderEmptySearch = useCallback(() => (
+    <View style={styles.emptySearchContainer}>
+      <MagnifyingGlass size={48} color={colors.secondary} weight="regular" />
+      <Text style={[styles.emptySearchText, { color: colors.secondary }]}>
+        {searchQuery ? `No hubs found matching "${searchQuery}"` : 'No hubs available'}
+      </Text>
+      <Text style={[styles.emptySearchSubtext, { color: colors.secondary }]}>
+        {searchQuery ? 'Try a different search term' : 'Please try again later'}
+      </Text>
+    </View>
+  ), [colors, searchQuery]);
+
+  const renderErrorState = useCallback(() => (
+    <View style={styles.errorContainer}>
+      <Warning size={48} color={colors.error} weight="regular" />
+      <Text style={[styles.errorText, { color: colors.error }]}>
+        Failed to load hubs
+      </Text>
+      <Text style={[styles.errorSubtext, { color: colors.secondary }]}>
+        {categoriesError || 'Please check your connection and try again'}
+      </Text>
+      <TouchableOpacity
+        style={[styles.retryButton, { backgroundColor: colors.primary }]}
+        onPress={retryCategories}
+      >
+        <Text style={[styles.retryButtonText, { color: '#ffffff' }]}>
+          Retry
+        </Text>
+      </TouchableOpacity>
+    </View>
+  ), [colors, categoriesError, retryCategories]);
+
+  const renderLoadingState = useCallback(() => (
+    <View style={styles.loadingContainer}>
+      <Text style={[styles.loadingText, { color: colors.secondary }]}>
+        Loading hubs...
+      </Text>
+    </View>
+  ), [colors]);
+
+  const renderAuthWarning = useCallback(() => (
+    <View style={[styles.authWarningContainer, { backgroundColor: colors.warning + '20' }]}>
+      <SignIn size={20} color={colors.warning} weight="regular" />
+      <View style={styles.authWarningText}>
+        <Text style={[styles.authWarningTitle, { color: colors.warning }]}>
+          Sign in to post
+        </Text>
+        <Text style={[styles.authWarningSubtext, { color: colors.secondary }]}>
+          You need to be logged in to create posts
+        </Text>
+      </View>
+      <TouchableOpacity
+        style={[styles.signInButton, { backgroundColor: colors.primary }]}
+        onPress={() => router.push('/(auth)/signin' as any)}
+      >
+        <Text style={[styles.signInButtonText, { color: '#ffffff' }]}>
+          Sign In
+        </Text>
+      </TouchableOpacity>
+    </View>
+  ), [colors]);
+
+  if (categoriesLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
+            <Text style={[styles.cancelText, { color: colors.secondary }]}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>New Byte</Text>
+          <View style={styles.postButton} />
+        </View>
+        {renderLoadingState()}
+      </SafeAreaView>
+    );
+  }
+
+  if (categoriesError) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
+            <Text style={[styles.cancelText, { color: colors.secondary }]}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>New Byte</Text>
+          <View style={styles.postButton} />
+        </View>
+        {renderErrorState()}
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-          <Text style={[styles.cancelText, { color: colors.secondary }]}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>New Byte</Text>
-        <TouchableOpacity 
-          onPress={handlePost}
-          style={[
-            styles.postButton, 
-            { 
-              backgroundColor: selectedTeret && content.trim() ? colors.primary : colors.secondary,
-              opacity: selectedTeret && content.trim() ? 1 : 0.5
-            }
-          ]}
-          disabled={!selectedTeret || !content.trim()}
-        >
-          <Text style={[styles.postText, { color: '#ffffff' }]}>Post</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Teret Selection */}
-        <View style={styles.teretSection}>
-          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-            Post in Teret
-          </Text>
-          <TouchableOpacity
-            style={[styles.teretSelector, { 
-              backgroundColor: colors.card,
-              borderColor: colors.border 
-            }]}
-            onPress={toggleDropdown}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel={selectedTeret ? `Selected teret: ${selectedTeret.name}` : "Select a teret to post in"}
-          >
-            {selectedTeret ? (
-              <View style={styles.selectedTeret}>
-                <View style={styles.selectedTeretInfo}>
-                  <Hash size={16} color={colors.primary} weight="fill" />
-                  <Text style={[styles.selectedTeretName, { color: colors.text }]}>
-                    {selectedTeret.name}
-                  </Text>
-                  {selectedTeret.isVerified && (
-                    <View style={[styles.verifiedBadge, { backgroundColor: colors.success }]}>
-                      <Check size={12} color="#ffffff" weight="bold" />
-                    </View>
-                  )}
-                </View>
-                <TouchableOpacity
-                  onPress={clearSelection}
-                  style={styles.clearButton}
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear teret selection"
-                >
-                  <X size={16} color={colors.secondary} weight="regular" />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.placeholderTeret}>
-                <Text style={[styles.placeholderText, { color: colors.secondary }]}>
-                  Choose a teret to post in...
-                </Text>
-                <CaretDown size={16} color={colors.secondary} weight="regular" />
-              </View>
-            )}
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
+            <Text style={[styles.cancelText, { color: colors.secondary }]}>Cancel</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Content Input */}
-        <View style={styles.contentSection}>
-          <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-            Your Byte
-          </Text>
-          <TextInput
+          <Text style={[styles.headerTitle, { color: colors.text }]}>New Byte</Text>
+          <TouchableOpacity 
+            onPress={handlePost}
             style={[
-              styles.textInput,
-              {
-                backgroundColor: colors.inputBg,
-                borderColor: colors.inputBorder,
-                color: colors.text,
+              styles.postButton, 
+              { 
+                backgroundColor: selectedHub && content.trim() && title.trim() && !isCreating && isAuthenticated && !authLoading ? colors.primary : colors.secondary,
+                opacity: selectedHub && content.trim() && title.trim() && !isCreating && isAuthenticated && !authLoading ? 1 : 0.5
               }
             ]}
-            placeholder="What's on your mind?"
-            placeholderTextColor={colors.secondary}
-            value={content}
-            onChangeText={setContent}
-            multiline
-            textAlignVertical="top"
-            autoFocus
-            accessible
-            accessibilityLabel="Post content input"
-          />
-          <Text style={[styles.characterCount, { color: colors.secondary }]}>
-            {content.length} characters
-          </Text>
+            disabled={!selectedHub || !content.trim() || !title.trim() || isCreating || !isAuthenticated || authLoading}
+          >
+            <Text style={[styles.postText, { color: '#ffffff' }]}>
+              {isCreating ? 'Posting...' : 'Post'}
+            </Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+        
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Authentication Warning */}
+          {!authLoading && !isAuthenticated && (
+            renderAuthWarning()
+          )}
 
-      {/* Teret Dropdown Modal */}
-      <Modal
-        visible={showTeretDropdown}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowTeretDropdown(false)}
-      >
-        <TouchableOpacity
-          style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}
-          activeOpacity={1}
-          onPress={() => setShowTeretDropdown(false)}
-        >
-          <View style={[styles.dropdownContainer, { backgroundColor: colors.card }]}>
-            <View style={styles.dropdownHeader}>
-              <Text style={[styles.dropdownTitle, { color: colors.text }]}>
-                Select Teret
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowTeretDropdown(false)}
-                style={styles.closeButton}
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel="Close teret selection"
-              >
-                <X size={20} color={colors.secondary} weight="regular" />
-              </TouchableOpacity>
-            </View>
-            
+          {/* Title Input */}
+          <View style={styles.titleSection}>
+            <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
+              Title
+            </Text>
             <TextInput
-              style={[styles.searchInput, {
-                backgroundColor: colors.inputBg,
-                borderColor: colors.inputBorder,
-                color: colors.text,
-              }]}
-              placeholder="Search terets..."
+              style={[
+                styles.titleInput,
+                {
+                  backgroundColor: colors.inputBg,
+                  borderColor: colors.inputBorder,
+                  color: colors.text,
+                }
+              ]}
+              placeholder="Enter your post title..."
               placeholderTextColor={colors.secondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
+              value={title}
+              onChangeText={setTitle}
+              maxLength={255}
               accessible
-              accessibilityLabel="Search terets input"
+              accessibilityLabel="Post title input"
             />
-            
-            <FlatList
-              data={filteredTerets}
-              renderItem={renderTeretItem}
-              keyExtractor={(item) => item.id}
-              showsVerticalScrollIndicator={false}
-              style={styles.teretList}
-              contentContainerStyle={styles.teretListContent}
-            />
+            <Text style={[styles.characterCount, { color: colors.secondary }]}>
+              {title.length}/255 characters
+            </Text>
           </View>
-        </TouchableOpacity>
+
+          {/* Hub Selection */}
+          <View style={styles.hubSection}>
+            <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
+              Post in Hub ({categories.length} available)
+            </Text>
+            <TouchableOpacity
+              style={[styles.hubSelector, { 
+                backgroundColor: colors.card,
+                borderColor: showHubDropdown ? colors.primary : colors.border 
+              }]}
+              onPress={toggleDropdown}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={selectedHub ? `Selected hub: ${selectedHub.name}` : "Select a hub to post in"}
+              activeOpacity={0.7}
+            >
+              {selectedHub ? (
+                <View style={styles.selectedHub}>
+                  <View style={styles.selectedHubInfo}>
+                    <Hash size={16} color={colors.primary} weight="fill" />
+                    <Text style={[styles.selectedHubName, { color: colors.text }]}>
+                      {selectedHub.name}
+                    </Text>
+                    {selectedHub.topic_count > 100 && (
+                      <View style={[styles.popularBadge, { backgroundColor: colors.warning }]}>
+                        <Star size={12} color="#ffffff" weight="fill" />
+                      </View>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    onPress={clearSelection}
+                    style={styles.clearButton}
+                    accessible
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear hub selection"
+                  >
+                    <X size={16} color={colors.secondary} weight="regular" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.placeholderHub}>
+                  <Text style={[styles.placeholderText, { color: colors.secondary }]}>
+                    Choose a hub to post in...
+                  </Text>
+                  <CaretDown size={16} color={colors.secondary} weight="regular" />
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Content Input */}
+          <View style={styles.contentSection}>
+            <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
+              Your Byte
+            </Text>
+            <TextInput
+              style={[
+                styles.textInput,
+                {
+                  backgroundColor: colors.inputBg,
+                  borderColor: colors.inputBorder,
+                  color: colors.text,
+                }
+              ]}
+              placeholder="What's on your mind?"
+              placeholderTextColor={colors.secondary}
+              value={content}
+              onChangeText={setContent}
+              multiline
+              textAlignVertical="top"
+              accessible
+              accessibilityLabel="Post content input"
+            />
+            <Text style={[styles.characterCount, { color: colors.secondary }]}>
+              {content.length} characters
+            </Text>
+          </View>
+
+          {/* Error/Success Messages */}
+          {hasError && errorMessage && (
+            <View style={[styles.messageContainer, { backgroundColor: colors.error + '20' }]}>
+              <Warning size={16} color={colors.error} weight="regular" />
+              <Text style={[styles.messageText, { color: colors.error }]}>
+                {errorMessage}
+              </Text>
+            </View>
+          )}
+
+          {successMessage && (
+            <View style={[styles.messageContainer, { backgroundColor: colors.success + '20' }]}>
+              <Check size={16} color={colors.success} weight="regular" />
+              <Text style={[styles.messageText, { color: colors.success }]}>
+                {successMessage}
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Hub Dropdown Modal - Fixed Safe Area with proper edges */}
+      <Modal
+        visible={showHubDropdown}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowHubDropdown(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <TouchableOpacity 
+            style={styles.modalOverlayTouch}
+            activeOpacity={1}
+            onPress={() => setShowHubDropdown(false)}
+          >
+            <View style={styles.modalContentContainer}>
+              <SafeAreaView style={styles.modalSafeArea} edges={['top']}>
+                <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+                  <View style={[styles.dropdownHeader, { borderBottomColor: colors.border }]}>
+                    <Text style={[styles.dropdownTitle, { color: colors.text }]}>
+                      Select Hub ({filteredHubs.length} available)
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setShowHubDropdown(false)}
+                      style={styles.closeButton}
+                      accessible
+                      accessibilityRole="button"
+                      accessibilityLabel="Close hub selection"
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <X size={20} color={colors.secondary} weight="regular" />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={[styles.searchContainer, {
+                    backgroundColor: colors.inputBg,
+                    borderColor: colors.inputBorder,
+                  }]}>
+                    <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
+                    <TextInput
+                      style={[styles.searchInput, {
+                        color: colors.text,
+                      }]}
+                      placeholder="Search hubs..."
+                      placeholderTextColor={colors.secondary}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      accessible
+                      accessibilityLabel="Search hubs input"
+                    />
+                  </View>
+                  
+                  <FlatList
+                    data={filteredHubs}
+                    renderItem={renderHubItem}
+                    keyExtractor={(item) => item.id.toString()}
+                    showsVerticalScrollIndicator={false}
+                    style={styles.hubList}
+                    contentContainerStyle={styles.hubListContent}
+                    ListEmptyComponent={renderEmptySearch}
+                  />
+                </View>
+              </SafeAreaView>
+            </View>
+          </TouchableOpacity>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -400,6 +569,9 @@ export default function ComposeScreen(): JSX.Element {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  keyboardAvoidingView: {
     flex: 1,
   },
   header: {
@@ -432,7 +604,10 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  teretSection: {
+  titleSection: {
+    marginBottom: 24,
+  },
+  hubSection: {
     marginBottom: 24,
   },
   contentSection: {
@@ -445,24 +620,24 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  teretSelector: {
+  hubSelector: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
     minHeight: 56,
     justifyContent: 'center',
   },
-  selectedTeret: {
+  selectedHub: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  selectedTeretInfo: {
+  selectedHubInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  selectedTeretName: {
+  selectedHubName: {
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
@@ -470,13 +645,22 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 4,
   },
-  placeholderTeret: {
+  placeholderHub: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   placeholderText: {
     fontSize: 16,
+  },
+  titleInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    lineHeight: 24,
+    minHeight: 50,
+    textAlignVertical: 'top',
   },
   textInput: {
     borderWidth: 1,
@@ -492,15 +676,65 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'right',
   },
+  messageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  messageText: {
+    fontSize: 14,
+    marginLeft: 8,
+    flex: 1,
+  },
+  authWarningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  authWarningText: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  authWarningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  authWarningSubtext: {
+    fontSize: 14,
+  },
+  signInButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  signInButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   modalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
   },
-  dropdownContainer: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: Dimensions.get('window').height * 0.7,
-    paddingBottom: 20,
+  modalOverlayTouch: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  modalContentContainer: {
+    flex: 1,
+    marginTop: Platform.OS === 'ios' ? 44 : 24, // Add margin to stay under HeaderBar
+  },
+  modalSafeArea: {
+    flex: 1,
+  },
+  modalContainer: {
+    flex: 1,
+    marginTop: 0,
   },
   dropdownHeader: {
     flexDirection: 'row',
@@ -508,7 +742,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
   },
   dropdownTitle: {
     fontSize: 18,
@@ -517,46 +750,53 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: 4,
   },
-  searchInput: {
+  searchContainer: {
     margin: 20,
     marginTop: 0,
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
     fontSize: 16,
   },
-  teretList: {
+  hubList: {
     flex: 1,
   },
-  teretListContent: {
+  hubListContent: {
     paddingHorizontal: 20,
+    paddingBottom: 20,
   },
-  teretItem: {
+  hubItem: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
   },
-  teretHeader: {
+  hubHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  teretInfo: {
+  hubInfo: {
     flex: 1,
     marginRight: 12,
   },
-  teretNameRow: {
+  hubNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 4,
   },
-  teretName: {
+  hubName: {
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
   },
-  verifiedBadge: {
+  popularBadge: {
     width: 16,
     height: 16,
     borderRadius: 8,
@@ -564,11 +804,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  teretDescription: {
+  hubDescription: {
     fontSize: 14,
     lineHeight: 20,
   },
-  teretStats: {
+  hubStats: {
     alignItems: 'flex-end',
   },
   statItem: {
@@ -580,5 +820,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 4,
     fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emptySearchContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptySearchText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 10,
+  },
+  emptySearchSubtext: {
+    fontSize: 14,
+    marginTop: 5,
+    textAlign: 'center',
   },
 }); 
