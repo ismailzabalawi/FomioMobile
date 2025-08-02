@@ -1,25 +1,42 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useQuery } from '@apollo/client';
+import { GET_HOT_BYTES } from '@/graphql/queries';
 import { useTheme } from '../../components/shared/theme-provider';
 import { ByteCard } from '../../components/feed/ByteCard';
 import { HeaderBar } from '../../components/nav/HeaderBar';
-import { useFeed, FeedItem } from '../../shared/useFeed';
 
 export default function HomeScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
-  const { 
-    items, 
-    isLoading, 
-    isRefreshing, 
-    hasError, 
-    errorMessage, 
-    hasMore, 
-    refresh, 
-    loadMore, 
-    retry 
-  } = useFeed();
+  
+  // Use Apollo useQuery instead of custom useFeed hook
+  const { data, loading, error, refetch } = useQuery(GET_HOT_BYTES, {
+    errorPolicy: 'all',
+    fetchPolicy: 'cache-first'
+  });
+
+  // Transform Apollo data to match existing component structure
+  const items = data?.hotBytes?.topic_list?.topics || [];
+  const isLoading = loading;
+  const isRefreshing = loading;
+  const hasError = !!error;
+  const errorMessage = error?.message || '';
+  const hasMore = false; // For now, we'll implement pagination later
+  
+  const refresh = useCallback(() => {
+    refetch();
+  }, [refetch]);
+  
+  const loadMore = useCallback(() => {
+    // TODO: Implement pagination with Apollo
+    console.log('Load more not implemented yet');
+  }, []);
+  
+  const retry = useCallback(() => {
+    refetch();
+  }, [refetch]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -92,7 +109,7 @@ export default function HomeScreen(): JSX.Element {
     }
   };
 
-  const renderFeedItem = ({ item }: { item: FeedItem }): JSX.Element => (
+  const renderFeedItem = ({ item }: { item: any }): JSX.Element => (
     <ByteCard
       id={item.id.toString()}
       content={`${item.title}\n\n${item.excerpt}`}

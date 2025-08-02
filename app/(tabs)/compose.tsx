@@ -15,10 +15,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useQuery, useMutation } from '@apollo/client';
+import { GET_HUBS, GET_HOT_BYTES, CREATE_BYTE } from '@/graphql/queries';
 import { useTheme } from '../../components/shared/theme-provider';
-import { useHubs } from '../../shared/useHubs';
 import { useAuth } from '../../shared/useAuth';
-import { discourseApiService, Hub } from '../../shared/discourseApiService';
 import { 
   CaretDown, 
   Hash, 
@@ -35,12 +35,26 @@ import {
 
 export default function ComposeScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
-  const { hubs, isLoading: hubsLoading, error: hubsError, refreshHubs } = useHubs();
   const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  
+  // Use Apollo useQuery for hubs instead of custom hook
+  const { data: hubsData, loading: hubsLoading, error: hubsError, refetch: refreshHubs } = useQuery(GET_HUBS, {
+    errorPolicy: 'all',
+    fetchPolicy: 'cache-first'
+  });
+  
+  // Use Apollo useMutation for creating bytes
+  const [createByteMutation, { loading: createLoading }] = useMutation(CREATE_BYTE, {
+    refetchQueries: [{ query: GET_HOT_BYTES }], // Refresh feed after creating
+    awaitRefetchQueries: true
+  });
+
+  // Transform Apollo data to match existing component structure
+  const hubs = hubsData?.hubs?.category_list?.categories || [];
   
   const [content, setContent] = useState<string>('');
   const [title, setTitle] = useState<string>('');
-  const [selectedHub, setSelectedHub] = useState<Hub | null>(null);
+  const [selectedHub, setSelectedHub] = useState<any | null>(null);
   const [showHubDropdown, setShowHubDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -64,7 +78,7 @@ export default function ComposeScreen(): JSX.Element {
     overlay: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(0, 0, 0, 0.5)',
   };
 
-  const filteredHubs = hubs.filter(hub =>
+  const filteredHubs = hubs.filter((hub: any) =>
     hub.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     hub.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -97,7 +111,7 @@ export default function ComposeScreen(): JSX.Element {
     }
   }, [showHubDropdown]);
 
-  const selectHub = useCallback((hub: Hub) => {
+  const selectHub = useCallback((hub: any) => {
     setSelectedHub(hub);
     setShowHubDropdown(false);
     setSearchQuery(''); // Clear search when selecting
@@ -154,13 +168,15 @@ export default function ComposeScreen(): JSX.Element {
       setHasError(false);
       setErrorMessage('');
 
-      const response = await discourseApiService.createByte({
-        title: title.trim(),
-        content: content.trim(),
-        hubId: selectedHub.id,
+      const result = await createByteMutation({
+        variables: {
+          title: title.trim(),
+          raw: content.trim(),
+          category: selectedHub.id,
+        }
       });
 
-      if (response.success) {
+      if (result.data?.createByte) {
         setSuccessMessage('Your post has been published!');
         Alert.alert('Success', 'Your post has been published!');
         setContent('');
@@ -168,14 +184,13 @@ export default function ComposeScreen(): JSX.Element {
         setSelectedHub(null);
         router.back();
       } else {
-        setHasError(true);
-        setErrorMessage(response.error || 'Failed to create post');
-        Alert.alert('Error', response.error || 'Failed to create post');
+        throw new Error('Failed to create post');
       }
-    } catch (error) {
+    } catch (error: any) {
       setHasError(true);
-      setErrorMessage('Failed to create post. Please try again.');
-      Alert.alert('Error', 'Failed to create post. Please try again.');
+      const errorMsg = error.message || 'Failed to create post. Please try again.';
+      setErrorMessage(errorMsg);
+      Alert.alert('Error', errorMsg);
     } finally {
       setIsCreating(false);
     }
@@ -194,7 +209,7 @@ export default function ComposeScreen(): JSX.Element {
     return count.toString();
   }, []);
 
-  const renderHubItem = useCallback(({ item }: { item: Hub }) => (
+  const renderHubItem = useCallback(({ item }: { item: any }) => (
     <TouchableOpacity
       style={[styles.hubItem, { 
         backgroundColor: colors.card,
@@ -262,7 +277,7 @@ export default function ComposeScreen(): JSX.Element {
         Failed to load hubs
       </Text>
       <Text style={[styles.errorSubtext, { color: colors.secondary }]}>
-        {hubsError || 'Please check your connection and try again'}
+        {hubsError?.message || 'Please check your connection and try again'}
       </Text>
       <TouchableOpacity
         style={[styles.retryButton, { backgroundColor: colors.primary }]}
