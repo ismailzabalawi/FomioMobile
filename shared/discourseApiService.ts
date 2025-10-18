@@ -27,22 +27,82 @@ export class DiscourseApiService {
 
   // Add missing followers and following properties to AppUser type
   private mapDiscourseUserToAppUser(discourseUser: any): AppUser {
-    return {
-      id: discourseUser.id.toString(),
-      username: discourseUser.username,
-      name: discourseUser.name || discourseUser.username,
-      email: discourseUser.email || '',
+    // Debug logging to understand the input data
+    console.log('🔍 discourseApiService mapDiscourseUserToAppUser input:', {
+      discourseUser: discourseUser ? 'present' : 'null',
+      hasId: discourseUser?.id !== undefined,
+      id: discourseUser?.id,
+      username: discourseUser?.username,
+      name: discourseUser?.name,
+      email: discourseUser?.email
+    });
+
+    if (!discourseUser) {
+      console.log('🔍 discourseApiService mapDiscourseUserToAppUser: No user data, returning default');
+      return {
+        id: '0',
+        name: 'Unknown User',
+        username: 'unknown',
+        email: '',
+        avatar: '',
+        bio: '',
+        followers: 0,
+        following: 0,
+        bytes: 0,
+        comments: 0,
+        joinedDate: 'Unknown'
+      };
+    }
+
+    // Handle cases where user data might be incomplete
+    const userId = discourseUser.id;
+    const username = discourseUser.username;
+    const name = discourseUser.name;
+    const email = discourseUser.email;
+
+    // Validate required fields
+    if (!userId && !username) {
+      console.log('🔍 discourseApiService mapDiscourseUserToAppUser: Missing required fields (id and username)');
+      return {
+        id: '0',
+        name: 'Unknown User',
+        username: 'unknown',
+        email: '',
+        avatar: '',
+        bio: '',
+        followers: 0,
+        following: 0,
+        bytes: 0,
+        comments: 0,
+        joinedDate: 'Unknown'
+      };
+    }
+
+    const appUser = {
+      id: userId ? userId.toString() : '0',
+      username: username || 'unknown',
+      name: name || username || 'Unknown User',
+      email: email || '',
       avatar: this.getAvatarUrl(discourseUser.avatar_template, 120),
       bio: discourseUser.bio_raw || '',
       followers: 0, // Not available in Discourse
       following: 0, // Not available in Discourse
       bytes: discourseUser.post_count || 0,
       comments: discourseUser.post_count || 0,
-      joinedDate: `Joined ${new Date(discourseUser.created_at).toLocaleDateString('en-US', { 
-        month: 'long', 
-        year: 'numeric' 
-      })}`,
+      joinedDate: discourseUser.created_at ? 
+        `Joined ${new Date(discourseUser.created_at).toLocaleDateString('en-US', { 
+          month: 'long', 
+          year: 'numeric' 
+        })}` : 'Unknown'
     };
+
+    console.log('🔍 discourseApiService mapDiscourseUserToAppUser output:', {
+      id: appUser.id,
+      username: appUser.username,
+      name: appUser.name
+    });
+
+    return appUser;
   }
 
   private getAvatarUrl(template: string, size: number = 120): string {
@@ -53,6 +113,16 @@ export class DiscourseApiService {
   // Delegate all methods to the main API service
   async login(identifier: string, password: string): Promise<ApiResponse<AppUser>> {
     const response = await discourseApi.login(identifier, password);
+    if (response.success && response.data) {
+      // Map the response to AppUser
+      const appUser = this.mapDiscourseUserToAppUser(response.data.user);
+      return { success: true, data: appUser };
+    }
+    return { success: false, error: response.error };
+  }
+
+  async authenticateWithApiKey(): Promise<ApiResponse<AppUser>> {
+    const response = await discourseApi.authenticateWithApiKey();
     if (response.success && response.data) {
       // Map the response to AppUser
       const appUser = this.mapDiscourseUserToAppUser(response.data.user);

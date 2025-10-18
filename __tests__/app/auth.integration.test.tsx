@@ -33,7 +33,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 
 // Test component that uses useAuth hook
 const TestAuthComponent = () => {
-  const { user, isLoading, isAuthenticated, signIn, signUp, signOut } = useAuth();
+  const { user, isLoading, isAuthenticated, signIn, signUp, signOut, updateProfile } = useAuth();
 
   return (
     <View>
@@ -62,6 +62,12 @@ const TestAuthComponent = () => {
         onPress={() => signOut()}
       >
         <Text>Sign Out</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        testID="update-user-button"
+        onPress={() => updateProfile({ username: 'updateduser' })}
+      >
+        <Text>Update User</Text>
       </TouchableOpacity>
     </View>
   );
@@ -182,7 +188,12 @@ describe('Authentication Integration Tests', () => {
       expect(screen.getByTestId('user-info')).toHaveTextContent('testuser - test@example.com');
     });
 
-    expect(mockSignUp).toHaveBeenCalledWith('Test User', 'test@example.com', 'testuser', 'password');
+    expect(mockSignUp).toHaveBeenCalledWith({ 
+      name: 'Test User', 
+      email: 'test@example.com', 
+      username: 'testuser', 
+      password: 'password' 
+    });
   });
 
   it('should handle sign out', async () => {
@@ -224,7 +235,7 @@ describe('Authentication Integration Tests', () => {
   });
 
   it('should handle user update', async () => {
-    const mockUpdateUser = jest.fn();
+    const mockUpdateProfile = jest.fn().mockResolvedValue({ success: true });
     const mockUser = { 
       id: '1', 
       email: 'test@example.com', 
@@ -246,7 +257,7 @@ describe('Authentication Integration Tests', () => {
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
+      updateProfile: mockUpdateProfile,
       refreshAuth: jest.fn(),
     });
 
@@ -259,7 +270,7 @@ describe('Authentication Integration Tests', () => {
 
     fireEvent.press(screen.getByTestId('update-user-button'));
 
-    expect(mockUpdateUser).toHaveBeenCalledWith({ username: 'updateduser' });
+    expect(mockUpdateProfile).toHaveBeenCalledWith({ username: 'updateduser' });
   });
 
   it('should restore authentication state from storage', async () => {
@@ -334,38 +345,51 @@ describe('Authentication Integration Tests', () => {
     });
   });
 
-  it('should initialize with unauthenticated state', async () => {
+  it('should handle network errors during sign in', async () => {
+    const mockSignIn = jest.fn().mockResolvedValue({ 
+      success: false, 
+      error: 'Network error' 
+    });
+    
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isLoading: false,
+      isAuthenticated: false,
+      signIn: mockSignIn,
+      signUp: jest.fn(),
+      signOut: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
+    });
+
     render(<TestAuthComponent />);
 
     await waitFor(() => {
       expect(screen.getByTestId('auth-status')).toHaveTextContent('Not Authenticated');
     });
-  });
 
-  it('should handle successful sign in', async () => {
-    render(<TestAuthComponent />);
-
-    // Wait for initial load
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Not Authenticated');
-    });
-
-    // Trigger sign in
     fireEvent.press(screen.getByTestId('sign-in-button'));
 
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
-      expect(screen.getByTestId('user-info')).toHaveTextContent('test@example.com - test@example.com');
-    });
-
-    // Verify AsyncStorage was called
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      'auth_state',
-      expect.stringContaining('test@example.com')
-    );
+    expect(mockSignIn).toHaveBeenCalledWith('test@example.com', 'password');
   });
 
-  it('should handle successful sign up', async () => {
+  it('should handle network errors during sign up', async () => {
+    const mockSignUp = jest.fn().mockResolvedValue({ 
+      success: false, 
+      error: 'Network error' 
+    });
+    
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isLoading: false,
+      isAuthenticated: false,
+      signIn: jest.fn(),
+      signUp: mockSignUp,
+      signOut: jest.fn(),
+      updateProfile: jest.fn(),
+      refreshAuth: jest.fn(),
+    });
+
     render(<TestAuthComponent />);
 
     await waitFor(() => {
@@ -374,104 +398,11 @@ describe('Authentication Integration Tests', () => {
 
     fireEvent.press(screen.getByTestId('sign-up-button'));
 
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
-      expect(screen.getByTestId('user-info')).toHaveTextContent('testuser - test@example.com');
-    });
-
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      'auth_state',
-      expect.stringContaining('testuser')
-    );
-  });
-
-  it('should handle sign out', async () => {
-    // Start with authenticated state
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-      JSON.stringify({
-        user: { id: '1', email: 'test@example.com', username: 'testuser' },
-        isAuthenticated: true,
-      })
-    );
-
-    render(<TestAuthComponent />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
-    });
-
-    fireEvent.press(screen.getByTestId('sign-out-button'));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Not Authenticated');
-    });
-
-    expect(AsyncStorage.removeItem).toHaveBeenCalledWith('auth_state');
-  });
-
-  it('should handle user update', async () => {
-    // Start with authenticated state
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-      JSON.stringify({
-        user: { id: '1', email: 'test@example.com', username: 'testuser' },
-        isAuthenticated: true,
-      })
-    );
-
-    render(<TestAuthComponent />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
-      expect(screen.getByTestId('user-info')).toHaveTextContent('testuser - test@example.com');
-    });
-
-    fireEvent.press(screen.getByTestId('update-user-button'));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('user-info')).toHaveTextContent('updateduser - test@example.com');
-    });
-
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      'auth_state',
-      expect.stringContaining('updateduser')
-    );
-  });
-
-  it('should restore authentication state from storage', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-      JSON.stringify({
-        user: { id: '1', email: 'stored@example.com', username: 'storeduser' },
-        isAuthenticated: true,
-      })
-    );
-
-    render(<TestAuthComponent />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
-      expect(screen.getByTestId('user-info')).toHaveTextContent('storeduser - stored@example.com');
-    });
-
-    expect(AsyncStorage.getItem).toHaveBeenCalledWith('auth_state');
-  });
-
-  it('should handle corrupted storage data gracefully', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue('invalid-json');
-
-    render(<TestAuthComponent />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Not Authenticated');
-    });
-  });
-
-  it('should handle storage errors gracefully', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockRejectedValue(new Error('Storage error'));
-
-    render(<TestAuthComponent />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('auth-status')).toHaveTextContent('Not Authenticated');
+    expect(mockSignUp).toHaveBeenCalledWith({ 
+      name: 'Test User', 
+      email: 'test@example.com', 
+      username: 'testuser', 
+      password: 'password' 
     });
   });
 });

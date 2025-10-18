@@ -117,6 +117,12 @@ export default function SignInScreen() {
             editable={!loading}
           />
 
+          <View style={[styles.infoContainer, { backgroundColor: `${colors.primary}10`, borderColor: colors.primary }]}>
+            <Text style={[styles.infoText, { color: colors.primary }]}>
+              ℹ️ This app uses API key authentication. Make sure your .env file is configured with valid Discourse API credentials.
+            </Text>
+          </View>
+
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.disabledButton, { backgroundColor: colors.primary }]}
             onPress={handleSignIn}
@@ -246,6 +252,17 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  infoContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  infoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });
 

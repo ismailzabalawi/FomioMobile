@@ -81,8 +81,9 @@ export const useAuth = () => {
       console.log('🔐 Attempting sign in...');
       setAuthState(prev => ({ ...prev, isLoading: true }));
 
-      // Use the Discourse API to authenticate
-      const response = await discourseApiService.login(identifier, password);
+      // Use the Discourse API to authenticate with API key
+      // For Discourse, we use API key authentication instead of username/password
+      const response = await discourseApiService.authenticateWithApiKey();
       
       if (response.success && response.data) {
         // Store the user data securely
@@ -101,7 +102,7 @@ export const useAuth = () => {
         setAuthState(prev => ({ ...prev, isLoading: false }));
         return { 
           success: false, 
-          error: response.error || 'Authentication failed' 
+          error: response.error || 'Authentication failed. Please check your API credentials in the .env file.' 
         };
       }
     } catch (error) {

@@ -170,9 +170,16 @@ export const validationRules = {
     message,
     validator: (value) => {
       if (!value) return true; // Allow empty if not required
+      
+      // Check for valid HTTP/HTTPS URLs only
+      const urlPattern = /^https?:\/\/.+/;
+      if (!urlPattern.test(value)) {
+        return false;
+      }
+      
       try {
-        new URL(value);
-        return true;
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
       } catch {
         return false;
       }

@@ -1,4 +1,29 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Environment-aware storage import
+let AsyncStorage: any;
+
+// Check if we're in a Node.js environment
+const isNode = typeof window === 'undefined';
+
+if (isNode) {
+  // Node.js environment - use mock storage
+  AsyncStorage = {
+    getItem: async (key: string) => null,
+    setItem: async (key: string, value: string) => {},
+    removeItem: async (key: string) => {},
+  };
+} else {
+  // React Native environment - use real AsyncStorage
+  try {
+    AsyncStorage = require('@react-native-async-storage/async-storage').default;
+  } catch (error) {
+    // Fallback if AsyncStorage is not available
+    AsyncStorage = {
+      getItem: async (key: string) => null,
+      setItem: async (key: string, value: string) => {},
+      removeItem: async (key: string) => {},
+    };
+  }
+}
 
 // Security configuration
 const SECURITY_CONFIG = {
@@ -574,11 +599,20 @@ class DiscourseApiService {
       console.log(`🔐 Attempting login to: ${this.config.baseUrl}`);
       console.log(`📧 Login identifier: ${identifier}`);
 
-      // First, try to get the current session to see if we're already logged in
+      // For Discourse, we need to use the session endpoint with proper credentials
+      // Discourse uses session-based authentication with API key and username
+      if (!this.config.apiKey || !this.config.apiUsername) {
+        return { 
+          success: false, 
+          error: 'API credentials not configured. Please set EXPO_PUBLIC_DISCOURSE_API_KEY and EXPO_PUBLIC_DISCOURSE_API_USERNAME' 
+        };
+      }
+
+      // Try to get current user to verify authentication
       const currentUserResponse = await this.makeRequest<DiscourseUser>('/session/current.json');
       
       if (currentUserResponse.success && currentUserResponse.data) {
-        console.log('✅ Already logged in as:', currentUserResponse.data.username);
+        console.log('✅ Already authenticated as:', currentUserResponse.data.username);
         // Create a mock token for the existing session
         const mockToken = `session_${Date.now()}`;
         await this.saveAuthToken(mockToken);
@@ -591,28 +625,60 @@ class DiscourseApiService {
         };
       }
 
-      // If not logged in, try the login endpoint
-      const response = await this.makeRequest<LoginResponse>('/session', {
-        method: 'POST',
-        body: JSON.stringify({
-          login: SecurityValidator.sanitizeInput(identifier.trim()),
-          password: password,
-        }),
-      });
-
-      if (response.success && response.data?.token) {
-        console.log('✅ Login successful');
-        await this.saveAuthToken(response.data.token);
-      } else {
-        console.log('❌ Login failed:', response.error);
-      }
-
-      return response;
+      // If not authenticated, try to authenticate using the provided credentials
+      // For Discourse API, we authenticate using API key and username in headers
+      // The actual user login should be done through the web interface
+      console.log('❌ Not authenticated. Please log in through the Discourse web interface first.');
+      return {
+        success: false,
+        error: 'Please log in through the Discourse web interface first, then use the API credentials in your .env file',
+      };
     } catch (error) {
       console.error('🚨 Login error:', error);
       return {
         success: false,
         error: 'Authentication failed - please check your credentials and try again',
+      };
+    }
+  }
+
+  // New method for API key authentication (for admin/system users)
+  async authenticateWithApiKey(): Promise<DiscourseApiResponse<LoginResponse>> {
+    try {
+      if (!this.config.apiKey || !this.config.apiUsername) {
+        return { 
+          success: false, 
+          error: 'API credentials not configured' 
+        };
+      }
+
+      console.log(`🔐 Authenticating with API key as: ${this.config.apiUsername}`);
+
+      // Try to get current user to verify authentication
+      const currentUserResponse = await this.makeRequest<DiscourseUser>('/session/current.json');
+      
+      if (currentUserResponse.success && currentUserResponse.data) {
+        console.log('✅ API authentication successful as:', currentUserResponse.data.username);
+        const mockToken = `api_${Date.now()}`;
+        await this.saveAuthToken(mockToken);
+        return {
+          success: true,
+          data: {
+            user: currentUserResponse.data,
+            token: mockToken,
+          },
+        };
+      }
+
+      return {
+        success: false,
+        error: 'API authentication failed - check your API key and username',
+      };
+    } catch (error) {
+      console.error('🚨 API authentication error:', error);
+      return {
+        success: false,
+        error: 'API authentication failed',
       };
     }
   }
@@ -636,7 +702,23 @@ class DiscourseApiService {
   }
 
   async getCurrentUser(): Promise<DiscourseApiResponse<DiscourseUser>> {
-    return this.makeRequest<DiscourseUser>('/session/current.json');
+    const response = await this.makeRequest<DiscourseUser>('/session/current.json');
+    
+    // Debug logging to understand the response structure
+    if (response.success && response.data) {
+      console.log('🔍 getCurrentUser response:', {
+        hasId: !!response.data.id,
+        id: response.data.id,
+        username: response.data.username,
+        name: response.data.name,
+        email: response.data.email,
+        avatar_template: response.data.avatar_template
+      });
+    } else {
+      console.log('🔍 getCurrentUser failed:', response.error);
+    }
+    
+    return response;
   }
 
   // User Profile API with input validation
@@ -1283,7 +1365,18 @@ class DiscourseApiService {
   }
 
   mapDiscourseUserToAppUser(discourseUser: any): AppUser {
+    // Debug logging to understand the input data
+    console.log('🔍 mapDiscourseUserToAppUser input:', {
+      discourseUser: discourseUser ? 'present' : 'null',
+      hasId: discourseUser?.id !== undefined,
+      id: discourseUser?.id,
+      username: discourseUser?.username,
+      name: discourseUser?.name,
+      email: discourseUser?.email
+    });
+
     if (!discourseUser) {
+      console.log('🔍 mapDiscourseUserToAppUser: No user data, returning default');
       return {
         id: '0',
         name: 'Unknown User',
@@ -1299,11 +1392,35 @@ class DiscourseApiService {
       };
     }
 
-    return {
-      id: discourseUser.id?.toString() || '0',
-      name: discourseUser.name || discourseUser.username || 'Unknown User',
-      username: discourseUser.username || 'unknown',
-      email: discourseUser.email || '',
+    // Handle cases where user data might be incomplete
+    const userId = discourseUser.id;
+    const username = discourseUser.username;
+    const name = discourseUser.name;
+    const email = discourseUser.email;
+
+    // Validate required fields
+    if (!userId && !username) {
+      console.log('🔍 mapDiscourseUserToAppUser: Missing required fields (id and username)');
+      return {
+        id: '0',
+        name: 'Unknown User',
+        username: 'unknown',
+        email: '',
+        avatar: '',
+        bio: '',
+        followers: 0,
+        following: 0,
+        bytes: 0,
+        comments: 0,
+        joinedDate: 'Unknown'
+      };
+    }
+
+    const appUser = {
+      id: userId ? userId.toString() : '0',
+      name: name || username || 'Unknown User',
+      username: username || 'unknown',
+      email: email || '',
       avatar: this.getAvatarUrl(discourseUser.avatar_template, 120),
       bio: discourseUser.bio_raw || '',
       followers: 0, // Not available in Discourse
@@ -1316,6 +1433,14 @@ class DiscourseApiService {
           year: 'numeric' 
         })}` : 'Unknown'
     };
+
+    console.log('🔍 mapDiscourseUserToAppUser output:', {
+      id: appUser.id,
+      username: appUser.username,
+      name: appUser.name
+    });
+
+    return appUser;
   }
 
   private getPostIdByNumber(topicId: number, postNumber: number): number | undefined {
