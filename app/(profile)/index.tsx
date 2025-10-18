@@ -99,13 +99,15 @@ function ActionButton({
   title, 
   subtitle, 
   onPress, 
-  color = '#3b82f6' 
+  color = '#3b82f6',
+  showChevron = true
 }: { 
   icon: React.ReactNode; 
   title: string; 
   subtitle?: string; 
   onPress: () => void; 
   color?: string; 
+  showChevron?: boolean;
 }) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
@@ -139,7 +141,7 @@ function ActionButton({
           )}
         </View>
       </View>
-      <Text style={[styles.actionChevron, { color: colors.secondary }]}>›</Text>
+      {showChevron && <Text style={[styles.actionChevron, { color: colors.secondary }]}>›</Text>}
     </TouchableOpacity>
   );
 }
@@ -210,7 +212,7 @@ function AuthPromptCard({ onSignIn, onSignUp }: {
 export default function ProfileScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
   const { user: discourseUser, loading, error, refreshUser } = useDiscourseUser();
-  const { user: authUser, isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated, signOut } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<ProfileStats>({
     posts: 0,
@@ -236,48 +238,43 @@ export default function ProfileScreen(): JSX.Element {
     error: isDark ? '#ef4444' : '#dc2626',
   };
 
-  // Use the authenticated user data (from useAuth) or fall back to Discourse user data
-  const user = authUser || discourseUser;
+  // Use Discourse user data when authenticated, this is the source of truth
+  const user = discourseUser;
 
   // Debug logging
   useEffect(() => {
     console.log('🔍 Profile Debug:', {
       isAuthenticated,
-      authUser: authUser ? 'present' : 'null',
       discourseUser: discourseUser ? 'present' : 'null',
       user: user ? 'present' : 'null',
       loading,
       error
     });
-  }, [isAuthenticated, authUser, discourseUser, user, loading, error]);
+  }, [isAuthenticated, discourseUser, user, loading, error]);
+
+  // Ensure user data is loaded when authenticated
+  useEffect(() => {
+    if (isAuthenticated && !discourseUser && !loading) {
+      console.log('🔄 Profile: Triggering user data refresh');
+      refreshUser();
+    }
+  }, [isAuthenticated, discourseUser, loading, refreshUser]);
 
   // Update stats when user data changes
   useEffect(() => {
     if (discourseUser) {
       setStats({
-        posts: discourseUser.post_count,
-        topics: discourseUser.topic_count,
-        likes: discourseUser.likes_received,
+        posts: discourseUser.post_count || 0,
+        topics: discourseUser.topic_count || 0,
+        likes: discourseUser.likes_received || 0,
         followers: 0, // Not available in Discourse
         following: 0, // Not available in Discourse
-        trustLevel: discourseUser.trust_level,
-        badges: discourseUser.badge_count,
-        timeRead: Math.floor(discourseUser.time_read / 3600), // Convert to hours
-      });
-    } else if (authUser) {
-      // Use auth user data for stats
-      setStats({
-        posts: authUser.bytes,
-        topics: 0,
-        likes: 0,
-        followers: authUser.followers,
-        following: authUser.following,
-        trustLevel: 0,
-        badges: 0,
-        timeRead: 0,
+        trustLevel: discourseUser.trust_level || 0,
+        badges: discourseUser.badge_count || 0,
+        timeRead: Math.floor((discourseUser.time_read || 0) / 3600), // Convert to hours
       });
     }
-  }, [discourseUser, authUser]);
+  }, [discourseUser]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -429,7 +426,7 @@ export default function ProfileScreen(): JSX.Element {
   }
 
   // Show loading only if we're authenticated but don't have any user data yet
-  if (loading && !authUser && !discourseUser) {
+  if (loading && isAuthenticated && !discourseUser) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
@@ -446,7 +443,7 @@ export default function ProfileScreen(): JSX.Element {
   }
 
   // Show error only if we're authenticated but there's an error and no user data
-  if (error && !authUser && !discourseUser) {
+  if (error && isAuthenticated && !discourseUser) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
@@ -468,7 +465,7 @@ export default function ProfileScreen(): JSX.Element {
   }
 
   // If we're authenticated but don't have any user data, show a fallback
-  if (!user) {
+  if (isAuthenticated && !user) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
@@ -511,76 +508,64 @@ export default function ProfileScreen(): JSX.Element {
       >
         {/* Profile Header */}
         <View style={[styles.profileHeader, { backgroundColor: colors.card }]}>
-          {discourseUser?.avatar_template ? (
+          {user?.avatar_template ? (
             <Image 
-              source={{ uri: discourseApi.getAvatarUrl(discourseUser.avatar_template, 120) }} 
+              source={{ uri: discourseApi.getAvatarUrl(user.avatar_template, 120) }} 
               style={styles.avatar}
               accessible
               accessibilityLabel={`${user.name || user.username}'s profile picture`}
             />
-          ) : authUser?.avatar ? (
-            <Image 
-              source={{ uri: authUser.avatar }} 
-              style={styles.avatar}
-              accessible
-              accessibilityLabel={`${user.name}'s profile picture`}
-            />
           ) : (
             <View style={[styles.avatar, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
               <Text style={[styles.avatarFallback, { color: colors.background }]}>
-                {(user.name || user.username).charAt(0).toUpperCase()}
+                {(user?.name || user?.username || 'U').charAt(0).toUpperCase()}
               </Text>
             </View>
           )}
           
           <View style={styles.profileInfo}>
             <Text style={[styles.profileName, { color: colors.text }]}>
-              {user.name || user.username}
+              {user?.name || user?.username || 'Unknown User'}
             </Text>
             <Text style={[styles.profileUsername, { color: colors.secondary }]}>
-              {discourseUser ? `@${discourseUser.username}` : `@${user.username}`}
+              @{user?.username || 'unknown'}
             </Text>
             
-            {(discourseUser?.bio_raw || authUser?.bio) && (
+            {user?.bio_raw && (
               <Text style={[styles.profileBio, { color: colors.text }]} numberOfLines={3}>
-                {discourseUser?.bio_raw || authUser?.bio}
+                {user.bio_raw}
               </Text>
             )}
             
             <View style={styles.profileMeta}>
-              {discourseUser?.location && (
+              {user?.location && (
                 <View style={styles.metaItem}>
                   <MapPin size={16} color={colors.secondary} weight="regular" />
-                  <Text style={[styles.metaText, { color: colors.secondary }]}>{discourseUser.location}</Text>
+                  <Text style={[styles.metaText, { color: colors.secondary }]}>{user.location}</Text>
                 </View>
               )}
               
-              {discourseUser?.website && (
+              {user?.website && (
                 <View style={styles.metaItem}>
                   <Globe size={16} color={colors.secondary} weight="regular" />
-                  <Text style={[styles.metaText, { color: colors.secondary }]}>{discourseUser.website}</Text>
+                  <Text style={[styles.metaText, { color: colors.secondary }]}>{user.website}</Text>
                 </View>
               )}
               
               <View style={styles.metaItem}>
                 <Calendar size={16} color={colors.secondary} weight="regular" />
                 <Text style={[styles.metaText, { color: colors.secondary }]}>
-                  {discourseUser 
-                    ? `Joined ${new Date(discourseUser.created_at).toLocaleDateString()}`
-                    : authUser?.joinedDate || 'Member'
-                  }
+                  Joined {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}
                 </Text>
               </View>
             </View>
             
-            {discourseUser && (
-              <View style={styles.trustLevel}>
-                <Crown size={16} color={getTrustLevelColor(discourseUser.trust_level)} weight="fill" />
-                <Text style={[styles.trustLevelText, { color: getTrustLevelColor(discourseUser.trust_level) }]}>
-                  {getTrustLevelDisplay(discourseUser.trust_level)}
-                </Text>
-              </View>
-            )}
+            <View style={styles.trustLevel}>
+              <Crown size={16} color={getTrustLevelColor(user?.trust_level || 0)} weight="fill" />
+              <Text style={[styles.trustLevelText, { color: getTrustLevelColor(user?.trust_level || 0) }]}>
+                {getTrustLevelDisplay(user?.trust_level || 0)}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -667,44 +652,35 @@ export default function ProfileScreen(): JSX.Element {
             <View style={styles.infoRow}>
               <Text style={[styles.infoLabel, { color: colors.secondary }]}>Email</Text>
               <Text style={[styles.infoValue, { color: colors.text }]}>
-                {discourseUser?.email || authUser?.email || 'Not provided'}
+                {user?.email || 'Not provided'}
               </Text>
             </View>
             
-            {discourseUser && (
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: colors.secondary }]}>Trust Level</Text>
-                <Text style={[styles.infoValue, { color: getTrustLevelColor(discourseUser.trust_level) }]}>
-                  {getTrustLevelDisplay(discourseUser.trust_level)}
-                </Text>
-              </View>
-            )}
+            <View style={styles.infoRow}>
+              <Text style={[styles.infoLabel, { color: colors.secondary }]}>Trust Level</Text>
+              <Text style={[styles.infoValue, { color: getTrustLevelColor(user?.trust_level || 0) }]}>
+                {getTrustLevelDisplay(user?.trust_level || 0)}
+              </Text>
+            </View>
             
             <View style={styles.infoRow}>
               <Text style={[styles.infoLabel, { color: colors.secondary }]}>Member Since</Text>
               <Text style={[styles.infoValue, { color: colors.text }]}>
-                {discourseUser 
-                  ? new Date(discourseUser.created_at).toLocaleDateString()
-                  : authUser?.joinedDate || 'Unknown'
-                }
+                {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}
               </Text>
             </View>
             
-            {discourseUser && (
-              <>
-                <View style={styles.infoRow}>
-                  <Text style={[styles.infoLabel, { color: colors.secondary }]}>Last Seen</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]}>
-                    {new Date(discourseUser.last_seen_at).toLocaleDateString()}
-                  </Text>
-                </View>
-                
-                <View style={styles.infoRow}>
-                  <Text style={[styles.infoLabel, { color: colors.secondary }]}>Days Visited</Text>
-                  <Text style={[styles.infoValue, { color: colors.text }]}>{discourseUser.days_visited}</Text>
-                </View>
-              </>
-            )}
+            <View style={styles.infoRow}>
+              <Text style={[styles.infoLabel, { color: colors.secondary }]}>Last Seen</Text>
+              <Text style={[styles.infoValue, { color: colors.text }]}>
+                {user?.last_seen_at ? new Date(user.last_seen_at).toLocaleDateString() : 'Unknown'}
+              </Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Text style={[styles.infoLabel, { color: colors.secondary }]}>Days Visited</Text>
+              <Text style={[styles.infoValue, { color: colors.text }]}>{user?.days_visited || 0}</Text>
+            </View>
           </View>
         </ProfileSection>
 
@@ -716,6 +692,7 @@ export default function ProfileScreen(): JSX.Element {
             subtitle="Sign out of your account"
             onPress={handleSignOut}
             color={colors.error}
+            showChevron={false}
           />
         </ProfileSection>
       </ScrollView>
