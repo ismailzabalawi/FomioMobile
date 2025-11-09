@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
+import { signIn, isAuthenticated } from '../../lib/auth';
+import { logger } from '../../shared/logger';
 
 export default function SignInScreen() {
   const { isDark } = useTheme();
@@ -18,41 +20,27 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleConnect = async () => {
+  const handleSignIn = async () => {
     setLoading(true);
     setError('');
 
     try {
-      // Check if we already have a valid API key
-      const storeModule = require('../../lib/store');
-      const existingKey = await storeModule.loadUserApiKey();
-      
-      if (existingKey) {
-        // Try to verify the key is still valid
-        try {
-          const discourseModule = require('../../lib/discourse');
-          await discourseModule.getSession();
-          // Key is valid, navigate to main app
-          router.replace('/(tabs)' as any);
-          return;
-        } catch (error) {
-          // Key exists but is invalid, continue to authorize screen
-          console.log('⚠️ Existing API key invalid, redirecting to authorize screen');
-        }
+      // Check if already authenticated
+      const authed = await isAuthenticated();
+      if (authed) {
+        router.replace('/(tabs)' as any);
+        return;
       }
+
+      // Start sign-in flow
+      await signIn();
       
-      // No valid key, redirect to authorize screen
-      router.push('/(auth)/authorize' as any);
+      // Sign-in successful - navigate to main app
+      router.replace('/(tabs)' as any);
     } catch (err: any) {
-      const errorMessage = err?.message || 'Failed to connect. Please try again.';
+      const errorMessage = err?.message || 'Failed to sign in. Please try again.';
       setError(errorMessage);
-      
-      // Show helpful hints for common errors
-      if (errorMessage.includes('redirect')) {
-        setError('Missing redirect in Discourse settings. Please configure the redirect URL in your Discourse admin panel.');
-      } else if (errorMessage.includes('scopes')) {
-        setError('Insufficient scopes. Please check your API key permissions.');
-      }
+      logger.error('SignInScreen: Sign-in failed', err);
     } finally {
       setLoading(false);
     }
@@ -95,21 +83,31 @@ export default function SignInScreen() {
             </Text>
           </View>
 
+          <View style={styles.scopesContainer}>
+            <Text style={[styles.scopesTitle, { color: colors.text }]}>What we'll access:</Text>
+            <View style={styles.scopesList}>
+              <Text style={[styles.scopeItem, { color: colors.secondary }]}>• Read your posts and topics</Text>
+              <Text style={[styles.scopeItem, { color: colors.secondary }]}>• Create and edit posts</Text>
+              <Text style={[styles.scopeItem, { color: colors.secondary }]}>• View notifications</Text>
+              <Text style={[styles.scopeItem, { color: colors.secondary }]}>• Access session information</Text>
+            </View>
+          </View>
+
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.disabledButton, { backgroundColor: colors.primary }]}
-            onPress={handleConnect}
+            onPress={handleSignIn}
             disabled={loading}
             accessible
             accessibilityRole="button"
-            accessibilityLabel="Connect to Forum"
-            accessibilityHint="Connect to Discourse forum using API key authentication"
+            accessibilityLabel="Sign In"
+            accessibilityHint="Sign in to Discourse forum using API key authentication"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             {loading ? (
               <ActivityIndicator size="small" color={colors.background} />
             ) : (
               <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-                Connect to Forum
+                Sign In
               </Text>
             )}
           </TouchableOpacity>
@@ -147,6 +145,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
+    borderBottomWidth: 1,
   },
   backButton: {
     padding: 8,
@@ -183,7 +182,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   infoContainer: {
-    marginBottom: 32,
+    marginBottom: 24,
     alignItems: 'center',
   },
   infoTitle: {
@@ -196,6 +195,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  scopesContainer: {
+    marginBottom: 32,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+  },
+  scopesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  scopesList: {
+    gap: 8,
+  },
+  scopeItem: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   primaryButton: {
     paddingVertical: 16,
@@ -234,4 +251,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

@@ -3,10 +3,10 @@ import { discourseApi } from './discourseApi';
 import { logger } from './logger';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
+import * as AuthSession from 'expo-auth-session';
 
 const config = Constants.expoConfig?.extra || {};
 const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
-const AUTH_REDIRECT_SCHEME = process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || 'fomio://auth-callback';
 
 export interface AuthorizationResult {
   success: boolean;
@@ -25,7 +25,7 @@ export interface AuthorizationOptions {
 /**
  * User API Key Authentication Service
  * Handles the complete authorization flow for Discourse User API Keys
- * Following Discourse User API Keys specification
+ * Following Discourse User API Keys specification with delegated auth + OTP
  */
 export class UserApiKeyAuth {
   /**
@@ -35,50 +35,25 @@ export class UserApiKeyAuth {
    */
   static async buildAuthorizationUrl(options: AuthorizationOptions = {}): Promise<string> {
     try {
-      // Generate or get client ID
+      // Generate client ID (UUID)
       const clientId = await UserApiKeyManager.getOrGenerateClientId();
       
-      // Get or generate key pair
-      let publicKey: string;
-      const storedPublicKey = await UserApiKeyManager.getPublicKey();
-      const storedPrivateKey = await UserApiKeyManager.getPrivateKey();
+      // Generate RSA keypair for this login session
+      const keyPair = await UserApiKeyManager.generateKeyPair();
+      const publicKey = keyPair.publicKey;
       
-      if (storedPublicKey) {
-        // Use stored public key
-        publicKey = storedPublicKey;
-        logger.info('UserApiKeyAuth: Using stored public key');
-      } else if (storedPrivateKey) {
-        // Try to extract public key from private key
-        try {
-          publicKey = await UserApiKeyManager.extractPublicKeyFromPrivate(storedPrivateKey);
-          await UserApiKeyManager.storePublicKey(publicKey);
-          logger.info('UserApiKeyAuth: Extracted and stored public key from private key');
-        } catch (extractError) {
-          // If extraction fails, generate new key pair
-          logger.warn('UserApiKeyAuth: Failed to extract public key, generating new key pair', extractError);
-          const keyPair = await UserApiKeyManager.generateKeyPair();
-          publicKey = keyPair.publicKey;
-        }
-      } else {
-        // Generate new key pair
-        const keyPair = await UserApiKeyManager.generateKeyPair();
-        publicKey = keyPair.publicKey;
-        logger.info('UserApiKeyAuth: Generated new key pair');
-      }
+      // Store private key temporarily (will be used to decrypt payload)
+      await UserApiKeyManager.storePrivateKey(keyPair.privateKey);
 
-      // Generate or get nonce
-      let nonce = await UserApiKeyManager.getNonce();
-      if (!nonce) {
-        nonce = await UserApiKeyManager.generateNonce();
-        await UserApiKeyManager.storeNonce(nonce);
-      }
-
-      // Build authorization URL
+      // Build redirect URI
+      const redirectUri = Linking.createURL('auth/callback');
+      
+      // Default scopes
       const defaultScopes = [
         'read',
         'write',
-        'message_bus',
         'notifications',
+        'session_info',
         'one_time_password',
       ];
       const scopes: string = Array.isArray(options.scopes)
@@ -86,17 +61,14 @@ export class UserApiKeyAuth {
         : (options.scopes || defaultScopes.join(','));
       
       const applicationName = options.applicationName || 'Fomio';
-      const authRedirect = `${AUTH_REDIRECT_SCHEME}?client_id=${encodeURIComponent(clientId)}`;
       
-      // URLSearchParams will handle encoding, but base64 strings need special handling
-      // Use encodeURIComponent to ensure proper encoding of +, /, = characters
+      // Build URL with query parameters
       const params = new URLSearchParams();
-      params.append('auth_redirect', authRedirect);
+      params.append('auth_redirect', redirectUri);
       params.append('application_name', applicationName);
       params.append('client_id', clientId);
       params.append('scopes', scopes);
-      params.append('public_key', publicKey); // URLSearchParams will encode this properly
-      params.append('nonce', nonce);
+      params.append('public_key', publicKey);
 
       if (options.pushUrl) {
         params.append('push_url', options.pushUrl);
@@ -105,7 +77,7 @@ export class UserApiKeyAuth {
       const url = `${DISCOURSE_URL}/user-api-key/new?${params.toString()}`;
       
       logger.info('UserApiKeyAuth: Authorization URL built', {
-        url: url.replace(publicKey, '[PUBLIC_KEY]').replace(nonce, '[NONCE]'), // Don't log sensitive data
+        url: url.replace(publicKey, '[PUBLIC_KEY]'),
         clientId,
         scopes,
       });
@@ -118,19 +90,45 @@ export class UserApiKeyAuth {
   }
 
   /**
-   * Initiate API key authorization flow
-   * Opens Discourse authorization page in WebView
+   * Initiate API key authorization flow using expo-auth-session
+   * Opens Discourse authorization page in ASWebAuthenticationSession (iOS) or Chrome Custom Tabs (Android)
    * @param options - Authorization options
-   * @returns Authorization URL to open in WebView
+   * @returns Authorization result with API key
    */
-  static async initiateAuthorization(options: AuthorizationOptions = {}): Promise<string> {
+  static async initiateAuthorization(options: AuthorizationOptions = {}): Promise<AuthorizationResult> {
     try {
       logger.info('UserApiKeyAuth: Initiating API key authorization...');
-      const url = await this.buildAuthorizationUrl(options);
-      return url;
-    } catch (error) {
+      
+      const authUrl = await this.buildAuthorizationUrl(options);
+      const redirectUri = Linking.createURL('auth/callback');
+
+      // Open authorization page using expo-auth-session
+      const result = await AuthSession.startAsync({
+        authUrl,
+        returnUrl: redirectUri,
+      });
+
+      if (result.type !== 'success' || !result.params?.payload) {
+        if (result.type === 'cancel') {
+          return {
+            success: false,
+            error: 'Authorization cancelled',
+          };
+        }
+        return {
+          success: false,
+          error: 'Authorization failed',
+        };
+      }
+
+      // Handle the callback payload
+      return await this.handleAuthorizationCallback(result.params.payload as string);
+    } catch (error: any) {
       logger.error('UserApiKeyAuth: Failed to initiate authorization', error);
-      throw error;
+      return {
+        success: false,
+        error: error.message || 'Failed to initiate authorization',
+      };
     }
   }
 
@@ -148,6 +146,15 @@ export class UserApiKeyAuth {
         return {
           success: false,
           error: 'No payload received from authorization',
+        };
+      }
+
+      // Get stored private key (from buildAuthorizationUrl)
+      const privateKey = await UserApiKeyManager.getPrivateKey();
+      if (!privateKey) {
+        return {
+          success: false,
+          error: 'Private key not found. Please restart authorization.',
         };
       }
 
@@ -179,6 +186,15 @@ export class UserApiKeyAuth {
         await UserApiKeyManager.storeOneTimePassword(decrypted.one_time_password);
       }
 
+      // Clean up private key (we don't need it anymore after decryption)
+      // Note: We keep the API key data, just remove the temporary private key
+      try {
+        const { deleteItemAsync } = require('expo-secure-store');
+        await deleteItemAsync('fomio_user_api_private_key');
+      } catch {
+        // Ignore cleanup errors - private key cleanup is optional
+      }
+
       logger.info('UserApiKeyAuth: Authorization successful', {
         hasKey: !!decrypted.key,
         hasOtp: !!decrypted.one_time_password,
@@ -196,6 +212,31 @@ export class UserApiKeyAuth {
         success: false,
         error: error.message || 'Failed to process authorization callback',
       };
+    }
+  }
+
+  /**
+   * Warm browser cookies using one-time password
+   * Opens /session/otp/{otp} in browser to set logged-in cookie
+   * @param oneTimePassword - One-time password from authorization
+   */
+  static async warmBrowserCookies(oneTimePassword: string): Promise<void> {
+    try {
+      logger.info('UserApiKeyAuth: Warming browser cookies with OTP...');
+      
+      const otpUrl = `${DISCOURSE_URL}/session/otp/${oneTimePassword}`;
+      const redirectUri = Linking.createURL('auth/callback');
+
+      // Open OTP URL in browser to set logged-in cookie
+      await AuthSession.startAsync({
+        authUrl: otpUrl,
+        returnUrl: redirectUri,
+      });
+
+      logger.info('UserApiKeyAuth: Browser cookies warmed successfully');
+    } catch (error) {
+      // OTP warming is optional - log but don't fail
+      logger.warn('UserApiKeyAuth: OTP warming failed (non-critical)', error);
     }
   }
 
@@ -270,51 +311,6 @@ export class UserApiKeyAuth {
   }
 
   /**
-   * Generate one-time password using existing API key
-   * @returns One-time password or null if generation fails
-   */
-  static async generateOneTimePassword(): Promise<string | null> {
-    try {
-      const apiKeyData = await UserApiKeyManager.getApiKey();
-      
-      if (!apiKeyData) {
-        logger.warn('UserApiKeyAuth: No API key available for OTP generation');
-        return null;
-      }
-
-      logger.info('UserApiKeyAuth: Generating one-time password...');
-
-      // Get or generate key pair for OTP request
-      const keyPair = await UserApiKeyManager.generateKeyPair();
-      await UserApiKeyManager.storePrivateKey(keyPair.privateKey);
-
-      const clientId = await UserApiKeyManager.getOrGenerateClientId();
-      const authRedirect = `${AUTH_REDIRECT_SCHEME}?client_id=${encodeURIComponent(clientId)}&otp=true`;
-
-      // Build OTP request URL
-      const params = new URLSearchParams({
-        auth_redirect: authRedirect,
-        application_name: 'Fomio',
-        public_key: keyPair.publicKey,
-      });
-
-      const url = `${DISCOURSE_URL}/user-api-key/otp?${params.toString()}`;
-
-      // Open in WebView or browser - this will redirect back with encrypted OTP
-      // For now, return the URL to be opened
-      // The actual OTP will be received via the callback
-      logger.info('UserApiKeyAuth: OTP generation URL built', {
-        url: url.replace(keyPair.publicKey, '[PUBLIC_KEY]'),
-      });
-
-      return url;
-    } catch (error) {
-      logger.error('UserApiKeyAuth: Failed to generate one-time password', error);
-      return null;
-    }
-  }
-
-  /**
    * Check if user has authorized API key
    * @returns true if API key exists and is valid
    */
@@ -332,4 +328,3 @@ export class UserApiKeyAuth {
 }
 
 export default UserApiKeyAuth;
-

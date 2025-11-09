@@ -9,6 +9,7 @@ import { logger } from './logger';
 import { emitAuthEvent, onAuthEvent } from './auth-events';
 import { UserApiKeyManager } from './userApiKeyManager';
 import { UserApiKeyAuth } from './userApiKeyAuth';
+import { isAuthenticated as checkAuth, signOut as authSignOut } from '../lib/auth';
 
 const config = Constants.expoConfig?.extra || {};
 
@@ -52,9 +53,9 @@ const useAuthStore = create<AuthStore>((set, get) => ({
       console.log('📱 Loading stored authentication...');
       set({ isLoading: true });
       
-      // Check for User API Key
+      // Check for User API Key using new auth system
       let hasValidAuth = false;
-      const hasApiKey = await UserApiKeyManager.hasApiKey();
+      const hasApiKey = await checkAuth();
       if (hasApiKey) {
         // Verify API key is still valid by making a test request
         const userResponse = await discourseApi.getCurrentUser();
@@ -214,9 +215,9 @@ export const useAuth = () => {
       console.log('🔐 Checking authentication status...');
       setLoading(true);
 
-      // Check for User API Key
+      // Check for User API Key using new auth system
       let isValid = false;
-      const hasApiKey = await UserApiKeyManager.hasApiKey();
+      const hasApiKey = await checkAuth();
       if (hasApiKey) {
         const userResponse = await discourseApi.getCurrentUser();
         isValid = userResponse.success && !!userResponse.data;
@@ -338,11 +339,11 @@ export const useAuth = () => {
         logger.warn('useAuth: Failed to clear auth storage:', storageError?.message || storageError);
       }
       
-      // Revoke User API Key
+      // Sign out using new auth system (handles revocation)
       try {
-        await UserApiKeyAuth.revokeApiKey();
+        await authSignOut();
       } catch (apiKeyError: any) {
-        logger.warn('useAuth: Failed to revoke API key:', apiKeyError?.message || apiKeyError);
+        logger.warn('useAuth: Failed to sign out:', apiKeyError?.message || apiKeyError);
         // Still clear local key even if revocation fails
         await UserApiKeyManager.clearApiKey();
       }
@@ -413,9 +414,9 @@ export const useAuth = () => {
     try {
       console.log('🔄 Refreshing authentication...');
       
-      // Check for User API Key
+      // Check for User API Key using new auth system
       let isValid = false;
-      const hasApiKey = await UserApiKeyManager.hasApiKey();
+      const hasApiKey = await checkAuth();
       if (hasApiKey) {
         // Verify by making API call
         const userResponse = await discourseApi.getCurrentUser();
