@@ -30,6 +30,9 @@ import {
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useNotifications, Notification } from '../../shared/useNotifications';
+import { useAuth } from '../../lib/auth';
+import { getNotifications } from '../../lib/discourse';
+import { useEffect, useState } from 'react';
 
 interface NotificationSection {
   title: string;
@@ -171,6 +174,7 @@ function NotificationSection({ title, children }: { title: string; children: Rea
 
 export default function NotificationsScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
+  const { authed, ready } = useAuth();
   const { 
     notifications, 
     isLoading: loading, 
@@ -181,6 +185,20 @@ export default function NotificationsScreen(): JSX.Element {
   } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
+  
+  // Load notifications if authenticated
+  useEffect(() => {
+    if (authed && ready) {
+      getNotifications()
+        .then((data) => {
+          // Map Discourse notifications to app format if needed
+          console.log('Notifications loaded:', data);
+        })
+        .catch((err) => {
+          console.error('Failed to load notifications:', err);
+        });
+    }
+  }, [authed, ready]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),

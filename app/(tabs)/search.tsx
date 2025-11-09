@@ -35,6 +35,8 @@ import {
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useSearch } from '../../shared/useSearch';
+import { searchTopics } from '../../lib/discourse';
+import { useAuth } from '../../lib/auth';
 import { useCategories } from '../../shared/useCategories';
 import { useTerets } from '../../shared/useTerets';
 import { useRecentTopics } from '../../shared/useRecentTopics';
@@ -511,21 +513,25 @@ export default function SearchScreen(): JSX.Element {
     input: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
   };
 
+  const { authed } = useAuth();
+  
   // Enhanced search handling with debouncing
-  const handleSearch = useCallback((query: string) => {
+  const handleSearch = useCallback(async (query: string) => {
     console.log('🔍 Search triggered:', query);
     setSearchQuery(query);
     
-    if (query.trim()) {
-      if (query.trim().length >= 3) {
-        console.log('🔍 Performing full search for:', query.trim());
-        // Full search for longer queries
+    if (query.trim() && query.trim().length >= 3) {
+      try {
+        // Use the new API
+        const results = await searchTopics(query.trim());
+        console.log('🔍 Search results:', results);
+        // The useSearch hook will handle the results display
         search(query);
-      } else {
-        console.log('🔍 Performing quick search for:', query.trim());
-        // Quick search for shorter queries
-        quickSearch(query);
+      } catch (error) {
+        console.error('Search error:', error);
       }
+    } else if (query.trim()) {
+      quickSearch(query);
     }
   }, [search, quickSearch]);
 

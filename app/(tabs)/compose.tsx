@@ -17,7 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
 import { useHubs } from '../../shared/useHubs';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '../../lib/auth';
+import { createTopic } from '../../lib/discourse';
 import { discourseApiService, Hub } from '../../shared/discourseApiService';
 import { 
   CaretDown, 
@@ -36,7 +37,7 @@ import {
 export default function ComposeScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
   const { hubs, isLoading: hubsLoading, error: hubsError, refreshHubs } = useHubs();
-  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
+  const { authed, ready, user } = useAuth();
   
   const [content, setContent] = useState<string>('');
   const [title, setTitle] = useState<string>('');
@@ -72,14 +73,12 @@ export default function ComposeScreen(): JSX.Element {
   // Debug authentication state
   React.useEffect(() => {
     console.log('🔐 Compose Screen Auth State:', {
-      isAuthenticated,
-      authLoading,
+      authed,
+      ready,
       user: user?.username,
-      canPost: isAuthenticated && !authLoading,
-      hasApiKey: !!process.env.EXPO_PUBLIC_DISCOURSE_API_KEY,
-      hasApiUsername: !!process.env.EXPO_PUBLIC_DISCOURSE_API_USERNAME,
+      canPost: authed && ready,
     });
-  }, [isAuthenticated, authLoading, user]);
+  }, [authed, ready, user]);
 
   // Clear state when component unmounts
   React.useEffect(() => {
@@ -109,12 +108,12 @@ export default function ComposeScreen(): JSX.Element {
 
   const handlePost = useCallback(async (): Promise<void> => {
     // Wait for auth to load before checking
-    if (authLoading) {
+    if (!ready) {
       Alert.alert('Please wait', 'Authentication is still loading...');
       return;
     }
 
-    if (!isAuthenticated) {
+    if (!authed) {
       Alert.alert(
         'Authentication Required', 
         'You need to be logged in to create posts. Please sign in first.',
@@ -154,32 +153,27 @@ export default function ComposeScreen(): JSX.Element {
       setHasError(false);
       setErrorMessage('');
 
-      const response = await discourseApiService.createByte({
+      const result = await createTopic({
         title: title.trim(),
-        content: content.trim(),
-        hubId: selectedHub.id,
+        raw: content.trim(),
+        categoryId: selectedHub.id,
       });
 
-      if (response.success) {
-        setSuccessMessage('Your post has been published!');
-        Alert.alert('Success', 'Your post has been published!');
-        setContent('');
-        setTitle('');
-        setSelectedHub(null);
-        router.back();
-      } else {
-        setHasError(true);
-        setErrorMessage(response.error || 'Failed to create post');
-        Alert.alert('Error', response.error || 'Failed to create post');
-      }
-    } catch (error) {
+      setSuccessMessage('Your post has been published!');
+      Alert.alert('Success', 'Your post has been published!');
+      setContent('');
+      setTitle('');
+      setSelectedHub(null);
+      router.back();
+    } catch (error: any) {
       setHasError(true);
-      setErrorMessage('Failed to create post. Please try again.');
-      Alert.alert('Error', 'Failed to create post. Please try again.');
+      const errorMsg = error?.message || 'Failed to create post. Please try again.';
+      setErrorMessage(errorMsg);
+      Alert.alert('Error', errorMsg);
     } finally {
       setIsCreating(false);
     }
-  }, [title, content, selectedHub, isAuthenticated, user, authLoading]);
+  }, [title, content, selectedHub, authed, user, ready]);
 
   const handleCancel = useCallback((): void => {
     router.back();
@@ -351,11 +345,11 @@ export default function ComposeScreen(): JSX.Element {
             style={[
               styles.postButton, 
               { 
-                backgroundColor: selectedHub && content.trim() && title.trim() && !isCreating && isAuthenticated && !authLoading ? colors.primary : colors.secondary,
-                opacity: selectedHub && content.trim() && title.trim() && !isCreating && isAuthenticated && !authLoading ? 1 : 0.5
+                backgroundColor: selectedHub && content.trim() && title.trim() && !isCreating && authed && ready ? colors.primary : colors.secondary,
+                opacity: selectedHub && content.trim() && title.trim() && !isCreating && authed && ready ? 1 : 0.5
               }
             ]}
-            disabled={!selectedHub || !content.trim() || !title.trim() || isCreating || !isAuthenticated || authLoading}
+            disabled={!selectedHub || !content.trim() || !title.trim() || isCreating || !authed || !ready}
           >
             <Text style={[styles.postText, { color: '#ffffff' }]}>
               {isCreating ? 'Posting...' : 'Post'}
@@ -365,7 +359,7 @@ export default function ComposeScreen(): JSX.Element {
         
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Authentication Warning */}
-          {!authLoading && !isAuthenticated && (
+          {ready && !authed && (
             renderAuthWarning()
           )}
 

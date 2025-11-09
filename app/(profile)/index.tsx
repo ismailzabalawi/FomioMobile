@@ -37,7 +37,8 @@ import {
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useDiscourseUser } from '../../shared/useDiscourseUser';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '../../lib/auth';
+import { getSession } from '../../lib/discourse';
 import { discourseApi } from '../../shared/discourseApi';
 import { router } from 'expo-router';
 
@@ -212,7 +213,21 @@ function AuthPromptCard({ onSignIn, onSignUp }: {
 export default function ProfileScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
   const { user: discourseUser, loading, error, refreshUser } = useDiscourseUser();
-  const { isAuthenticated, signOut } = useAuth();
+  const { authed, ready, user: authUser, signOut } = useAuth();
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  
+  // Load session if authenticated
+  useEffect(() => {
+    if (authed && ready) {
+      getSession()
+        .then((session) => {
+          setSessionUser(session.user || null);
+        })
+        .catch((err) => {
+          console.error('Failed to load session:', err);
+        });
+    }
+  }, [authed, ready]);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<ProfileStats>({
     posts: 0,
@@ -238,27 +253,29 @@ export default function ProfileScreen(): JSX.Element {
     error: isDark ? '#ef4444' : '#dc2626',
   };
 
-  // Use Discourse user data when authenticated, this is the source of truth
-  const user = discourseUser;
+  // Use session user or discourse user data when authenticated
+  const user = sessionUser || discourseUser || authUser;
 
   // Debug logging
   useEffect(() => {
     console.log('🔍 Profile Debug:', {
-      isAuthenticated,
+      authed,
+      ready,
+      sessionUser: sessionUser ? 'present' : 'null',
       discourseUser: discourseUser ? 'present' : 'null',
       user: user ? 'present' : 'null',
       loading,
       error
     });
-  }, [isAuthenticated, discourseUser, user, loading, error]);
+  }, [authed, ready, sessionUser, discourseUser, user, loading, error]);
 
   // Ensure user data is loaded when authenticated
   useEffect(() => {
-    if (isAuthenticated && !discourseUser && !loading) {
+    if (authed && ready && !discourseUser && !loading) {
       console.log('🔄 Profile: Triggering user data refresh');
       refreshUser();
     }
-  }, [isAuthenticated, discourseUser, loading, refreshUser]);
+  }, [authed, ready, discourseUser, loading, refreshUser]);
 
   // Update stats when user data changes
   useEffect(() => {
@@ -279,7 +296,10 @@ export default function ProfileScreen(): JSX.Element {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      if (isAuthenticated) {
+      if (authed && ready) {
+        // Refresh session
+        const session = await getSession();
+        setSessionUser(session.user || null);
         await refreshUser();
       }
     } catch (error) {
@@ -291,7 +311,7 @@ export default function ProfileScreen(): JSX.Element {
   };
 
   const handleEditProfile = () => {
-    if (!isAuthenticated) {
+    if (!authed || !ready) {
       handleSignIn();
       return;
     }
@@ -299,11 +319,11 @@ export default function ProfileScreen(): JSX.Element {
   };
 
   const handleSettings = () => {
-    if (!isAuthenticated) {
+    if (!authed || !ready) {
       handleSignIn();
       return;
     }
-    router.push('/(profile)/settings' as any);
+    router.push('/(tabs)/settings' as any);
   };
 
   const handleSignIn = () => {
@@ -364,7 +384,7 @@ export default function ProfileScreen(): JSX.Element {
   };
 
   // Show authentication prompt for unsigned users
-  if (!isAuthenticated) {
+  if (!authed || !ready) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
@@ -426,7 +446,7 @@ export default function ProfileScreen(): JSX.Element {
   }
 
   // Show loading only if we're authenticated but don't have any user data yet
-  if (loading && isAuthenticated && !discourseUser) {
+  if (loading && authed && ready && !discourseUser && !sessionUser) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
@@ -443,7 +463,7 @@ export default function ProfileScreen(): JSX.Element {
   }
 
   // Show error only if we're authenticated but there's an error and no user data
-  if (error && isAuthenticated && !discourseUser) {
+  if (error && authed && ready && !discourseUser && !sessionUser) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
@@ -465,7 +485,7 @@ export default function ProfileScreen(): JSX.Element {
   }
 
   // If we're authenticated but don't have any user data, show a fallback
-  if (isAuthenticated && !user) {
+  if (authed && ready && !user) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 

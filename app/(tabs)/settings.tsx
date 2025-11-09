@@ -38,7 +38,9 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '../../lib/auth';
+import { revokeKey } from '../../lib/discourse';
+import { router } from 'expo-router';
 import { useDiscourseUser } from '../../shared/useDiscourseUser';
 
 interface SettingItemProps {
@@ -128,7 +130,7 @@ function SettingSection({ title, children }: { title: string; children: React.Re
 
 export default function SettingsScreen(): JSX.Element {
   const { isDark, isAmoled, theme, setTheme } = useTheme();
-  const { user, isAuthenticated, signOut } = useAuth();
+  const { user, authed, signOut } = useAuth();
   const { user: discourseUser, loading: userLoading } = useDiscourseUser();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [offlineMode, setOfflineMode] = useState(false);
@@ -216,7 +218,7 @@ export default function SettingsScreen(): JSX.Element {
     }
   }, []);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -226,9 +228,30 @@ export default function SettingsScreen(): JSX.Element {
           try {
             await signOut();
             console.log('User signed out successfully');
+            router.replace('/(auth)/signin');
           } catch (error) {
             console.error('Sign out failed:', error);
             Alert.alert('Error', 'Failed to sign out. Please try again.');
+          }
+        }},
+      ]
+    );
+  };
+
+  const handleRevokeKey = () => {
+    Alert.alert(
+      'Revoke User API Key',
+      'This will revoke your API key and sign you out. You will need to reconnect to use the app.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Revoke', style: 'destructive', onPress: async () => {
+          try {
+            await revokeKey();
+            Alert.alert('Success', 'API key revoked successfully');
+            router.replace('/(auth)/signin');
+          } catch (error) {
+            console.error('Revoke failed:', error);
+            Alert.alert('Error', 'Failed to revoke key. Please try again.');
           }
         }},
       ]
@@ -475,6 +498,15 @@ export default function SettingsScreen(): JSX.Element {
 
         {/* Account Actions */}
         <SettingSection title="Account">
+          {authed && (
+            <SettingItem
+              title="Revoke User API Key"
+              subtitle="Revoke your API key and sign out"
+              icon={<Lock size={24} color={colors.destructive} weight="regular" />}
+              onPress={handleRevokeKey}
+              isDestructive={true}
+            />
+          )}
           <SettingItem
             title="Sign Out"
             subtitle="Sign out of your account"
