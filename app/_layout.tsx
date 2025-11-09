@@ -55,6 +55,10 @@ export default function RootLayout(): JSX.Element | null {
 
 function RootLayoutNav(): JSX.Element {
   const colorScheme = useColorScheme();
+  
+  // Auth routing is handled by individual route groups
+  // (auth) group redirects authenticated users
+  // (tabs) group can use AuthGate for protected routes
 
   // Set up intent replay for anonymous user actions
   useEffect(() => {

@@ -14,7 +14,7 @@ const config = Constants.expoConfig?.extra || {};
 export default function AuthCallbackScreen() {
   const { isDark } = useTheme();
   const { setAuthenticatedUser } = useAuth();
-  const params = useLocalSearchParams<{ payload?: string; client_id?: string; otp?: string }>();
+  const params = useLocalSearchParams<{ payload?: string; client_id?: string }>();
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -41,7 +41,7 @@ export default function AuthCallbackScreen() {
         setStatus('error');
         setErrorMessage('No authorization data received. Please try again.');
         setTimeout(() => {
-          router.replace('/(auth)/authorize');
+          router.replace('/(auth)/signin');
         }, 3000);
         return;
       }
@@ -54,12 +54,24 @@ export default function AuthCallbackScreen() {
         setStatus('error');
         setErrorMessage(result.error || 'Authorization failed. Please try again.');
         setTimeout(() => {
-          router.replace('/(auth)/authorize');
+          router.replace('/(auth)/signin');
         }, 3000);
         return;
       }
 
-      logger.info('AuthCallbackScreen: Authorization successful, fetching user data...');
+      logger.info('AuthCallbackScreen: Authorization successful, warming browser cookies...');
+
+      // Warm browser cookies using OTP (optional but recommended)
+      if (result.oneTimePassword) {
+        try {
+          await UserApiKeyAuth.warmBrowserCookies(result.oneTimePassword);
+        } catch (otpError) {
+          // OTP warming is optional - log but don't fail
+          logger.warn('AuthCallbackScreen: OTP warming failed (non-critical)', otpError);
+        }
+      }
+
+      logger.info('AuthCallbackScreen: Fetching user data...');
 
       // Fetch user data using the new API key
       const userResponse = await discourseApi.getCurrentUser();
@@ -108,7 +120,7 @@ export default function AuthCallbackScreen() {
         setStatus('error');
         setErrorMessage('Failed to load user data. Please try again.');
         setTimeout(() => {
-          router.replace('/(auth)/authorize');
+          router.replace('/(auth)/signin');
         }, 3000);
       }
     } catch (error: any) {
@@ -116,7 +128,7 @@ export default function AuthCallbackScreen() {
       setStatus('error');
       setErrorMessage(error.message || 'An unexpected error occurred. Please try again.');
       setTimeout(() => {
-        router.replace('/(auth)/authorize');
+        router.replace('/(auth)/signin');
       }, 3000);
     }
   };
@@ -203,4 +215,3 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
-

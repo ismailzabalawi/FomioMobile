@@ -349,7 +349,23 @@ class DiscourseApiService {
       // Authentication: Use User API Keys (per-user RSA key-based)
       try {
         const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
-        const apiKeyData = await UserApiKeyManager.getApiKey();
+        const SecureStore = require('expo-secure-store');
+        
+        // Try UserApiKeyManager first (new flow)
+        let apiKeyData = await UserApiKeyManager.getApiKey();
+        
+        // Fallback to lib/auth.ts storage format (for compatibility)
+        if (!apiKeyData || !apiKeyData.key) {
+          const key = await SecureStore.getItemAsync('disc_user_api_key');
+          const clientId = await SecureStore.getItemAsync('disc_client_id');
+          if (key) {
+            apiKeyData = {
+              key,
+              clientId: clientId || undefined,
+              createdAt: Date.now(),
+            };
+          }
+        }
         
         if (apiKeyData && apiKeyData.key) {
           headers['User-Api-Key'] = apiKeyData.key;

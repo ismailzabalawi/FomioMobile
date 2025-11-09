@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
 import { UserApiKeyAuth } from '../../shared/userApiKeyAuth';
 import { useAuth } from '../../shared/useAuth';
 import { logger } from '../../shared/logger';
+import { discourseApi } from '../../shared/discourseApi';
+import Constants from 'expo-constants';
 
-const AUTH_REDIRECT_SCHEME = process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || 'fomio://auth-callback';
-
-// Complete auth session when browser closes
-WebBrowser.maybeCompleteAuthSession();
+const config = Constants.expoConfig?.extra || {};
 
 export default function AuthorizeScreen() {
   const { isDark } = useTheme();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, setAuthenticatedUser } = useAuth();
   
   const colors = {
     background: isDark ? '#18181b' : '#fff',
@@ -27,9 +25,7 @@ export default function AuthorizeScreen() {
   };
 
   const [error, setError] = useState<string | null>(null);
-  const [authUrl, setAuthUrl] = useState<string | null>(null);
-  const [loadingUrl, setLoadingUrl] = useState(true);
-  const [isOpeningBrowser, setIsOpeningBrowser] = useState(false);
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -38,69 +34,88 @@ export default function AuthorizeScreen() {
     }
   }, [isAuthenticated, isLoading]);
 
-  // Load authorization URL
-  useEffect(() => {
-    const loadAuthUrl = async () => {
-      try {
-        setLoadingUrl(true);
-        setError(null);
-        
-        const url = await UserApiKeyAuth.initiateAuthorization({
-          applicationName: 'Fomio',
-          scopes: ['read', 'write', 'message_bus', 'notifications', 'one_time_password'],
-        });
-        
-        setAuthUrl(url);
-        logger.info('AuthorizeScreen: Authorization URL loaded');
-      } catch (err) {
-        logger.error('AuthorizeScreen: Failed to load auth URL', err);
-        setError('Failed to initialize authorization. Please try again.');
-      } finally {
-        setLoadingUrl(false);
-      }
-    };
-
-    loadAuthUrl();
-  }, []);
-
-  // Handle opening browser for authorization
-  const handleOpenBrowser = async () => {
-    if (!authUrl) {
-      setError('Authorization URL not ready. Please wait.');
-      return;
-    }
-
+  // Handle authorization
+  const handleAuthorize = async () => {
     try {
-      setIsOpeningBrowser(true);
+      setIsAuthorizing(true);
       setError(null);
       
-      logger.info('AuthorizeScreen: Opening browser for authorization', {
-        url: authUrl.replace(/public_key=[^&]+/, 'public_key=[REDACTED]'),
+      logger.info('AuthorizeScreen: Starting authorization...');
+      
+      // Initiate authorization using new flow
+      const result = await UserApiKeyAuth.initiateAuthorization({
+        applicationName: 'Fomio',
+        scopes: ['read', 'write', 'notifications', 'session_info', 'one_time_password'],
       });
 
-      // Open browser with the authorization URL
-      // The deep link will automatically route to auth-callback.tsx when Discourse redirects
-      const result = await WebBrowser.openBrowserAsync(authUrl, {
-        showInRecents: true,
-        enableBarCollapsing: false,
-      });
-
-      logger.info('AuthorizeScreen: Browser closed', { type: result.type });
-
-      // If user cancelled, show error
-      if (result.type === 'cancel') {
-        setError('Authorization cancelled. Please try again.');
+      if (!result.success) {
+        logger.error('AuthorizeScreen: Authorization failed', { error: result.error });
+        setError(result.error || 'Authorization failed. Please try again.');
+        setIsAuthorizing(false);
+        return;
       }
-      // If there's an error, show it
-      else if (result.type === 'dismiss') {
-        // User dismissed the browser - this is okay, deep linking will handle the callback
-        logger.info('AuthorizeScreen: Browser dismissed, waiting for deep link callback');
+
+      logger.info('AuthorizeScreen: Authorization successful, warming browser cookies...');
+
+      // Warm browser cookies using OTP (optional but recommended)
+      if (result.oneTimePassword) {
+        try {
+          await UserApiKeyAuth.warmBrowserCookies(result.oneTimePassword);
+        } catch (otpError) {
+          // OTP warming is optional - log but don't fail
+          logger.warn('AuthorizeScreen: OTP warming failed (non-critical)', otpError);
+        }
       }
-    } catch (err) {
-      logger.error('AuthorizeScreen: Failed to open browser', err);
-      setError('Failed to open authorization page. Please try again.');
-    } finally {
-      setIsOpeningBrowser(false);
+
+      logger.info('AuthorizeScreen: Fetching user data...');
+
+      // Fetch user data using the new API key
+      const userResponse = await discourseApi.getCurrentUser();
+
+      if (userResponse.success && userResponse.data) {
+        // Map Discourse user to AppUser
+        const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
+        const appUser = {
+          id: userResponse.data.id?.toString() || '0',
+          username: userResponse.data.username || 'unknown',
+          name: userResponse.data.name || userResponse.data.username || 'Unknown User',
+          email: userResponse.data.email || '',
+          avatar: userResponse.data.avatar_template
+            ? `${DISCOURSE_URL}${userResponse.data.avatar_template.replace('{size}', '120')}`
+            : '',
+          bio: userResponse.data.bio_raw || '',
+          followers: 0,
+          following: 0,
+          bytes: userResponse.data.topic_count || 0,
+          comments: userResponse.data.post_count || 0,
+          joinedDate: userResponse.data.created_at
+            ? new Date(userResponse.data.created_at).toLocaleDateString('en-US', {
+                month: 'long',
+                year: 'numeric',
+              })
+            : 'Unknown',
+        };
+
+        // Set authenticated user
+        await setAuthenticatedUser(appUser);
+
+        logger.info('AuthorizeScreen: User authenticated successfully', {
+          username: appUser.username,
+        });
+
+        // Navigate to main app
+        router.replace('/(tabs)');
+      } else {
+        logger.error('AuthorizeScreen: Failed to fetch user data', {
+          error: userResponse.error,
+        });
+        setError('Failed to load user data. Please try again.');
+        setIsAuthorizing(false);
+      }
+    } catch (err: any) {
+      logger.error('AuthorizeScreen: Authorization error', err);
+      setError(err.message || 'An unexpected error occurred. Please try again.');
+      setIsAuthorizing(false);
     }
   };
 
@@ -112,8 +127,7 @@ export default function AuthorizeScreen() {
   // Handle retry
   const handleRetry = () => {
     setError(null);
-    // Reload the component to regenerate URL
-    router.replace('/(auth)/authorize' as any);
+    handleAuthorize();
   };
 
   // Show loading state while checking auth
@@ -168,50 +182,41 @@ export default function AuthorizeScreen() {
       )}
 
       <View style={styles.contentContainer}>
-        {loadingUrl || !authUrl ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.secondary }]}>
-              Preparing authorization...
-            </Text>
+        <View style={styles.authorizeContainer}>
+          <View style={styles.iconContainer}>
+            <Text style={[styles.iconText, { color: colors.primary }]}>🔐</Text>
           </View>
-        ) : (
-          <View style={styles.authorizeContainer}>
-            <View style={styles.iconContainer}>
-              <Text style={[styles.iconText, { color: colors.primary }]}>🔐</Text>
-            </View>
-            <Text style={[styles.titleText, { color: colors.text }]}>
-              Authorize Fomio
-            </Text>
-            <Text style={[styles.descriptionText, { color: colors.secondary }]}>
-              You'll be redirected to TechRebels to authorize Fomio to access your account.
-            </Text>
-            <TouchableOpacity
-              onPress={handleOpenBrowser}
-              disabled={isOpeningBrowser}
-              style={[
-                styles.authorizeButton,
-                { backgroundColor: colors.primary },
-                isOpeningBrowser && styles.authorizeButtonDisabled,
-              ]}
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel="Open authorization page"
-              accessibilityHint="Opens your browser to authorize Fomio"
-            >
-              {isOpeningBrowser ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.authorizeButtonText}>
-                  Open Authorization Page
-                </Text>
-              )}
-            </TouchableOpacity>
-            <Text style={[styles.hintText, { color: colors.secondary }]}>
-              After authorizing, you'll be automatically redirected back to the app.
-            </Text>
-          </View>
-        )}
+          <Text style={[styles.titleText, { color: colors.text }]}>
+            Authorize Fomio
+          </Text>
+          <Text style={[styles.descriptionText, { color: colors.secondary }]}>
+            You'll be redirected to TechRebels to authorize Fomio to access your account.
+          </Text>
+          <TouchableOpacity
+            onPress={handleAuthorize}
+            disabled={isAuthorizing}
+            style={[
+              styles.authorizeButton,
+              { backgroundColor: colors.primary },
+              isAuthorizing && styles.authorizeButtonDisabled,
+            ]}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Open authorization page"
+            accessibilityHint="Opens your browser to authorize Fomio"
+          >
+            {isAuthorizing ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.authorizeButtonText}>
+                Authorize Fomio
+              </Text>
+            )}
+          </TouchableOpacity>
+          <Text style={[styles.hintText, { color: colors.secondary }]}>
+            After authorizing, you'll be automatically redirected back to the app.
+          </Text>
+        </View>
       </View>
 
       <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
@@ -335,9 +340,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-  },
 });
-
