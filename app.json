@@ -12,6 +12,9 @@
       "SCOPES": "read,write,session,notifications"
     },
     "userInterfaceStyle": "automatic",
+    "deepLinking": {
+      "enabled": true
+    },
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
