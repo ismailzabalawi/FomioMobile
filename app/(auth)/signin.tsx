@@ -1,58 +1,46 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '../../lib/auth';
 
 export default function SignInScreen() {
   const { isDark } = useTheme();
-  const { signIn } = useAuth();
+  const { connect, ready } = useAuth();
   const colors = {
     background: isDark ? '#18181b' : '#fff',
     primary: isDark ? '#38bdf8' : '#0ea5e9',
     text: isDark ? '#f4f4f5' : '#1e293b',
     secondary: isDark ? '#a1a1aa' : '#64748b',
     border: isDark ? '#334155' : '#0ea5e9',
-    inputBg: isDark ? '#27272a' : '#fff',
-    inputBorder: isDark ? '#334155' : '#d1d5db',
     divider: isDark ? '#334155' : '#e2e8f0',
-    label: isDark ? '#f4f4f5' : '#1e293b',
-    disabled: isDark ? '#64748b' : '#64748b',
     error: isDark ? '#ef4444' : '#dc2626',
   };
-  const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSignIn = async () => {
-    if (!identifier || !password) {
-      setError('Please fill in all fields');
-      return;
-    }
-
+  const handleConnect = async () => {
     setLoading(true);
     setError('');
 
     try {
-      const result = await signIn(identifier, password);
+      await connect();
+      // Navigate to main app on success
+      router.replace('/(tabs)' as any);
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Failed to connect. Please try again.';
+      setError(errorMessage);
       
-      if (result.success) {
-        // Navigate to main app
-        router.replace('/(tabs)' as any);
-      } else {
-        setError(result.error || 'Sign in failed');
+      // Show helpful hints for common errors
+      if (errorMessage.includes('redirect')) {
+        setError('Missing redirect in Discourse settings. Please configure the redirect URL in your Discourse admin panel.');
+      } else if (errorMessage.includes('scopes')) {
+        setError('Insufficient scopes. Please check your API key permissions.');
       }
-    } catch (err) {
-      setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSignUp = () => {
-    router.push('/(auth)/signup');
   };
 
   const handleBack = () => {
@@ -85,57 +73,30 @@ export default function SignInScreen() {
             </View>
           ) : null}
 
-          <Text style={[styles.label, { color: colors.label }]}>Email or Username</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            value={identifier}
-            onChangeText={(text) => {
-              setIdentifier(text);
-              if (error) setError('');
-            }}
-            placeholder="Enter your email or username"
-            placeholderTextColor={colors.secondary}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
-
-          <Text style={[styles.label, { color: colors.label }]}>Password</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-            value={password}
-            onChangeText={(text) => {
-              setPassword(text);
-              if (error) setError('');
-            }}
-            placeholder="Enter your password"
-            placeholderTextColor={colors.secondary}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
-
-          <View style={[styles.infoContainer, { backgroundColor: `${colors.primary}10`, borderColor: colors.primary }]}>
-            <Text style={[styles.infoText, { color: colors.primary }]}>
-              ℹ️ This app uses API key authentication. Make sure your .env file is configured with valid Discourse API credentials.
+          <View style={styles.infoContainer}>
+            <Text style={[styles.infoTitle, { color: colors.text }]}>Connect to Forum</Text>
+            <Text style={[styles.infoText, { color: colors.secondary }]}>
+              Sign in using Discourse User API Key authentication. You'll be redirected to approve access.
             </Text>
           </View>
 
           <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.disabledButton, { backgroundColor: colors.primary }]}
-            onPress={handleSignIn}
-            disabled={loading}
+            style={[styles.primaryButton, (loading || !ready) && styles.disabledButton, { backgroundColor: colors.primary }]}
+            onPress={handleConnect}
+            disabled={loading || !ready}
             accessible
             accessibilityRole="button"
-            accessibilityLabel="Sign In"
-            accessibilityHint="Sign in to your Fomio account"
+            accessibilityLabel="Connect to Forum"
+            accessibilityHint="Connect to Discourse forum using API key authentication"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-              {loading ? 'Signing In...' : 'Sign In'}
-            </Text>
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.background} />
+            ) : (
+              <Text style={[styles.primaryButtonText, { color: colors.background }]}>
+                Connect to Forum
+              </Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.divider}>
@@ -146,7 +107,7 @@ export default function SignInScreen() {
 
           <TouchableOpacity
             style={[styles.secondaryButton, { borderColor: colors.primary }]}
-            onPress={handleSignUp}
+            onPress={() => router.push('/(auth)/signup')}
             disabled={loading}
             accessible
             accessibilityRole="button"
@@ -206,16 +167,20 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
+  infoContainer: {
+    marginBottom: 32,
+    alignItems: 'center',
   },
-  input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 16,
-    marginBottom: 20,
+  infoTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  infoText: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   primaryButton: {
     paddingVertical: 16,

@@ -5,7 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "fomio",
+    "extra": {
+      "DISCOURSE_BASE_URL": "https://meta.techrebels.info",
+      "APPLICATION_NAME": "Fomio Mobile",
+      "SCOPES": "read,write,session,notifications"
+    },
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/images/splash.png",
