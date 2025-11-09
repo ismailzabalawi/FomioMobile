@@ -264,7 +264,7 @@ function ByteCard({ topic, onPress }: { topic: Topic; onPress: () => void }) {
   );
 }
 
-export default function FeedScreen(): JSX.Element {
+export default function FeedScreen(): React.ReactElement {
   const { category } = useLocalSearchParams<{ category?: string }>();
   const { isDark, isAmoled } = useTheme();
   const [terets, setTerets] = useState<Teret[]>([]);

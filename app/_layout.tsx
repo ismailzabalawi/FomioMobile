@@ -21,7 +21,7 @@ export {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout(): JSX.Element | null {
+export default function RootLayout(): React.ReactElement | null {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
@@ -53,7 +53,7 @@ export default function RootLayout(): JSX.Element | null {
   return <RootLayoutNav />;
 }
 
-function RootLayoutNav(): JSX.Element {
+function RootLayoutNav(): React.ReactElement {
   const colorScheme = useColorScheme();
 
   // Set up intent replay for anonymous user actions

@@ -34,7 +34,7 @@ import {
   SignIn
 } from 'phosphor-react-native';
 
-export default function ComposeScreen(): JSX.Element {
+export default function ComposeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { hubs, isLoading: hubsLoading, error: hubsError, refreshHubs } = useHubs();
   const { authed, ready, user } = useAuth();

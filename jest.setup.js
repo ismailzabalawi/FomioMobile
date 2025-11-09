@@ -67,29 +67,59 @@ jest.mock('react-native-reanimated', () => {
 });
 
 // Silence the warning: Animated: `useNativeDriver` is not supported
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+// Note: This path doesn't exist in React Native 0.81+, so we skip this mock
+// jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
 
-// Mock Dimensions
-jest.mock('react-native/Libraries/Utilities/Dimensions', () => ({
-  get: jest.fn(() => ({ width: 390, height: 844 })),
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
+// Mock TurboModuleRegistry for React Native 0.81+
+jest.mock('react-native/Libraries/TurboModule/TurboModuleRegistry', () => ({
+  getEnforcing: jest.fn(() => ({
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
+    getConstants: jest.fn(() => ({
+      Dimensions: { window: { width: 390, height: 844 }, screen: { width: 390, height: 844 } },
+      fontScale: 1,
+      pixelRatio: 1,
+    })),
+  })),
+  get: jest.fn(() => ({
+    getConstants: jest.fn(() => ({
+      Dimensions: { window: { width: 390, height: 844 }, screen: { width: 390, height: 844 } },
+      fontScale: 1,
+      pixelRatio: 1,
+    })),
+  })),
 }));
 
-// Mock PixelRatio
-jest.mock('react-native/Libraries/Utilities/PixelRatio', () => ({
-  get: jest.fn(() => 1),
-  roundToNearestPixel: jest.fn((value) => value),
-  getFontScale: jest.fn(() => 1),
-  getPixelSizeForLayoutSize: jest.fn((size) => size),
-}));
-
-// Mock StyleSheet
-jest.mock('react-native/Libraries/StyleSheet/StyleSheet', () => ({
-  create: jest.fn((styles) => styles),
-  hairlineWidth: 1,
-  flatten: jest.fn((style) => style),
-}));
+// Mock react-native with all necessary mocks
+jest.mock('react-native', () => {
+  const RN = jest.requireActual('react-native');
+  return {
+    ...RN,
+    StyleSheet: {
+      ...RN.StyleSheet,
+      create: jest.fn((styles) => styles),
+      hairlineWidth: 1,
+      flatten: jest.fn((style) => {
+        if (!style) return {};
+        if (Array.isArray(style)) {
+          return style.reduce((acc, s) => ({ ...acc, ...(s || {}) }), {});
+        }
+        return style;
+      }),
+    },
+    Dimensions: {
+      get: jest.fn(() => ({ width: 390, height: 844 })),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    },
+    PixelRatio: {
+      get: jest.fn(() => 1),
+      roundToNearestPixel: jest.fn((value) => value),
+      getFontScale: jest.fn(() => 1),
+      getPixelSizeForLayoutSize: jest.fn((size) => size),
+    },
+  };
+});
 
 // Global test utilities
 global.console = {

@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../components/shared/theme-provider';
 import { View, StyleSheet } from 'react-native';
 
-export default function TabLayout(): JSX.Element {
+export default function TabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { isDark, isAmoled } = useTheme();
   

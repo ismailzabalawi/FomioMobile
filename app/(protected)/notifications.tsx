@@ -147,7 +147,7 @@ function NotificationItem({
   );
 }
 
-export default function NotificationsScreen(): JSX.Element {
+export default function NotificationsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { 
     notifications, 

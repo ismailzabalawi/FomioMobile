@@ -92,7 +92,9 @@ class ErrorManager {
     // Keep only recent errors
     if (this.errors.size > this.maxErrors) {
       const oldestKey = this.errors.keys().next().value;
-      this.errors.delete(oldestKey);
+      if (oldestKey !== undefined) {
+        this.errors.delete(oldestKey);
+      }
     }
     
     return appError;

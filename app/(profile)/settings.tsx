@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { AuthGate } from '../../components/shared/auth-gate';
 import { AuthPromptView } from '../../components/shared/auth-prompt-view';
 
-export default function ProfileSettingsScreen(): JSX.Element {
+export default function ProfileSettingsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   
   const colors = {

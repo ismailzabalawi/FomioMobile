@@ -128,7 +128,7 @@ function SettingSection({ title, children }: { title: string; children: React.Re
   );
 }
 
-export default function SettingsScreen(): JSX.Element {
+export default function SettingsScreen(): React.ReactElement {
   const { isDark, isAmoled, theme, setTheme } = useTheme();
   const { user, authed, signOut } = useAuth();
   const { user: discourseUser, loading: userLoading } = useDiscourseUser();
