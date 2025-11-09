@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { CheckCircle, XCircle, Warning, Info } from 'phosphor-react-native';
 import { useTheme } from '../shared/theme-provider';
 import { discourseApi } from '../../shared/discourseApi';
 import { useAuth } from '../../shared/useAuth';
+import { UserApiKeyManager } from '../../shared/userApiKeyManager';
 
 interface TestResult {
   name: string;
@@ -26,6 +27,7 @@ export function AuthTestScreen() {
   const { signIn, signOut, user, isAuthenticated } = useAuth();
   const [results, setResults] = useState<TestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
 
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -38,6 +40,20 @@ export function AuthTestScreen() {
     warning: isDark ? '#f59e0b' : '#d97706',
     info: isDark ? '#3b82f6' : '#0ea5e9',
   };
+
+  useEffect(() => {
+    const checkApiKeyStatus = async () => {
+      try {
+        const hasKey = await UserApiKeyManager.hasApiKey();
+        setHasApiKey(hasKey);
+      } catch (error) {
+        console.warn('AuthTestScreen: Failed to check API key status', error);
+        setHasApiKey(false);
+      }
+    };
+
+    checkApiKeyStatus();
+  }, []);
 
   const addResult = (result: TestResult) => {
     setResults(prev => [...prev, result]);
@@ -270,10 +286,13 @@ export function AuthTestScreen() {
             Discourse URL: {process.env.EXPO_PUBLIC_DISCOURSE_URL || 'Not configured'}
           </Text>
           <Text style={[styles.cardText, { color: colors.secondary }]}>
-            API Key: {process.env.EXPO_PUBLIC_DISCOURSE_API_KEY ? 'Configured' : 'Not configured'}
+            Auth Redirect Scheme: {process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || 'fomio://auth-callback'}
           </Text>
           <Text style={[styles.cardText, { color: colors.secondary }]}>
-            API Username: {process.env.EXPO_PUBLIC_DISCOURSE_API_USERNAME || 'Not configured'}
+            Authentication Method: User API Keys
+          </Text>
+          <Text style={[styles.cardText, { color: colors.secondary }]}>
+            API Key Status: {hasApiKey === null ? 'Checking...' : (hasApiKey ? 'Configured' : 'Not configured')}
           </Text>
         </View>
 

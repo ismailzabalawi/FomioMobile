@@ -3,6 +3,8 @@ import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
+import { AuthGate } from '../../components/shared/auth-gate';
+import { AuthPromptView } from '../../components/shared/auth-prompt-view';
 
 export default function EditProfileScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
@@ -20,12 +22,21 @@ export default function EditProfileScreen(): JSX.Element {
         showBackButton={true}
         showProfileButton={false}
       />
-      <View style={styles.content}>
-        <Text style={[styles.title, { color: colors.text }]}>Edit Profile</Text>
-        <Text style={[styles.subtitle, { color: colors.secondary }]}>
-          Edit profile functionality coming soon...
-        </Text>
-      </View>
+      <AuthGate
+        fallback={
+          <AuthPromptView
+            title="Sign in to edit your profile"
+            subtitle="Log in to update your profile information and preferences"
+          />
+        }
+      >
+        <View style={styles.content}>
+          <Text style={[styles.title, { color: colors.text }]}>Edit Profile</Text>
+          <Text style={[styles.subtitle, { color: colors.secondary }]}>
+            Edit profile functionality coming soon...
+          </Text>
+        </View>
+      </AuthGate>
     </SafeAreaView>
   );
 }

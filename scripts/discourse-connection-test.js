@@ -107,8 +107,8 @@ function makeRequest(url, options = {}) {
   });
 }
 
-// Test Discourse connection
-async function testConnection(baseUrl, apiKey, apiUsername) {
+// Test Discourse connection (public endpoints only - uses User API Keys for auth)
+async function testConnection(baseUrl) {
   section('🔍 Testing Discourse Connection');
   
   let passedTests = 0;
@@ -131,53 +131,11 @@ async function testConnection(baseUrl, apiKey, apiUsername) {
     warning('Check that the URL is correct and the site is online');
   }
   
-  // Test 2: API authentication
+  // Test 2: Categories endpoint (public)
   totalTests++;
-  info('\nTest 2: Testing API authentication...');
+  info('\nTest 2: Testing categories endpoint (public)...');
   try {
-    const headers = {
-      'Api-Key': apiKey,
-      'Api-Username': apiUsername,
-      'Content-Type': 'application/json',
-    };
-    
-    const response = await makeRequest(`${baseUrl}/session/current.json`, { headers });
-    
-    if (response.status === 200 && response.data) {
-      if (response.data.current_user) {
-        success('API authentication successful');
-        info(`  Authenticated as: ${response.data.current_user.username}`);
-        info(`  User ID: ${response.data.current_user.id}`);
-        info(`  Trust Level: ${response.data.current_user.trust_level}`);
-        passedTests++;
-      } else {
-        warning('API key works but no user authenticated');
-        info('  This is normal for some API key configurations');
-        passedTests++;
-      }
-    } else if (response.status === 403) {
-      error('API key authentication failed (403 Forbidden)');
-      warning('Check that your API key has the correct permissions');
-    } else if (response.status === 401) {
-      error('API key is invalid (401 Unauthorized)');
-      warning('Regenerate your API key in Discourse admin panel');
-    } else {
-      error(`API authentication failed with status ${response.status}`);
-    }
-  } catch (e) {
-    error(`API authentication error: ${e.message}`);
-  }
-  
-  // Test 3: Categories endpoint
-  totalTests++;
-  info('\nTest 3: Testing categories endpoint...');
-  try {
-    const headers = {
-      'Api-Key': apiKey,
-      'Api-Username': apiUsername,
-    };
-    
-    const response = await makeRequest(`${baseUrl}/categories.json`, { headers });
+    const response = await makeRequest(`${baseUrl}/categories.json`);
     
     if (response.status === 200 && response.data) {
       success('Categories endpoint working');
@@ -188,22 +146,18 @@ async function testConnection(baseUrl, apiKey, apiUsername) {
       }
       passedTests++;
     } else {
-      error(`Categories endpoint failed with status ${response.status}`);
+      warning(`Categories endpoint returned status ${response.status}`);
+      info('  Note: Some endpoints may require authentication');
     }
   } catch (e) {
     error(`Categories endpoint error: ${e.message}`);
   }
   
-  // Test 4: Latest topics endpoint
+  // Test 3: Latest topics endpoint (public)
   totalTests++;
-  info('\nTest 4: Testing latest topics endpoint...');
+  info('\nTest 3: Testing latest topics endpoint (public)...');
   try {
-    const headers = {
-      'Api-Key': apiKey,
-      'Api-Username': apiUsername,
-    };
-    
-    const response = await makeRequest(`${baseUrl}/latest.json`, { headers });
+    const response = await makeRequest(`${baseUrl}/latest.json`);
     
     if (response.status === 200 && response.data) {
       success('Latest topics endpoint working');
@@ -214,32 +168,16 @@ async function testConnection(baseUrl, apiKey, apiUsername) {
       }
       passedTests++;
     } else {
-      error(`Latest topics endpoint failed with status ${response.status}`);
+      warning(`Latest topics endpoint returned status ${response.status}`);
+      info('  Note: Some endpoints may require authentication');
     }
   } catch (e) {
     error(`Latest topics endpoint error: ${e.message}`);
   }
   
-  // Test 5: Search endpoint
-  totalTests++;
-  info('\nTest 5: Testing search endpoint...');
-  try {
-    const headers = {
-      'Api-Key': apiKey,
-      'Api-Username': apiUsername,
-    };
-    
-    const response = await makeRequest(`${baseUrl}/search.json?q=test`, { headers });
-    
-    if (response.status === 200) {
-      success('Search endpoint working');
-      passedTests++;
-    } else {
-      error(`Search endpoint failed with status ${response.status}`);
-    }
-  } catch (e) {
-    error(`Search endpoint error: ${e.message}`);
-  }
+  info('\nNote: This app uses User API Keys for authentication.');
+  info('Users authorize through the Discourse web interface.');
+  info('No admin API credentials are needed.');
   
   // Summary
   section('📊 Test Summary');
@@ -254,10 +192,9 @@ async function testConnection(baseUrl, apiKey, apiUsername) {
   } else {
     warning('\n⚠️  Some tests failed. Please review the errors above.');
     info('\nTroubleshooting:');
-    info('1. Verify your API key is correct and has proper permissions');
-    info('2. Check that your Discourse instance is accessible');
-    info('3. Ensure CORS is configured if testing from web');
-    info('4. See QUICK_START.md for detailed setup instructions');
+    info('1. Check that your Discourse instance is accessible');
+    info('2. Ensure CORS is configured if testing from web');
+    info('3. Note: This app uses User API Keys - users authorize through web interface');
   }
   
   return passedTests === totalTests;
@@ -269,8 +206,6 @@ function validateEnv(env) {
   
   const required = [
     'EXPO_PUBLIC_DISCOURSE_URL',
-    'EXPO_PUBLIC_DISCOURSE_API_KEY',
-    'EXPO_PUBLIC_DISCOURSE_API_USERNAME',
   ];
   
   let valid = true;
@@ -283,6 +218,8 @@ function validateEnv(env) {
       success(`${key} is set`);
     }
   }
+  
+  info('Note: This app uses User API Keys - no admin API credentials needed');
   
   // Check URL format
   if (env.EXPO_PUBLIC_DISCOURSE_URL) {
@@ -334,10 +271,8 @@ async function main() {
   
   // Test connection
   const baseUrl = env.EXPO_PUBLIC_DISCOURSE_URL.replace(/\/$/, '');
-  const apiKey = env.EXPO_PUBLIC_DISCOURSE_API_KEY;
-  const apiUsername = env.EXPO_PUBLIC_DISCOURSE_API_USERNAME;
   
-  const success = await testConnection(baseUrl, apiKey, apiUsername);
+  const success = await testConnection(baseUrl);
   
   process.exit(success ? 0 : 1);
 }

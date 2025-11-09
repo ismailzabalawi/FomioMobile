@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { discourseApiService } from './discourseApiService';
+import { discourseApi } from './discourseApi';
 import { logger } from './logger';
 
 export interface PostActionState {
@@ -30,8 +30,8 @@ export function usePostActions(
 
     try {
       const response = state.isLiked 
-        ? await discourseApiService.unlikePost(postId)
-        : await discourseApiService.likePost(postId);
+        ? await discourseApi.unlikePost(postId)
+        : await discourseApi.likePost(postId);
 
       if (response.success) {
         setState(prev => ({
@@ -61,8 +61,8 @@ export function usePostActions(
 
     try {
       const response = state.isBookmarked 
-        ? await discourseApiService.unbookmarkPost(postId)
-        : await discourseApiService.bookmarkPost(postId);
+        ? await discourseApi.unbookmarkPost(postId)
+        : await discourseApi.bookmarkPost(postId);
 
       if (response.success) {
         setState(prev => ({
@@ -90,7 +90,7 @@ export function usePostActions(
     setState(prev => ({ ...prev, isLoading: true, error: undefined }));
 
     try {
-      const response = await discourseApiService.createComment({
+      const response = await discourseApi.createComment({
         content,
         byteId: postId,
         replyToPostNumber

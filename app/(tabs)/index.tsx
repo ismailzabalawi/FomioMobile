@@ -1,14 +1,18 @@
 import React from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '../../components/shared/theme-provider';
 import { ByteCard } from '../../components/feed/ByteCard';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useFeed, FeedItem } from '../../shared/useFeed';
+import { useAuth } from '../../lib/auth';
+import { getSession, getLatest } from '../../lib/discourse';
+import { useEffect, useState } from 'react';
 
 export default function HomeScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
+  const { authed, ready, user } = useAuth();
   const { 
     items, 
     isLoading, 
@@ -21,12 +25,28 @@ export default function HomeScreen(): JSX.Element {
     retry 
   } = useFeed();
   
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  
+  // Load user session if authenticated
+  useEffect(() => {
+    if (authed && ready) {
+      getSession()
+        .then((session) => {
+          setCurrentUser(session.user || user);
+        })
+        .catch((err) => {
+          console.error('Failed to load session:', err);
+        });
+    }
+  }, [authed, ready]);
+  
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
     text: isDark ? '#f4f4f5' : '#1e293b',
     secondary: isDark ? '#a1a1aa' : '#64748b',
     border: isDark ? '#334155' : '#e2e8f0',
     error: isDark ? '#ef4444' : '#dc2626',
+    primary: isDark ? '#38bdf8' : '#0ea5e9',
   };
 
   const handleLike = (id: number): void => {
@@ -166,6 +186,35 @@ export default function HomeScreen(): JSX.Element {
     );
   };
 
+  // Show auth prompt if not authenticated
+  if (!authed && ready) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <HeaderBar 
+          title="Feed" 
+          showBackButton={false}
+          showProfileButton={true}
+        />
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: colors.text, marginBottom: 16 }]}>
+            Connect to Forum
+          </Text>
+          <Text style={[styles.loadingText, { color: colors.secondary, fontSize: 14 }]}>
+            Sign in to see your feed
+          </Text>
+          <TouchableOpacity
+            style={[styles.connectButton, { backgroundColor: colors.primary, marginTop: 20 }]}
+            onPress={() => router.push('/(auth)/signin')}
+          >
+            <Text style={[styles.connectButtonText, { color: '#ffffff' }]}>
+              Sign In
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (isLoading && items.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -257,5 +306,15 @@ const styles = StyleSheet.create({
   },
   feedContainer: {
     paddingVertical: 8,
+  },
+  connectButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  connectButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 

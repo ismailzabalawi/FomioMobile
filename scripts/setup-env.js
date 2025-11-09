@@ -99,28 +99,12 @@ async function setupEnvironment() {
       return;
     }
 
-    // Get API Key
-    logStep('🔑 API Credentials');
-    logInfo('You need to create an API key in your Discourse admin panel:');
-    logInfo('1. Log into your Discourse admin panel');
-    logInfo('2. Go to Admin → API → API Keys');
-    logInfo('3. Create a new API key with appropriate permissions');
+    // Note about User API Keys
+    logStep('🔑 Authentication');
+    logInfo('This app uses User API Keys for authentication.');
+    logInfo('Users will authorize the app through the Discourse web interface.');
+    logInfo('No admin API credentials are needed.');
     logInfo('');
-    
-    const apiKey = await question('API Key: ');
-    if (!apiKey || apiKey === 'your_api_key_here') {
-      logError('Please provide a valid API key.');
-      rl.close();
-      return;
-    }
-
-    // Get API Username
-    const apiUsername = await question('API Username: ');
-    if (!apiUsername || apiUsername === 'your_api_username_here') {
-      logError('Please provide a valid API username.');
-      rl.close();
-      return;
-    }
 
     // Security settings
     logStep('🔒 Security Settings');
@@ -137,9 +121,9 @@ async function setupEnvironment() {
 # Your Discourse instance URL (must be HTTPS in production)
 EXPO_PUBLIC_DISCOURSE_URL=${discourseUrl}
 
-# Discourse API credentials (create these in your Discourse admin panel)
-EXPO_PUBLIC_DISCOURSE_API_KEY=${apiKey}
-EXPO_PUBLIC_DISCOURSE_API_USERNAME=${apiUsername}
+# Authentication: This app uses User API Keys
+# Users authorize the app through the Discourse web interface
+# No admin API credentials are needed
 
 # Security Settings
 EXPO_PUBLIC_ENABLE_HTTPS_ONLY=${enableHttpsOnly.toLowerCase() !== 'n' ? 'true' : 'false'}
@@ -157,55 +141,18 @@ EXPO_PUBLIC_ENABLE_MOCK_DATA=false
     logStep('✅ Configuration Complete');
     logSuccess('Your .env file has been created successfully!');
     logInfo(`Discourse URL: ${discourseUrl}`);
-    logInfo(`API Username: ${apiUsername}`);
     logInfo(`HTTPS Only: ${enableHttpsOnly.toLowerCase() !== 'n' ? 'Enabled' : 'Disabled'}`);
     logInfo(`Rate Limiting: ${enableRateLimiting.toLowerCase() !== 'n' ? 'Enabled' : 'Disabled'}`);
     logInfo(`Debug Mode: ${enableDebugMode.toLowerCase() === 'y' ? 'Enabled' : 'Disabled'}`);
     
     logStep('🧪 Next Steps');
-    logInfo('1. Test your configuration:');
-    logInfo('   node scripts/test-auth.js');
+    logInfo('1. Start your Expo app:');
+    logInfo('   npm start');
     logInfo('');
-    logInfo('2. Start your Expo app and test the authentication flow');
+    logInfo('2. Test the User API Key authentication flow');
+    logInfo('   Users will authorize the app through the Discourse web interface');
     logInfo('');
     logInfo('3. Check the profile page to see real Discourse data');
-    
-    // Test the configuration immediately
-    logStep('🔍 Testing Configuration');
-    logInfo('Running authentication test...');
-    
-    // Set environment variables for the test
-    const envVars = envContent.split('\n')
-      .filter(line => line.includes('='))
-      .reduce((acc, line) => {
-        const [key, value] = line.split('=');
-        if (key && value) {
-          acc[key.trim()] = value.trim();
-        }
-        return acc;
-      }, {});
-    
-    // Set environment variables
-    Object.assign(process.env, envVars);
-    
-    // Import and run the test
-    try {
-      const { testDiscourseConnection, testApiAuthentication } = require('./test-auth.js');
-      
-      const connectionOk = await testDiscourseConnection();
-      if (connectionOk) {
-        const authOk = await testApiAuthentication();
-        if (authOk) {
-          logSuccess('🎉 Configuration test passed! Your Discourse setup is working correctly.');
-        } else {
-          logWarning('⚠️  Connection works but API authentication failed. Check your API credentials.');
-        }
-      } else {
-        logError('❌ Connection test failed. Please check your Discourse URL.');
-      }
-    } catch (error) {
-      logError(`Test failed: ${error.message}`);
-    }
 
   } catch (error) {
     logError(`Setup failed: ${error.message}`);

@@ -1,3 +1,7 @@
+// Import Constants for Expo config
+import Constants from 'expo-constants';
+const config = Constants.expoConfig?.extra || {};
+
 // Environment-aware storage import
 let AsyncStorage: any;
 
@@ -52,8 +56,6 @@ const VALIDATION_PATTERNS = {
 // Discourse API Configuration
 export interface DiscourseConfig {
   baseUrl: string;
-  apiKey?: string;
-  apiUsername?: string;
 }
 
 // Simplified App Entity Types (Hubs → Bytes → Comments)
@@ -199,6 +201,7 @@ export interface DiscourseApiResponse<T> {
   data?: T;
   error?: string;
   errors?: string[];
+  status?: number; // HTTP status code for error handling
 }
 
 export interface LoginResponse {
@@ -254,14 +257,6 @@ class SecurityValidator {
     if (!this.validateUrl(config.baseUrl)) {
       throw new Error('Invalid base URL format');
     }
-
-    if (config.apiKey && !this.validateToken(config.apiKey)) {
-      throw new Error('Invalid API key format');
-    }
-
-    if (config.apiUsername && !this.validateUsername(config.apiUsername)) {
-      throw new Error('Invalid API username format');
-    }
   }
 }
 
@@ -297,7 +292,6 @@ class RateLimiter {
 
 class DiscourseApiService {
   private config: DiscourseConfig;
-  private authToken: string | null = null;
   private rateLimiter: RateLimiter = new RateLimiter();
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -306,46 +300,6 @@ class DiscourseApiService {
     // Validate configuration before setting
     SecurityValidator.validateConfig(config);
     this.config = config;
-    this.loadAuthToken();
-  }
-
-  // Secure token storage with encryption
-  private async loadAuthToken(): Promise<void> {
-    try {
-      const token = await AsyncStorage.getItem('discourse_auth_token');
-      if (token && SecurityValidator.validateToken(token)) {
-        this.authToken = token;
-      } else if (token) {
-        // Invalid token found, clear it
-        await this.clearAuthToken();
-      }
-    } catch (error) {
-      console.error('Failed to load auth token:', error);
-      // Clear potentially corrupted token
-      await this.clearAuthToken();
-    }
-  }
-
-  private async saveAuthToken(token: string): Promise<void> {
-    try {
-      if (!SecurityValidator.validateToken(token)) {
-        throw new Error('Invalid token format');
-      }
-      await AsyncStorage.setItem('discourse_auth_token', token);
-      this.authToken = token;
-    } catch (error) {
-      console.error('Failed to save auth token:', error);
-      throw new Error('Failed to securely store authentication token');
-    }
-  }
-
-  private async clearAuthToken(): Promise<void> {
-    try {
-      await AsyncStorage.removeItem('discourse_auth_token');
-      this.authToken = null;
-    } catch (error) {
-      console.error('Failed to clear auth token:', error);
-    }
   }
 
   // Enhanced HTTP Request Helper with security, timeout, retry logic, and caching
@@ -372,7 +326,7 @@ class DiscourseApiService {
       
       // Check cache for GET requests
       if (this.isCacheableRequest(method, endpoint)) {
-        const cacheKey = this.getCacheKey(endpoint, options);
+        const cacheKey = await this.getCacheKey(endpoint, options);
         const cachedData = this.getCachedData<T>(cacheKey);
         if (cachedData) {
           return {
@@ -392,17 +346,22 @@ class DiscourseApiService {
         ...(options.headers as Record<string, string> | undefined),
       };
 
-      // Add API credentials if available
-      if (this.config.apiKey) {
-        headers['Api-Key'] = this.config.apiKey;
-      }
-      if (this.config.apiUsername) {
-        headers['Api-Username'] = this.config.apiUsername;
-      }
-
-      // Add authentication token if available
-      if (this.authToken) {
-        headers['Authorization'] = `Bearer ${this.authToken}`;
+      // Authentication: Use User API Keys (per-user RSA key-based)
+      try {
+        const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
+        const apiKeyData = await UserApiKeyManager.getApiKey();
+        
+        if (apiKeyData && apiKeyData.key) {
+          headers['User-Api-Key'] = apiKeyData.key;
+          if (apiKeyData.clientId) {
+            headers['User-Api-Client-Id'] = apiKeyData.clientId;
+          }
+          console.log('🔑 Using User API Key for authentication');
+        } else {
+          console.log('⚠️ User API Key not found, request may fail');
+        }
+      } catch (error) {
+        console.warn('Failed to load User API Key', error);
       }
 
       // Sanitize request body if present
@@ -437,6 +396,27 @@ class DiscourseApiService {
           const errorData = await response.json().catch(() => ({}));
           console.error(`❌ HTTP Error ${response.status}:`, errorData);
           
+          // Handle 401/403 (unauthorized/forbidden) - API key expired or invalid
+          if (response.status === 401 || response.status === 403) {
+            console.log('🔒 API key expired or invalid (401/403), clearing authentication');
+            
+            // Clear User API Key
+            try {
+              const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
+              await UserApiKeyManager.clearApiKey();
+              console.log('🔑 User API Key cleared due to 401/403');
+            } catch (error) {
+              console.warn('Failed to clear User API Key', error);
+            }
+            
+            return {
+              success: false,
+              error: 'Authorization expired. Please authorize the app again.',
+              errors: errorData.errors,
+              status: response.status, // Include status for error handling
+            };
+          }
+          
           // Retry on 5xx errors (server errors)
           if (response.status >= 500 && retries > 0) {
             console.log(`🔄 Retrying due to server error (${response.status})`);
@@ -448,6 +428,7 @@ class DiscourseApiService {
             success: false,
             error: errorData.message || `HTTP ${response.status}: ${response.statusText}`,
             errors: errorData.errors,
+            status: response.status, // Include status for error handling
           };
         }
 
@@ -456,7 +437,7 @@ class DiscourseApiService {
 
         // Cache successful GET requests
         if (this.isCacheableRequest(method, endpoint)) {
-          const cacheKey = this.getCacheKey(endpoint, options);
+          const cacheKey = await this.getCacheKey(endpoint, options);
           this.setCachedData(cacheKey, data);
         }
 
@@ -531,9 +512,16 @@ class DiscourseApiService {
   }
 
   // Cache management methods
-  private getCacheKey(endpoint: string, options: RequestInit = {}): string {
+  private async getCacheKey(endpoint: string, options: RequestInit = {}): Promise<string> {
     const bodyHash = options.body ? btoa(String(options.body)).slice(0, 8) : '';
-    return `${endpoint}_${bodyHash}_${this.authToken ? 'auth' : 'public'}`;
+    // Check if User API Key exists for cache key differentiation
+    try {
+      const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
+      const hasApiKey = await UserApiKeyManager.hasApiKey();
+      return `${endpoint}_${bodyHash}_${hasApiKey ? 'auth' : 'public'}`;
+    } catch {
+      return `${endpoint}_${bodyHash}_public`;
+    }
   }
 
   private getCachedData<T>(cacheKey: string): T | null {
@@ -585,139 +573,32 @@ class DiscourseApiService {
     return obj;
   }
 
-  // Authentication API with enhanced security
-  async login(identifier: string, password: string): Promise<DiscourseApiResponse<LoginResponse>> {
-    try {
-      // Validate inputs - identifier can be either email or username
-      if (!identifier || identifier.trim().length === 0) {
-        return { success: false, error: 'Email or username is required' };
-      }
-      if (!password || password.length < 6) {
-        return { success: false, error: 'Password must be at least 6 characters' };
-      }
-
-      console.log(`🔐 Attempting login to: ${this.config.baseUrl}`);
-      console.log(`📧 Login identifier: ${identifier}`);
-
-      // For Discourse, we need to use the session endpoint with proper credentials
-      // Discourse uses session-based authentication with API key and username
-      if (!this.config.apiKey || !this.config.apiUsername) {
-        return { 
-          success: false, 
-          error: 'API credentials not configured. Please set EXPO_PUBLIC_DISCOURSE_API_KEY and EXPO_PUBLIC_DISCOURSE_API_USERNAME' 
-        };
-      }
-
-      // Try to get current user to verify authentication
-      const currentUserResponse = await this.makeRequest<DiscourseUser>('/session/current.json');
-      
-      if (currentUserResponse.success && currentUserResponse.data) {
-        console.log('✅ Already authenticated as:', currentUserResponse.data.username);
-        // Create a mock token for the existing session
-        const mockToken = `session_${Date.now()}`;
-        await this.saveAuthToken(mockToken);
-        return {
-          success: true,
-          data: {
-            user: currentUserResponse.data,
-            token: mockToken,
-          },
-        };
-      }
-
-      // If not authenticated, try to authenticate using the provided credentials
-      // For Discourse API, we authenticate using API key and username in headers
-      // The actual user login should be done through the web interface
-      console.log('❌ Not authenticated. Please log in through the Discourse web interface first.');
-      return {
-        success: false,
-        error: 'Please log in through the Discourse web interface first, then use the API credentials in your .env file',
-      };
-    } catch (error) {
-      console.error('🚨 Login error:', error);
-      return {
-        success: false,
-        error: 'Authentication failed - please check your credentials and try again',
-      };
-    }
-  }
-
-  // New method for API key authentication (for admin/system users)
-  async authenticateWithApiKey(): Promise<DiscourseApiResponse<LoginResponse>> {
-    try {
-      if (!this.config.apiKey || !this.config.apiUsername) {
-        return { 
-          success: false, 
-          error: 'API credentials not configured' 
-        };
-      }
-
-      console.log(`🔐 Authenticating with API key as: ${this.config.apiUsername}`);
-
-      // Try to get current user to verify authentication
-      const currentUserResponse = await this.makeRequest<DiscourseUser>('/session/current.json');
-      
-      if (currentUserResponse.success && currentUserResponse.data) {
-        console.log('✅ API authentication successful as:', currentUserResponse.data.username);
-        const mockToken = `api_${Date.now()}`;
-        await this.saveAuthToken(mockToken);
-        return {
-          success: true,
-          data: {
-            user: currentUserResponse.data,
-            token: mockToken,
-          },
-        };
-      }
-
-      return {
-        success: false,
-        error: 'API authentication failed - check your API key and username',
-      };
-    } catch (error) {
-      console.error('🚨 API authentication error:', error);
-      return {
-        success: false,
-        error: 'API authentication failed',
-      };
-    }
-  }
-
-  async logout(): Promise<DiscourseApiResponse<void>> {
-    try {
-      const response = await this.makeRequest<void>('/session/current', {
-        method: 'DELETE',
-      });
-
-      await this.clearAuthToken();
-      return response;
-    } catch (error) {
-      // Always clear token even if logout fails
-      await this.clearAuthToken();
-      return {
-        success: false,
-        error: 'Logout failed',
-      };
-    }
-  }
 
   async getCurrentUser(): Promise<DiscourseApiResponse<DiscourseUser>> {
-    const response = await this.makeRequest<DiscourseUser>('/session/current.json');
+    const response = await this.makeRequest<any>('/session/current.json');
     
-    // Debug logging to understand the response structure
+    // Discourse API returns { current_user: {...} } not the user directly
     if (response.success && response.data) {
+      const userData = response.data.current_user || response.data;
+      
+      // Debug logging to understand the response structure
       console.log('🔍 getCurrentUser response:', {
-        hasId: !!response.data.id,
-        id: response.data.id,
-        username: response.data.username,
-        name: response.data.name,
-        email: response.data.email,
-        avatar_template: response.data.avatar_template
+        hasId: !!userData.id,
+        id: userData.id,
+        username: userData.username,
+        name: userData.name,
+        email: userData.email,
+        avatar_template: userData.avatar_template
       });
-    } else {
-      console.log('🔍 getCurrentUser failed:', response.error);
+      
+      // Return the extracted user data
+      return {
+        success: true,
+        data: userData as DiscourseUser,
+      };
     }
     
+    console.log('🔍 getCurrentUser failed:', response.error);
     return response;
   }
 
@@ -903,8 +784,13 @@ class DiscourseApiService {
     return `${this.config.baseUrl}${sanitizedTemplate.replace('{size}', size.toString())}`;
   }
 
-  isAuthenticated(): boolean {
-    return !!this.authToken && SecurityValidator.validateToken(this.authToken);
+  async isAuthenticated(): Promise<boolean> {
+    try {
+      const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
+      return await UserApiKeyManager.hasApiKey();
+    } catch {
+      return false;
+    }
   }
 
   updateConfig(config: Partial<DiscourseConfig>): void {
@@ -914,19 +800,19 @@ class DiscourseApiService {
   }
 
   // Security audit method
-  getSecurityStatus(): {
+  async getSecurityStatus(): Promise<{
     httpsEnabled: boolean;
     rateLimitingEnabled: boolean;
     debugMode: boolean;
     mockDataEnabled: boolean;
     isAuthenticated: boolean;
-  } {
+  }> {
     return {
       httpsEnabled: SECURITY_CONFIG.HTTPS_ONLY,
       rateLimitingEnabled: SECURITY_CONFIG.RATE_LIMITING,
       debugMode: SECURITY_CONFIG.DEBUG_MODE,
       mockDataEnabled: SECURITY_CONFIG.MOCK_DATA,
-      isAuthenticated: this.isAuthenticated(),
+      isAuthenticated: await this.isAuthenticated(),
     };
   }
 
@@ -978,7 +864,7 @@ class DiscourseApiService {
 
   // Force refresh cache for specific endpoint
   async refreshCache(endpoint: string): Promise<void> {
-    const cacheKey = this.getCacheKey(endpoint);
+    const cacheKey = await this.getCacheKey(endpoint);
     this.cache.delete(cacheKey);
     console.log(`🔄 Cache refreshed for: ${endpoint}`);
   }
@@ -1019,7 +905,8 @@ class DiscourseApiService {
     }
 
     // Check authentication
-    if (!this.isAuthenticated()) {
+    const isAuth = await this.isAuthenticated();
+    if (!isAuth) {
       return { success: false, error: 'Authentication required to create topics' };
     }
 
@@ -1039,7 +926,6 @@ class DiscourseApiService {
       category: sanitizedData.category,
       tags: sanitizedData.tags,
       archetype: sanitizedData.archetype,
-      authToken: this.authToken ? 'present' : 'missing'
     });
 
     // Use the correct Discourse API endpoint for creating topics
@@ -1060,7 +946,8 @@ class DiscourseApiService {
     }
 
     // Check authentication
-    if (!this.isAuthenticated()) {
+    const isAuth = await this.isAuthenticated();
+    if (!isAuth) {
       return { success: false, error: 'Authentication required to create posts' };
     }
 
@@ -1123,23 +1010,39 @@ class DiscourseApiService {
     });
   }
 
-  async bookmarkPost(postId: number): Promise<DiscourseApiResponse<any>> {
-    return this.makeRequest<any>(`/post_actions`, {
-      method: 'POST',
-      body: JSON.stringify({
-        id: postId,
-        post_action_type_id: 1, // Bookmark action type
-      }),
-    });
+  async bookmarkPost(postId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      const response = await this.makeRequest<any>(`/post_actions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          id: postId,
+          post_action_type_id: 1, // Bookmark action type
+        }),
+      });
+      return {
+        success: response.success,
+        error: response.error,
+      };
+    } catch (error) {
+      return { success: false, error: 'Network error bookmarking post' };
+    }
   }
 
-  async unbookmarkPost(postId: number): Promise<DiscourseApiResponse<any>> {
-    return this.makeRequest<any>(`/post_actions/${postId}`, {
-      method: 'DELETE',
-      body: JSON.stringify({
-        post_action_type_id: 1, // Bookmark action type
-      }),
-    });
+  async unbookmarkPost(postId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      const response = await this.makeRequest<any>(`/post_actions/${postId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({
+          post_action_type_id: 1, // Bookmark action type
+        }),
+      });
+      return {
+        success: response.success,
+        error: response.error,
+      };
+    } catch (error) {
+      return { success: false, error: 'Network error unbookmarking post' };
+    }
   }
 
   // Comment/Reply Actions
@@ -1492,23 +1395,57 @@ class DiscourseApiService {
         endpoint = `/c/${hubId}.json`;
       }
       if (page > 0) {
-        endpoint += `?page=${page}`;
+        // Handle query params correctly - use ? or & depending on existing params
+        endpoint += endpoint.includes('?') ? `&page=${page}` : `?page=${page}`;
       }
 
+      console.log('🔍 getBytes: Fetching from endpoint:', endpoint);
       const response = await this.makeRequest<any>(endpoint);
+      
+      console.log('🔍 getBytes: Response received', {
+        success: response.success,
+        hasData: !!response.data,
+        hasTopicList: !!response.data?.topic_list,
+        hasTopics: !!response.data?.topic_list?.topics,
+        topicsCount: response.data?.topic_list?.topics?.length || 0,
+        error: response.error,
+        status: response.status,
+      });
+
       if (response.success && response.data?.topic_list?.topics) {
         const bytes = response.data.topic_list.topics.map((topic: any) => 
           this.mapTopicToByte(topic)
         );
         
+        console.log('✅ getBytes: Successfully mapped', bytes.length, 'bytes');
         return {
           success: true,
           data: bytes
         };
       }
-      return { success: false, error: 'Failed to load bytes' };
+      
+      // Provide more detailed error information
+      const errorMessage = response.error || 
+        (response.data ? 'Unexpected response structure' : 'No data received') ||
+        'Failed to load bytes';
+      
+      console.error('❌ getBytes: Failed to load bytes', {
+        error: errorMessage,
+        responseData: response.data ? Object.keys(response.data) : 'no data',
+        topicListKeys: response.data?.topic_list ? Object.keys(response.data.topic_list) : 'no topic_list',
+      });
+      
+      return { 
+        success: false, 
+        error: errorMessage,
+        status: response.status 
+      };
     } catch (error) {
-      return { success: false, error: 'Network error loading bytes' };
+      console.error('❌ getBytes: Exception caught', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Network error loading bytes' 
+      };
     }
   }
 
@@ -1608,6 +1545,83 @@ class DiscourseApiService {
     }
   }
 
+  async updateComment(commentId: number, content: string): Promise<DiscourseApiResponse<Comment>> {
+    try {
+      // Check authentication
+      const isAuth = await this.isAuthenticated();
+      if (!isAuth) {
+        return { success: false, error: 'Authentication required to update comments' };
+      }
+
+      // Validate content
+      if (!content || content.trim().length === 0) {
+        return { success: false, error: 'Comment content cannot be empty' };
+      }
+
+      // Sanitize input
+      const sanitizedContent = SecurityValidator.sanitizeInput(content);
+
+      console.log('📝 Updating comment:', { commentId, contentLength: sanitizedContent.length });
+
+      const response = await this.makeRequest<any>(`/posts/${commentId}.json`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          post: {
+            raw: sanitizedContent,
+            edit_reason: 'Updated via FomioMobile'
+          }
+        })
+      });
+
+      if (response.success && response.data) {
+        // Fetch the updated post to return as Comment
+        const postResponse = await this.makeRequest<any>(`/posts/${commentId}.json`);
+        if (postResponse.success && postResponse.data) {
+          // Need to fetch the topic to get full context
+          const topicId = postResponse.data.topic_id;
+          const topicResponse = await this.makeRequest<any>(`/t/${topicId}.json`);
+          if (topicResponse.success && topicResponse.data) {
+            const comment = this.mapPostToComment(postResponse.data, topicResponse.data);
+            return {
+              success: true,
+              data: comment
+            };
+          }
+        }
+      }
+
+      return { 
+        success: false, 
+        error: response.error || 'Failed to update comment' 
+      };
+    } catch (error) {
+      return { success: false, error: 'Network error updating comment' };
+    }
+  }
+
+  async deleteComment(commentId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      // Check authentication
+      const isAuth = await this.isAuthenticated();
+      if (!isAuth) {
+        return { success: false, error: 'Authentication required to delete comments' };
+      }
+
+      console.log('🗑️ Deleting comment:', commentId);
+
+      const response = await this.makeRequest<void>(`/posts/${commentId}.json`, {
+        method: 'DELETE'
+      });
+
+      return {
+        success: response.success,
+        error: response.error
+      };
+    } catch (error) {
+      return { success: false, error: 'Network error deleting comment' };
+    }
+  }
+
   async likeByte(byteId: number): Promise<DiscourseApiResponse<void>> {
     try {
       // Get the topic to find the first post ID
@@ -1626,7 +1640,7 @@ class DiscourseApiService {
     return this.likePost(commentId);
   }
 
-  private async likePost(postId: number): Promise<DiscourseApiResponse<void>> {
+  async likePost(postId: number): Promise<DiscourseApiResponse<void>> {
     try {
       const response = await this.makeRequest<any>('/post_actions.json', {
         method: 'POST',
@@ -1649,16 +1663,13 @@ class DiscourseApiService {
 
 // Default configuration with security validation
 const defaultConfig: DiscourseConfig = {
-  baseUrl: process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info', // Use TechRebels as default
-  apiKey: process.env.EXPO_PUBLIC_DISCOURSE_API_KEY,
-  apiUsername: process.env.EXPO_PUBLIC_DISCOURSE_API_USERNAME,
+  baseUrl: config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info', // Use TechRebels as default
 };
 
 // Log configuration status for debugging
 console.log('🔧 Discourse API Configuration:', {
   baseUrl: defaultConfig.baseUrl,
-  hasApiKey: !!defaultConfig.apiKey,
-  hasApiUsername: !!defaultConfig.apiUsername,
+  authentication: 'User API Keys',
 });
 
 // Export singleton instance

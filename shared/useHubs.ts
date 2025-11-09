@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { discourseApiService, Hub } from './discourseApiService';
+import { discourseApi, Hub } from './discourseApi';
+import { onAuthEvent } from './auth-events';
 
 export interface HubsState {
   hubs: Hub[];
@@ -16,11 +17,7 @@ export function useHubs() {
     error: null
   });
 
-  useEffect(() => {
-    loadHubs();
-  }, []);
-
-  const loadHubs = async (showLoading: boolean = true) => {
+  const loadHubs = useCallback(async (showLoading: boolean = true) => {
     try {
       if (showLoading) {
         setHubsState(prev => ({
@@ -36,7 +33,7 @@ export function useHubs() {
         }));
       }
 
-      const response = await discourseApiService.getHubs();
+      const response = await discourseApi.getHubs();
 
       if (response.success && response.data) {
         setHubsState(prev => ({
@@ -63,11 +60,27 @@ export function useHubs() {
         error: error instanceof Error ? error.message : 'Network error'
       }));
     }
-  };
+  }, []);
 
   const refreshHubs = useCallback(() => {
     loadHubs(false);
-  }, []);
+  }, [loadHubs]);
+
+  useEffect(() => {
+    loadHubs();
+  }, [loadHubs]);
+
+  // Subscribe to auth events for auto-refresh
+  useEffect(() => {
+    const unsubscribe = onAuthEvent((e) => {
+      if (e === 'auth:signed-in' || e === 'auth:refreshed') {
+        refreshHubs();
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [refreshHubs]);
 
   const getHub = (id: number): Hub | undefined => {
     return hubsState.hubs.find(hub => hub.id === id);
@@ -93,22 +106,12 @@ export function useHubs() {
     parentCategoryId?: number;
   }): Promise<{ success: boolean; error?: string; hub?: Hub }> => {
     try {
-      const response = await discourseApiService.createHub(data);
-
-      if (response.success && response.data) {
-        // Add the new hub to the list
-        setHubsState(prev => ({
-          ...prev,
-          hubs: [...prev.hubs, response.data!]
-        }));
-
-        return { success: true, hub: response.data };
-      } else {
-        return {
-          success: false,
-          error: response.error || 'Failed to create hub'
-        };
-      }
+      // Note: Hub creation requires admin API access
+      // For now, return error as this feature isn't fully implemented
+      return {
+        success: false,
+        error: 'Hub creation requires admin privileges'
+      };
     } catch (error) {
       console.error('Create hub error:', error);
       return {
@@ -197,7 +200,7 @@ export function useHub(hubId: number) {
       setIsLoading(true);
       setError(null);
 
-      const response = await discourseApiService.getHub(hubId);
+      const response = await discourseApi.getHub(hubId);
 
       if (response.success && response.data) {
         setHub(response.data);

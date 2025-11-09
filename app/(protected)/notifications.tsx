@@ -1,17 +1,16 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   TouchableOpacity, 
-  ScrollView, 
   FlatList,
-  Image,
   RefreshControl,
   Alert,
   ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
 import { 
   Bell, 
   BellSlash, 
@@ -22,22 +21,12 @@ import {
   Share, 
   UserPlus,
   At,
-  Star,
-  Bookmark,
-  ArrowRight,
-  Clock
+  Bookmark
 } from 'phosphor-react-native';
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useNotifications, Notification } from '../../shared/useNotifications';
-import { useAuth } from '../../lib/auth';
-import { getNotifications } from '../../lib/discourse';
-import { useEffect, useState } from 'react';
-
-interface NotificationSection {
-  title: string;
-  data: Notification[];
-}
+import { onAuthEvent } from '../../shared/auth-events';
 
 function NotificationItem({ 
   notification, 
@@ -158,23 +147,8 @@ function NotificationItem({
   );
 }
 
-function NotificationSection({ title, children }: { title: string; children: React.ReactNode }) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    text: isDark ? '#9ca3af' : '#6b7280',
-  };
-
-  return (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
 export default function NotificationsScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
-  const { authed, ready } = useAuth();
   const { 
     notifications, 
     isLoading: loading, 
@@ -185,20 +159,7 @@ export default function NotificationsScreen(): JSX.Element {
   } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
-  
-  // Load notifications if authenticated
-  useEffect(() => {
-    if (authed && ready) {
-      getNotifications()
-        .then((data) => {
-          // Map Discourse notifications to app format if needed
-          console.log('Notifications loaded:', data);
-        })
-        .catch((err) => {
-          console.error('Failed to load notifications:', err);
-        });
-    }
-  }, [authed, ready]);
+  const [permission, setPermission] = useState<string | null>(null);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -210,9 +171,30 @@ export default function NotificationsScreen(): JSX.Element {
     error: isDark ? '#ef4444' : '#dc2626',
   };
 
+  // Subscribe to auth events for auto-refresh
+  useEffect(() => {
+    const unsubscribe = onAuthEvent((e) => {
+      if (e === 'auth:signed-in' || e === 'auth:refreshed') {
+        fetchNotifications();
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [fetchNotifications]);
+
+  // Check push permissions
+  useEffect(() => {
+    (async () => {
+      const settings = await Notifications.getPermissionsAsync();
+      setPermission(settings.status);
+    })();
+  }, []);
+
+  // Load notifications on mount
   useEffect(() => {
     fetchNotifications();
-  }, []);
+  }, [fetchNotifications]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -220,14 +202,16 @@ export default function NotificationsScreen(): JSX.Element {
     setRefreshing(false);
   };
 
+  async function requestPermission() {
+    const { status } = await Notifications.requestPermissionsAsync();
+    setPermission(status);
+  }
+
   const handleNotificationPress = (notification: Notification) => {
     console.log('Notification pressed:', notification.id);
-    // Navigate to the relevant content
     if (notification.data?.postId) {
-      // Navigate to post
       console.log('Navigate to post:', notification.data.postId);
     } else if (notification.data?.userId) {
-      // Navigate to user profile
       console.log('Navigate to user:', notification.data.userId);
     }
   };
@@ -246,7 +230,6 @@ export default function NotificationsScreen(): JSX.Element {
           text: 'Delete', 
           style: 'destructive', 
           onPress: () => {
-            // TODO: Implement delete functionality
             console.log('Delete notification:', notificationId);
           }
         },
@@ -280,9 +263,7 @@ export default function NotificationsScreen(): JSX.Element {
           text: 'Clear All', 
           style: 'destructive', 
           onPress: () => {
-            // In a real app, you'd call a clear all endpoint
-            // For now, we'll just reset the local state
-            // setNotifications([]); 
+            // TODO: Implement clear all functionality
           }
         },
       ]
@@ -339,6 +320,34 @@ export default function NotificationsScreen(): JSX.Element {
     </View>
   );
 
+  // Show push permission prompt if not granted
+  if (permission !== null && permission !== 'granted') {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <HeaderBar 
+          title="Notifications" 
+          showBackButton={false}
+          showProfileButton={true}
+        />
+        <View style={styles.permissionContainer}>
+          <Bell size={64} color={colors.primary} weight="duotone" />
+          <Text style={[styles.permissionTitle, { color: colors.text }]}>
+            Enable notifications
+          </Text>
+          <Text style={[styles.permissionSubtitle, { color: colors.secondary }]}>
+            Turn on push notifications to get mentions, replies, and likes in real time.
+          </Text>
+          <TouchableOpacity
+            onPress={requestPermission}
+            style={[styles.permissionButton, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.permissionButtonText}>Allow Notifications</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (loading && notifications.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -364,9 +373,18 @@ export default function NotificationsScreen(): JSX.Element {
           showProfileButton={true}
         />
         <View style={styles.errorContainer}>
-          <Text style={[styles.errorText, { color: colors.text }]}>Error loading notifications: {errorMessage}</Text>
-          <TouchableOpacity onPress={fetchNotifications} style={styles.retryButton}>
-            <Text style={[styles.retryButtonText, { color: colors.primary }]}>Retry</Text>
+          <Text style={[styles.errorTitle, { color: colors.text }]}>Unable to load notifications</Text>
+          <Text style={[styles.errorText, { color: colors.secondary }]}>
+            {errorMessage || 'Something went wrong. Please try again.'}
+          </Text>
+          <TouchableOpacity 
+            onPress={fetchNotifications} 
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading notifications"
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -448,6 +466,35 @@ export default function NotificationsScreen(): JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  permissionContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  permissionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  permissionSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  permissionButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  permissionButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   headerActions: {
     flexDirection: 'row',
@@ -541,15 +588,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-    marginHorizontal: 16,
-  },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -587,19 +625,29 @@ const styles = StyleSheet.create({
     paddingVertical: 64,
     paddingHorizontal: 32,
   },
-  errorText: {
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
   },
   retryButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#3b82f6',
+    minWidth: 120,
+    alignItems: 'center',
   },
   retryButtonText: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#ffffff',
   },
-}); 
+});
+

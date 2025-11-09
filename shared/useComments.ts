@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { discourseApiService, Comment } from './discourseApiService';
+import { discourseApi, Comment } from './discourseApi';
 
 export interface CommentsState {
   comments: Comment[];
@@ -40,7 +40,7 @@ export function useComments(byteId: number) {
         }));
       }
 
-      const response = await discourseApiService.getComments(byteId);
+      const response = await discourseApi.getComments(byteId);
 
       if (response.success && response.data) {
         setCommentsState(prev => ({
@@ -84,7 +84,7 @@ export function useComments(byteId: number) {
         error: null
       }));
 
-      const response = await discourseApiService.createComment({
+      const response = await discourseApi.createComment({
         content,
         byteId,
         replyToPostNumber
@@ -133,7 +133,7 @@ export function useComments(byteId: number) {
     content: string
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await discourseApiService.updateComment(commentId, content);
+      const response = await discourseApi.updateComment(commentId, content);
 
       if (response.success && response.data) {
         // Update the comment in the list
@@ -162,7 +162,7 @@ export function useComments(byteId: number) {
 
   const deleteComment = async (commentId: number): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await discourseApiService.deleteComment(commentId);
+      const response = await discourseApi.deleteComment(commentId);
 
       if (response.success) {
         // Remove the comment from the list
@@ -203,7 +203,7 @@ export function useComments(byteId: number) {
         )
       }));
 
-      const response = await discourseApiService.likeComment(commentId);
+      const response = await discourseApi.likeComment(commentId);
 
       if (!response.success) {
         // Revert optimistic update on failure

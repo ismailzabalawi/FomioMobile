@@ -94,6 +94,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -128,6 +129,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -173,6 +175,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -221,6 +224,7 @@ describe('Authentication Integration Tests', () => {
       signOut: mockSignOut,
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -259,6 +263,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: mockUpdateProfile,
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -297,6 +302,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -317,6 +323,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -336,6 +343,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -360,6 +368,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);
@@ -388,6 +397,7 @@ describe('Authentication Integration Tests', () => {
       signOut: jest.fn(),
       updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
+      setAuthenticatedUser: jest.fn(),
     });
 
     render(<TestAuthComponent />);

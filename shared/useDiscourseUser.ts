@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { discourseApi, DiscourseUser, UserSettings, DiscourseApiResponse } from './discourseApi';
+import { useAuth } from './useAuth';
+import { onAuthEvent } from './auth-events';
 
 export interface UseDiscourseUserReturn {
   // User Data
@@ -30,6 +32,9 @@ export interface UseDiscourseUserReturn {
 }
 
 export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
+  // Use reactive auth state from useAuth hook
+  const { isAuthenticated } = useAuth();
+  
   // State
   const [user, setUser] = useState<DiscourseUser | null>(null);
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -40,7 +45,6 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
   // Computed values
-  const isAuthenticated = discourseApi.isAuthenticated();
   const avatarUrl = user?.avatar_template 
     ? discourseApi.getAvatarUrl(user.avatar_template, 120)
     : null;
@@ -228,11 +232,36 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
     }
   }, [user?.username, refreshUser]);
 
-  // Load initial data
+  // Load initial data when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       refreshUser();
+    } else {
+      // Clear user data when not authenticated
+      setUser(null);
+      setSettings(null);
+      setError(null);
+      setSettingsError(null);
     }
+  }, [isAuthenticated, refreshUser]);
+
+  // Listen to auth events to refresh user data when auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthEvent((event) => {
+      if ((event === 'auth:signed-in' || event === 'auth:refreshed') && isAuthenticated) {
+        // Refresh user data when signed in or auth is refreshed
+        refreshUser();
+      } else if (event === 'auth:signed-out') {
+        // Clear user data when signed out
+        setUser(null);
+        setSettings(null);
+        setError(null);
+        setSettingsError(null);
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
   }, [isAuthenticated, refreshUser]);
 
   // Load settings when user is loaded

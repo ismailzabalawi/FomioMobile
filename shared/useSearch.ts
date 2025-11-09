@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { discourseApi, SearchResult } from './discourseApiService';
+import { discourseApi, SearchResult } from './discourseApi';
 
 export interface SearchState {
   results: SearchResult | null;

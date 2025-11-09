@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../components/shared/theme-provider';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { router } from 'expo-router';
+import { AuthGate } from '../../components/shared/auth-gate';
+import { AuthPromptView } from '../../components/shared/auth-prompt-view';
 
 export default function ProfileSettingsScreen(): JSX.Element {
   const { isDark, isAmoled } = useTheme();
@@ -15,8 +17,8 @@ export default function ProfileSettingsScreen(): JSX.Element {
   };
 
   useEffect(() => {
-    // Redirect to main settings page
-    router.replace('/(tabs)/settings');
+    // Redirect to main settings page (only if authenticated)
+    // AuthGate will handle showing prompt if not authenticated
   }, []);
 
   return (
@@ -26,12 +28,21 @@ export default function ProfileSettingsScreen(): JSX.Element {
         showBackButton={true}
         showProfileButton={false}
       />
-      <View style={styles.content}>
-        <Text style={[styles.title, { color: colors.text }]}>Redirecting...</Text>
-        <Text style={[styles.subtitle, { color: colors.secondary }]}>
-          Taking you to settings...
-        </Text>
-      </View>
+      <AuthGate
+        fallback={
+          <AuthPromptView
+            title="Sign in to access settings"
+            subtitle="Log in to manage your account settings and preferences"
+          />
+        }
+      >
+        <View style={styles.content}>
+          <Text style={[styles.title, { color: colors.text }]}>Redirecting...</Text>
+          <Text style={[styles.subtitle, { color: colors.secondary }]}>
+            Taking you to settings...
+          </Text>
+        </View>
+      </AuthGate>
     </SafeAreaView>
   );
 }

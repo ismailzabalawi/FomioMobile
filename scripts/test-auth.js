@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * Discourse Authentication Test Script
+ * Discourse Connection Test Script
  * 
- * This script helps you test the Discourse API connection and authentication flow.
- * Run this before implementing the full integration.
+ * This script tests the Discourse API connection.
+ * Note: This app uses User API Keys for authentication.
+ * Users authorize through the Discourse web interface.
  */
 
 const dotenv = require('dotenv');
@@ -15,44 +16,45 @@ dotenv.config();
 // Then import the discourseApi module
 const { discourseApi } = require('../shared/discourseApi.ts');
 
-console.log('🔒 Discourse Authentication Test');
-console.log('This script will test your Discourse API configuration and authentication.\n');
+console.log('🔒 Discourse Connection Test');
+console.log('This script will test your Discourse API connection.\n');
+console.log('Note: This app uses User API Keys for authentication.');
+console.log('Users authorize through the Discourse web interface.\n');
 
-// Test the new authenticateWithApiKey method
-async function testApiKeyAuthentication() {
+// Test basic connection
+async function testConnection() {
   try {
-    console.log('🔐 Testing API Key Authentication...');
+    console.log('🔍 Testing Discourse connection...');
     
-    const response = await discourseApi.authenticateWithApiKey();
+    const response = await discourseApi.checkConnectivity();
     
-    if (response.success && response.data) {
-      console.log('✅ API Key authentication successful!');
-      console.log(`👤 Authenticated as: ${response.data.user.username}`);
-      console.log(`📧 Email: ${response.data.user.email || 'Not provided'}`);
-      console.log(`🆔 User ID: ${response.data.user.id}`);
+    if (response) {
+      console.log('✅ Discourse connection successful!');
+      console.log('✅ Your Discourse instance is accessible.');
+      console.log('\nNext steps:');
+      console.log('1. Start your Expo app: npm start');
+      console.log('2. Test the User API Key authentication flow');
+      console.log('3. Users will authorize through the Discourse web interface');
       return true;
     } else {
-      console.log('❌ API Key authentication failed:');
-      console.log(`   Error: ${response.error}`);
+      console.log('❌ Discourse connection failed');
+      console.log('Please check your .env file configuration:');
+      console.log('1. Make sure EXPO_PUBLIC_DISCOURSE_URL is set correctly');
+      console.log('2. Verify your Discourse instance is accessible');
       return false;
     }
   } catch (error) {
-    console.log('❌ API Key authentication error:', error.message);
+    console.log('❌ Connection test error:', error.message);
     return false;
   }
 }
 
 // Run the test
-testApiKeyAuthentication().then((success) => {
+testConnection().then((success) => {
   if (success) {
-    console.log('\n🎉 API Key Authentication Test Passed!');
-    console.log('✅ Your Discourse configuration is working correctly.');
-    console.log('✅ You can now sign in to the FomioMobile app.');
+    console.log('\n🎉 Connection Test Passed!');
   } else {
-    console.log('\n❌ API Key Authentication Test Failed!');
-    console.log('Please check your .env file configuration:');
-    console.log('1. Make sure EXPO_PUBLIC_DISCOURSE_API_KEY is set');
-    console.log('2. Make sure EXPO_PUBLIC_DISCOURSE_API_USERNAME is set');
-    console.log('3. Verify your Discourse instance is accessible');
+    console.log('\n❌ Connection Test Failed!');
   }
+  process.exit(success ? 0 : 1);
 }); 

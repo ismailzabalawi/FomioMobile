@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { discourseApi } from './discourseApi';
 import { logger } from './logger';
+import { onAuthEvent } from './auth-events';
 
 export interface Notification {
   id: number;
@@ -117,6 +118,18 @@ export function useNotifications() {
 
   useEffect(() => {
     loadNotifications();
+  }, [loadNotifications]);
+
+  // Subscribe to auth events for auto-refresh
+  useEffect(() => {
+    const unsubscribe = onAuthEvent((e) => {
+      if (e === 'auth:signed-in' || e === 'auth:refreshed') {
+        loadNotifications();
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
   }, [loadNotifications]);
 
   return {

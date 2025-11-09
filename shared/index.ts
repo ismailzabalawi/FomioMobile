@@ -1,4 +1,7 @@
 export { useAuth } from './useAuth';
+export { onAuthEvent, emitAuthEvent, type AuthEvent } from './auth-events';
+export { storeIntent, attachIntentReplay, type Intent, type IntentType, type IntentHandlers } from './intent-replay';
+export { requireAuth } from './requireAuth';
 export { useCreateByte } from './useCreateByte';
 export { useFeed } from './useFeed';
 export { useSearch } from './useSearch';
@@ -34,7 +37,12 @@ export {
   type DiscourseUser,
   type UserSettings,
   type DiscourseApiResponse,
-  type LoginResponse
+  type LoginResponse,
+  type AppUser,
+  type Hub,
+  type Byte,
+  type Comment,
+  type SearchResult
 } from './discourseApi';
 
 export { 

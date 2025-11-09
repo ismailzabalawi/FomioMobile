@@ -72,6 +72,19 @@ export default function TabLayout(): JSX.Element {
         }}
       />
       <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notifications',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Bell 
+              color={color} 
+              size={focused ? size + 2 : size} 
+              weight={focused ? 'fill' : 'regular'} 
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="compose"
         options={{
           title: '',
@@ -93,19 +106,6 @@ export default function TabLayout(): JSX.Element {
             </View>
           ),
           tabBarLabel: '',
-        }}
-      />
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: 'Notifications',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Bell 
-              color={color} 
-              size={focused ? size + 2 : size} 
-              weight="bold" 
-            />
-          ),
         }}
       />
       <Tabs.Screen

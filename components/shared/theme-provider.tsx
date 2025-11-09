@@ -62,7 +62,14 @@ export function ThemeProvider({
       try {
         await AsyncStorage.setItem(storageKey, theme);
         setTheme(theme);
-      } catch (error) {
+      } catch (error: any) {
+        // Handle storage directory errors gracefully (Expo development issue)
+        if (error?.message?.includes('directory') || error?.code === 512 || error?.message?.includes('@anonymous')) {
+          logger.warn('ThemeProvider: Storage directory issue, theme set in memory only');
+          // Still set theme in memory - app continues to work
+          setTheme(theme);
+          return;
+        }
         logger.error('Failed to save theme to storage', error);
         setTheme(theme);
       }
@@ -72,7 +79,14 @@ export function ThemeProvider({
       try {
         await AsyncStorage.setItem(storageKey, newTheme);
         setTheme(newTheme);
-      } catch (error) {
+      } catch (error: any) {
+        // Handle storage directory errors gracefully (Expo development issue)
+        if (error?.message?.includes('directory') || error?.code === 512 || error?.message?.includes('@anonymous')) {
+          logger.warn('ThemeProvider: Storage directory issue, theme set in memory only');
+          // Still set theme in memory - app continues to work
+          setTheme(newTheme);
+          return;
+        }
         logger.error('Failed to save theme to storage', error);
         setTheme(newTheme);
       }
