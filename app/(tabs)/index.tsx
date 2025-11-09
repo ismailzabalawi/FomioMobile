@@ -10,7 +10,7 @@ import { useAuth } from '../../lib/auth';
 import { getSession, getLatest } from '../../lib/discourse';
 import { useEffect, useState } from 'react';
 
-export default function HomeScreen(): JSX.Element {
+export default function HomeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { authed, ready, user } = useAuth();
   const { 
@@ -112,7 +112,7 @@ export default function HomeScreen(): JSX.Element {
     }
   };
 
-  const renderFeedItem = ({ item }: { item: FeedItem }): JSX.Element => (
+  const renderFeedItem = ({ item }: { item: FeedItem }): React.ReactElement => (
     <ByteCard
       id={item.id.toString()}
       content={`${item.title}\n\n${item.excerpt}`}

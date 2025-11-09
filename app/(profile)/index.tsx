@@ -210,7 +210,7 @@ function AuthPromptCard({ onSignIn, onSignUp }: {
   );
 }
 
-export default function ProfileScreen(): JSX.Element {
+export default function ProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { user: discourseUser, loading, error, refreshUser } = useDiscourseUser();
   const { authed, ready, user: authUser, signOut } = useAuth();

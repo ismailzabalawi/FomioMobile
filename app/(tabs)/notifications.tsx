@@ -172,7 +172,7 @@ function NotificationSection({ title, children }: { title: string; children: Rea
   );
 }
 
-export default function NotificationsScreen(): JSX.Element {
+export default function NotificationsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { authed, ready } = useAuth();
   const { 

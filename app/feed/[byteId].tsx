@@ -7,7 +7,7 @@ import { useTheme } from '../../components/shared/theme-provider';
 
 // UI Spec: Dynamic Byte Detail Route — Renders ByteBlogPage with data from route params
 // Provides seamless navigation from feed to detailed byte view with proper theming
-export default function ByteDetailScreen(): JSX.Element {
+export default function ByteDetailScreen(): React.ReactElement {
   const { byteId, showComments } = useLocalSearchParams<{ byteId: string; showComments?: string }>();
   const { isDark, isAmoled } = useTheme();
   

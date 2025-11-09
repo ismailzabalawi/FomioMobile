@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 
 // UI Spec: Feed Layout — Provides navigation structure for feed routes
 // Configures headers and navigation behavior for feed screens
-export default function FeedLayout(): JSX.Element {
+export default function FeedLayout(): React.ReactElement {
   return (
     <Stack>
       <Stack.Screen

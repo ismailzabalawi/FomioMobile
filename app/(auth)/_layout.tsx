@@ -3,7 +3,7 @@ import { Stack, Redirect } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuth } from '../../shared/useAuth';
 
-export default function AuthLayout(): JSX.Element {
+export default function AuthLayout(): React.ReactElement {
   const { isAuthenticated, isLoading } = useAuth();
 
   // Show loading state during auth check

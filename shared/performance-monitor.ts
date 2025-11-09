@@ -192,7 +192,7 @@ export function usePerformanceTracking(componentName: string) {
 // Memory leak detection hook
 export function useMemoryLeakDetection(componentName: string) {
   const mountTime = React.useRef(Date.now());
-  const intervalRef = React.useRef<NodeJS.Timeout>();
+  const intervalRef = React.useRef<number | undefined>(undefined);
   
   React.useEffect(() => {
     // Check memory usage periodically
@@ -204,7 +204,7 @@ export function useMemoryLeakDetection(componentName: string) {
       if (uptime > 60000 && memoryUsage && memoryUsage > 150 * 1024 * 1024) {
         logger.warn(`Potential memory leak in ${componentName}: ${(memoryUsage / 1024 / 1024).toFixed(2)}MB after ${uptime}ms`);
       }
-    }, 30000); // Check every 30 seconds
+    }, 30000) as unknown as number; // Check every 30 seconds - cast for React Native compatibility
     
     return () => {
       if (intervalRef.current) {

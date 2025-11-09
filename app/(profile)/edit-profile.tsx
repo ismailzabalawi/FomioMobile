@@ -6,7 +6,7 @@ import { HeaderBar } from '../../components/nav/HeaderBar';
 import { AuthGate } from '../../components/shared/auth-gate';
 import { AuthPromptView } from '../../components/shared/auth-prompt-view';
 
-export default function EditProfileScreen(): JSX.Element {
+export default function EditProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   
   const colors = {

@@ -7,7 +7,7 @@ import { useAuth } from '../shared/useAuth';
 
 interface WelcomeScreenProps {}
 
-export default function WelcomeScreen({}: WelcomeScreenProps): JSX.Element {
+export default function WelcomeScreen({}: WelcomeScreenProps): React.ReactElement {
   const { isDark } = useTheme();
   const { isAuthenticated, isLoading } = useAuth();
   
