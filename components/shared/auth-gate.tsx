@@ -7,10 +7,16 @@ import { useAuthState } from '@/shared/useAuthState';
  * AuthGate component
  * Guards routes by checking authentication status
  * - If not ready: shows loading
- * - If not authenticated: redirects to signin
+ * - If not authenticated: redirects to signin or shows fallback
  * - If authenticated: renders children
  */
-export function AuthGate({ children }: { children: React.ReactNode }) {
+export function AuthGate({ 
+  children, 
+  fallback 
+}: { 
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}) {
   const { ready, signedIn } = useAuthState();
 
   if (!ready) {
@@ -22,6 +28,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (!signedIn) {
+    if (fallback) {
+      return <>{fallback}</>;
+    }
     return <Redirect href="/(auth)/signin" />;
   }
 

@@ -4,7 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { v4 as uuidv4 } from 'uuid';
 import { generateRsaKeypair, decryptPayloadBase64ToUtf8, derivePublicKeyFromPrivate } from './crypto';
 import { savePrivateKey, loadPrivateKey, saveUserApiKey, loadUserApiKey, saveClientId, loadClientId, clearAll } from './store';
-import { authHeaders } from './auth';
+import { authHeaders, signOut as authSignOut } from './auth';
 
 // Complete web browser auth session
 WebBrowser.maybeCompleteAuthSession();
@@ -230,8 +230,7 @@ export async function createTopic(data: {
  */
 export async function revokeKey(): Promise<void> {
   try {
-    const { signOut } = await import('./auth');
-    await signOut();
+    await authSignOut();
   } catch (error) {
     console.error('Failed to revoke key:', error);
     throw error;
