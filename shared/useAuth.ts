@@ -8,7 +8,6 @@ import { discourseApi, AppUser } from './discourseApi';
 import { logger } from './logger';
 import { emitAuthEvent, onAuthEvent } from './auth-events';
 import { UserApiKeyManager } from './userApiKeyManager';
-import { UserApiKeyAuth } from './userApiKeyAuth';
 
 const config = Constants.expoConfig?.extra || {};
 

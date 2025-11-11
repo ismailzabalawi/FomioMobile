@@ -38,7 +38,7 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
-import { useAuth } from '../../lib/auth';
+import { useAuth } from '../../shared/useAuth';
 import { revokeKey } from '../../lib/discourse';
 import { router } from 'expo-router';
 import { useDiscourseUser } from '../../shared/useDiscourseUser';
@@ -130,7 +130,7 @@ function SettingSection({ title, children }: { title: string; children: React.Re
 
 export default function SettingsScreen(): React.ReactElement {
   const { isDark, isAmoled, theme, setTheme } = useTheme();
-  const { user, authed, signOut } = useAuth();
+  const { user, isAuthenticated, signOut } = useAuth();
   const { user: discourseUser, loading: userLoading } = useDiscourseUser();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [offlineMode, setOfflineMode] = useState(false);
@@ -498,7 +498,7 @@ export default function SettingsScreen(): React.ReactElement {
 
         {/* Account Actions */}
         <SettingSection title="Account">
-          {authed && (
+          {isAuthenticated && (
             <SettingItem
               title="Revoke User API Key"
               subtitle="Revoke your API key and sign out"

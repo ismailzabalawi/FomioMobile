@@ -30,7 +30,7 @@ import {
 import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useNotifications, Notification } from '../../shared/useNotifications';
-import { useAuth } from '../../lib/auth';
+import { useAuth } from '../../shared/useAuth';
 import { getNotifications } from '../../lib/discourse';
 import { useEffect, useState } from 'react';
 
