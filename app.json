@@ -26,6 +26,9 @@
         }
       ]
     },
+    "ios": {
+      "supportsTablet": true
+    },
     "extra": {
       "DISCOURSE_BASE_URL": "https://meta.techrebels.info",
       "APPLICATION_NAME": "Fomio Mobile",
@@ -36,15 +39,6 @@
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
     },
     "web": {
       "bundler": "metro",

@@ -12,10 +12,10 @@ import { useEffect, useState } from 'react';
 
 export default function HomeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const { 
     items, 
-    isLoading, 
+    isLoading: isFeedLoading, 
     isRefreshing, 
     hasError, 
     errorMessage, 
@@ -29,7 +29,7 @@ export default function HomeScreen(): React.ReactElement {
   
   // Load user session if authenticated
   useEffect(() => {
-    if (isAuthenticated && !isLoading) {
+    if (isAuthenticated && !isAuthLoading) {
       getSession()
         .then((session) => {
           setCurrentUser(session.user || user);
@@ -38,7 +38,7 @@ export default function HomeScreen(): React.ReactElement {
           console.error('Failed to load session:', err);
         });
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isAuthLoading]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -154,7 +154,7 @@ export default function HomeScreen(): React.ReactElement {
       );
     }
     
-    if (isLoading) {
+    if (isFeedLoading) {
       return (
         <View style={styles.footer}>
           <ActivityIndicator size="small" color={colors.text} />
@@ -187,7 +187,7 @@ export default function HomeScreen(): React.ReactElement {
   };
 
   // Show auth prompt if not authenticated
-  if (!isAuthenticated && !isLoading) {
+  if (!isAuthenticated && !isAuthLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
@@ -215,7 +215,7 @@ export default function HomeScreen(): React.ReactElement {
     );
   }
 
-  if (isLoading && items.length === 0) {
+  if (isFeedLoading && items.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 
