@@ -286,7 +286,7 @@ export function AuthTestScreen() {
             Discourse URL: {process.env.EXPO_PUBLIC_DISCOURSE_URL || 'Not configured'}
           </Text>
           <Text style={[styles.cardText, { color: colors.secondary }]}>
-            Auth Redirect Scheme: {process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || 'fomio://auth-callback'}
+            Auth Redirect Scheme: {process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || 'fomio://auth/callback'}
           </Text>
           <Text style={[styles.cardText, { color: colors.secondary }]}>
             Authentication Method: User API Keys

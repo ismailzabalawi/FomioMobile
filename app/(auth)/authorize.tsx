@@ -8,8 +8,6 @@ import { UserApiKeyAuth } from '../../shared/userApiKeyAuth';
 import { useAuth } from '../../shared/useAuth';
 import { logger } from '../../shared/logger';
 
-const AUTH_REDIRECT_SCHEME = process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || 'fomio://auth-callback';
-
 // Complete auth session when browser closes
 WebBrowser.maybeCompleteAuthSession();
 
@@ -79,7 +77,7 @@ export default function AuthorizeScreen() {
       });
 
       // Open browser with the authorization URL
-      // The deep link will automatically route to auth-callback.tsx when Discourse redirects
+      // The deep link will automatically route to auth/callback.tsx when Discourse redirects
       const result = await WebBrowser.openBrowserAsync(authUrl, {
         showInRecents: true,
         enableBarCollapsing: false,

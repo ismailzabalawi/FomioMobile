@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Changed `@fomio_user_api_otp` → `fomio_user_api_otp`
 - Fixed TypeScript compilation errors:
   - Fixed return type in `app/(tabs)/notifications.tsx` to allow `null`
-  - Fixed route reference in `app/auth-callback.tsx` from removed `webview-auth` to `authorize`
+  - Fixed route reference in `app/auth/callback.tsx` from removed `webview-auth` to `authorize`
   - Fixed `useEffect` cleanup function return types in `shared/useFeed.ts`, `shared/useHubs.ts`, and `shared/useDiscourseUser.ts`
   - Fixed dependency order issues in `shared/useFeed.ts` and `shared/useHubs.ts`
   - Fixed `scopes` type issue in `shared/userApiKeyAuth.ts`
@@ -98,11 +98,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-user RSA key pair generation for secure API key authentication
 - `shared/userApiKeyManager.ts` for RSA key generation, storage, and payload decryption
 - `shared/userApiKeyAuth.ts` for authorization flow orchestration and endpoint handling
-- `app/auth-callback.tsx` screen for handling deep link redirects with encrypted payload
+- `app/auth/callback.tsx` screen for handling deep link redirects with encrypted payload
 - Feature flag `EXPO_PUBLIC_USE_USER_API_KEYS` for gradual migration from cookies to API keys
 - Dual-mode authentication support (API keys when enabled, cookies as fallback)
 - API key revocation functionality via `/user-api-key/revoke` endpoint
-- Deep linking configuration for authorization callbacks (`fomio://auth-callback`)
+- Deep linking configuration for authorization callbacks (`fomio://auth/callback`)
 - Comprehensive error handling for authorization rejection, expired keys, and decryption failures
 - Support for one-time password generation via User API Keys
 - Client ID generation and management for API key tracking

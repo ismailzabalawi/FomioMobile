@@ -86,7 +86,7 @@ EXPO_PUBLIC_ENABLE_DEBUG_MODE=false
 EXPO_PUBLIC_ENABLE_MOCK_DATA=false
 
 # Deep Linking (for authorization callbacks)
-EXPO_PUBLIC_AUTH_REDIRECT_SCHEME=fomio://auth-callback
+EXPO_PUBLIC_AUTH_REDIRECT_SCHEME=fomio://auth/callback
 ```
 
 **Note:** 

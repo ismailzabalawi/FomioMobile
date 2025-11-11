@@ -24,7 +24,7 @@ function buildRedirectUri() {
 
 /**
  * Process authorization callback payload from Discourse redirect
- * This should be called from the deep link handler (auth-callback.tsx)
+ * This should be called from the deep link handler (auth/callback.tsx)
  * @param payload Base64-encoded encrypted payload from redirect URL
  * @returns Promise resolving to the user API key
  */

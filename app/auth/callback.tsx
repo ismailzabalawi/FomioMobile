@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
 import { router } from 'expo-router';
-import { logger } from '../shared/logger';
-import { useAuth } from '../shared/useAuth';
-import { discourseApi } from '../shared/discourseApi';
+import { logger } from '../../shared/logger';
+import { useAuth } from '../../shared/useAuth';
+import { discourseApi } from '../../shared/discourseApi';
 import Constants from 'expo-constants';
 
 const config = Constants.expoConfig?.extra || {};

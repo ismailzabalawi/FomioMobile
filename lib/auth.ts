@@ -1,8 +1,10 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import type { WebBrowserRedirectResult } from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { UserApiKeyManager } from '../shared/userApiKeyManager';
+import { emitAuthEvent } from '../shared/auth-events';
 import { logger } from '../shared/logger';
 
 // Complete auth session when browser closes
@@ -76,12 +78,18 @@ export async function signIn(): Promise<boolean> {
     
     // Build authorization URL
     const scopes = 'read,write,notifications,session_info,one_time_password';
+    let nonce = await UserApiKeyManager.getNonce();
+    if (!nonce) {
+      nonce = await UserApiKeyManager.generateNonce();
+      await UserApiKeyManager.storeNonce(nonce);
+    }
     const params = new URLSearchParams({
       application_name: 'Fomio',
       client_id: clientId,
       scopes: scopes,
       public_key: publicKey,
       auth_redirect: redirectUri,
+      nonce,
     });
     
     const authUrl = `${SITE}/user-api-key/new?${params.toString()}`;
@@ -100,13 +108,14 @@ export async function signIn(): Promise<boolean> {
         logger.info('User cancelled authorization');
         throw new Error('Authorization cancelled');
       }
-      logger.error('Authorization failed', { type: result.type, url: result.url });
+      logger.error('Authorization failed', { type: result.type });
       throw new Error('Authorization failed. Please try again.');
     }
     
     // Extract payload from the redirect URL
     // Parse the URL manually for React Native compatibility
-    const urlString = result.url || '';
+    const redirectResult = result as WebBrowserRedirectResult;
+    const urlString = redirectResult.url ?? '';
     const payloadMatch = urlString.match(/[?&]payload=([^&]+)/);
     const payload = payloadMatch ? decodeURIComponent(payloadMatch[1]) : null;
     
@@ -126,6 +135,17 @@ export async function signIn(): Promise<boolean> {
     // Store API key securely
     await SecureStore.setItemAsync(STORAGE_KEY, key);
     await SecureStore.setItemAsync(CLIENT_ID_KEY, clientId);
+
+    await UserApiKeyManager.storeApiKey({
+      key,
+      clientId,
+      oneTimePassword: one_time_password,
+      createdAt: Date.now(),
+    });
+
+    if (one_time_password) {
+      await UserApiKeyManager.storeOneTimePassword(one_time_password);
+    }
     
     logger.info('API key stored successfully');
     
@@ -144,7 +164,9 @@ export async function signIn(): Promise<boolean> {
         logger.warn('OTP cookie warming failed (non-critical)', otpError);
       }
     }
-    
+
+    emitAuthEvent('auth:signed-in');
+
     return true;
   } catch (error: any) {
     logger.error('Sign in failed', error);
@@ -158,8 +180,22 @@ export async function signIn(): Promise<boolean> {
  */
 export async function authHeaders(): Promise<Record<string, string>> {
   try {
-    const key = await SecureStore.getItemAsync(STORAGE_KEY);
-    const clientId = await SecureStore.getItemAsync(CLIENT_ID_KEY);
+    let key: string | null = null;
+    let clientId: string | null = null;
+
+    const apiKeyData = await UserApiKeyManager.getApiKey();
+    if (apiKeyData?.key) {
+      key = apiKeyData.key;
+      clientId = apiKeyData.clientId;
+    }
+
+    if (!key) {
+      key = await SecureStore.getItemAsync(STORAGE_KEY);
+    }
+
+    if (!clientId) {
+      clientId = await SecureStore.getItemAsync(CLIENT_ID_KEY);
+    }
     
     if (!key) {
       return {};
@@ -185,6 +221,11 @@ export async function authHeaders(): Promise<Record<string, string>> {
  */
 export async function hasUserApiKey(): Promise<boolean> {
   try {
+    const apiKeyData = await UserApiKeyManager.getApiKey();
+    if (apiKeyData?.key) {
+      return true;
+    }
+
     const key = await SecureStore.getItemAsync(STORAGE_KEY);
     return !!key;
   } catch (error) {

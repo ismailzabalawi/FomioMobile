@@ -6,7 +6,8 @@ import Constants from 'expo-constants';
 
 const config = Constants.expoConfig?.extra || {};
 const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
-const AUTH_REDIRECT_SCHEME = process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || 'fomio://auth-callback';
+const DEFAULT_AUTH_REDIRECT = Linking.createURL('/auth/callback');
+const AUTH_REDIRECT_SCHEME = process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || DEFAULT_AUTH_REDIRECT;
 
 export interface AuthorizationResult {
   success: boolean;
@@ -86,7 +87,9 @@ export class UserApiKeyAuth {
         : (options.scopes || defaultScopes.join(','));
       
       const applicationName = options.applicationName || 'Fomio';
-      const authRedirect = `${AUTH_REDIRECT_SCHEME}?client_id=${encodeURIComponent(clientId)}`;
+      const hasQuery = AUTH_REDIRECT_SCHEME.includes('?');
+      const separator = hasQuery ? '&' : '?';
+      const authRedirect = `${AUTH_REDIRECT_SCHEME}${separator}client_id=${encodeURIComponent(clientId)}`;
       
       // URLSearchParams will handle encoding, but base64 strings need special handling
       // Use encodeURIComponent to ensure proper encoding of +, /, = characters
@@ -289,7 +292,9 @@ export class UserApiKeyAuth {
       await UserApiKeyManager.storePrivateKey(keyPair.privateKey);
 
       const clientId = await UserApiKeyManager.getOrGenerateClientId();
-      const authRedirect = `${AUTH_REDIRECT_SCHEME}?client_id=${encodeURIComponent(clientId)}&otp=true`;
+      const hasQuery = AUTH_REDIRECT_SCHEME.includes('?');
+      const separator = hasQuery ? '&' : '?';
+      const authRedirect = `${AUTH_REDIRECT_SCHEME}${separator}client_id=${encodeURIComponent(clientId)}&otp=true`;
 
       // Build OTP request URL
       const params = new URLSearchParams({
