@@ -34,7 +34,7 @@ import {
   SignIn,
   UserPlus
 } from 'phosphor-react-native';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useDiscourseUser } from '../../shared/useDiscourseUser';
 import { useAuth } from '../../lib/auth';
@@ -210,7 +210,7 @@ function AuthPromptCard({ onSignIn, onSignUp }: {
   );
 }
 
-export default function ProfileScreen(): JSX.Element {
+export default function ProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { user: discourseUser, loading, error, refreshUser } = useDiscourseUser();
   const { authed, ready, user: authUser, signOut } = useAuth();

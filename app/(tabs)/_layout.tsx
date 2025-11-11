@@ -2,10 +2,10 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { House, MagnifyingGlass, Plus, Bell, GearSix } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { View, StyleSheet } from 'react-native';
 
-export default function TabLayout(): JSX.Element {
+export default function TabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { isDark, isAmoled } = useTheme();
   
@@ -72,19 +72,6 @@ export default function TabLayout(): JSX.Element {
         }}
       />
       <Tabs.Screen
-        name="notifications"
-        options={{
-          title: 'Notifications',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Bell 
-              color={color} 
-              size={focused ? size + 2 : size} 
-              weight={focused ? 'fill' : 'regular'} 
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="compose"
         options={{
           title: '',
@@ -106,6 +93,19 @@ export default function TabLayout(): JSX.Element {
             </View>
           ),
           tabBarLabel: '',
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Notifications',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Bell 
+              color={color} 
+              size={focused ? size + 2 : size} 
+              weight={focused ? 'fill' : 'regular'} 
+            />
+          ),
         }}
       />
       <Tabs.Screen

@@ -1,14 +1,13 @@
 import 'react-native-reanimated';
+import React, { useEffect } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
+import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
 import '../global.css';
 
-import { useColorScheme } from '@/components/useColorScheme';
-import { ThemeProvider } from '@/components/shared/theme-provider';
+import { ThemeProvider, useTheme } from '@/components/theme';
 import { attachIntentReplay } from '@/shared/intent-replay';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
@@ -21,7 +20,7 @@ export {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout(): JSX.Element | null {
+export default function RootLayout(): React.ReactElement | null {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
@@ -50,11 +49,15 @@ export default function RootLayout(): JSX.Element | null {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <ThemeProvider defaultTheme="system">
+      <RootLayoutNav />
+    </ThemeProvider>
+  );
 }
 
-function RootLayoutNav(): JSX.Element {
-  const colorScheme = useColorScheme();
+function RootLayoutNav(): React.ReactElement {
+  const { navigationTheme } = useTheme();
 
   // Set up intent replay for anonymous user actions
   useEffect(() => {
@@ -153,24 +156,19 @@ function RootLayoutNav(): JSX.Element {
   }, []);
 
   return (
-    <ThemeProvider defaultTheme="system">
-      <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack 
-          screenOptions={{ 
-            headerShown: false,
-            contentStyle: {
-              backgroundColor: 'transparent',
-            },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(protected)" />
-          <Stack.Screen name="feed" />
-        </Stack>
-      </NavigationThemeProvider>
-    </ThemeProvider>
+    <NavigationThemeProvider value={navigationTheme}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          presentation: 'card',
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(protected)" />
+        <Stack.Screen name="feed" />
+      </Stack>
+    </NavigationThemeProvider>
   );
 }
-

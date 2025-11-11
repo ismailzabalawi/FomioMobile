@@ -1,6 +1,6 @@
 import React from 'react';
 import { Switch } from '@/components/ui/switch';
-import { useTheme } from './theme-provider';
+import { useTheme } from '@/components/theme';
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -17,4 +17,3 @@ export function ThemeToggle() {
     />
   );
 }
-

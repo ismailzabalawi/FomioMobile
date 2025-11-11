@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { UserApiKeyAuth } from '../../shared/userApiKeyAuth';
 import { useAuth } from '../../shared/useAuth';
 import { logger } from '../../shared/logger';

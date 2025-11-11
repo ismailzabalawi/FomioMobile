@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, FlatList, StyleSheet } from 'react-native';
-import { useTheme } from '../shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { CommentItem } from './CommentItem';
 import { NewCommentInput } from './NewCommentInput';
 

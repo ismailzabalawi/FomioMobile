@@ -23,7 +23,7 @@ import {
   At,
   Bookmark
 } from 'phosphor-react-native';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { onAuthEvent } from '../../shared/auth-events';
@@ -147,7 +147,7 @@ function NotificationItem({
   );
 }
 
-export default function NotificationsScreen(): JSX.Element {
+export default function NotificationsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { 
     notifications, 

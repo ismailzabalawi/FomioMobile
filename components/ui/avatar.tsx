@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Image, Text, StyleSheet, ViewStyle, TextStyle, StyleProp } from 'react-native';
-import { useTheme } from '@/components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 
 export interface AvatarProps {
   source?: { uri: string } | number;

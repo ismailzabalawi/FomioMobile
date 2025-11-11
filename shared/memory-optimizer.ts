@@ -20,17 +20,17 @@ interface ComponentCleanup {
   componentName: string;
   mountTime: number;
   cleanupFunctions: (() => void)[];
-  timers: NodeJS.Timeout[];
+  timers: (ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>)[];
   listeners: { remove: () => void }[];
 }
 
 class MemoryOptimizer {
   private snapshots: MemorySnapshot[] = [];
   private componentCleanups: Map<string, ComponentCleanup> = new Map();
-  private globalTimers: Set<NodeJS.Timeout> = new Set();
+  private globalTimers: Set<ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>> = new Set();
   private globalListeners: Set<{ remove: () => void }> = new Set();
   private isMonitoring: boolean = false;
-  private monitoringInterval?: NodeJS.Timeout;
+  private monitoringInterval?: ReturnType<typeof setInterval>;
   
   // Start memory monitoring
   startMonitoring(intervalMs: number = 30000) {
@@ -188,7 +188,7 @@ class MemoryOptimizer {
   }
   
   // Track timer for component
-  trackTimer(componentId: string, timer: NodeJS.Timeout) {
+  trackTimer(componentId: string, timer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>) {
     const cleanup = this.componentCleanups.get(componentId);
     if (cleanup) {
       cleanup.timers.push(timer);
@@ -320,7 +320,7 @@ export function useMemoryOptimization(componentName: string) {
     addCleanup: (cleanupFn: () => void) => 
       memoryOptimizer.addCleanupFunction(componentId, cleanupFn),
     
-    trackTimer: (timer: NodeJS.Timeout) => 
+    trackTimer: (timer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>) => 
       memoryOptimizer.trackTimer(componentId, timer),
     
     trackListener: (listener: { remove: () => void }) => 

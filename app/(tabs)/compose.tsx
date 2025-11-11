@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { useHubs } from '../../shared/useHubs';
 import { useAuth } from '../../lib/auth';
 import { createTopic } from '../../lib/discourse';
@@ -34,7 +34,7 @@ import {
   SignIn
 } from 'phosphor-react-native';
 
-export default function ComposeScreen(): JSX.Element {
+export default function ComposeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { hubs, isLoading: hubsLoading, error: hubsError, refreshHubs } = useHubs();
   const { authed, ready, user } = useAuth();

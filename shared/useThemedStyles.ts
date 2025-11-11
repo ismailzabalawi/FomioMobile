@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useTheme } from '../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { getThemeColors, createThemedStyles, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from './theme-constants';
 
 /**
@@ -110,4 +110,3 @@ export const useComponentStyles = () => {
     },
   };
 };
-

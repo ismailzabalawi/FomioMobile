@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTheme } from '../shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { PaperPlaneRight } from 'phosphor-react-native';
 
 // UI Spec: NewCommentInput — Input for adding a new comment or reply, with send button, theming, and accessibility.

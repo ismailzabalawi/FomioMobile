@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Avatar } from '../ui/avatar';
 import { Heart, ChatCircle, BookmarkSimple } from 'phosphor-react-native';
-import { useTheme } from '../shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { 
   typography, 
   spacing, 

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
-import { useTheme } from '../shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { Heart, ChatCircle, BookmarkSimple } from 'phosphor-react-native';
 import { CommentItem, Comment } from './CommentItem';
 import { NewCommentInput } from './NewCommentInput';

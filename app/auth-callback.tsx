@@ -3,7 +3,7 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
-import { useTheme } from '../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { UserApiKeyAuth } from '../shared/userApiKeyAuth';
 import { useAuth } from '../shared/useAuth';
 import { logger } from '../shared/logger';

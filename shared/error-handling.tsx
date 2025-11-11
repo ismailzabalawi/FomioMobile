@@ -6,7 +6,7 @@
 import React, { Component, ReactNode, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../components/shared/theme-provider';
+import { useTheme } from '../components/theme';
 import { logger } from './logger';
 import { 
   spacing, 
@@ -92,7 +92,9 @@ class ErrorManager {
     // Keep only recent errors
     if (this.errors.size > this.maxErrors) {
       const oldestKey = this.errors.keys().next().value;
-      this.errors.delete(oldestKey);
+      if (oldestKey !== undefined) {
+        this.errors.delete(oldestKey);
+      }
     }
     
     return appError;

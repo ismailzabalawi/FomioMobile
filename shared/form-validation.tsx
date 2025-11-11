@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
-import { useTheme } from '../components/shared/theme-provider';
+import { useTheme } from '../components/theme';
 import { logger } from './logger';
 import { 
   spacing, 
@@ -204,7 +204,7 @@ export const validationRules = {
 // =============================================================================
 
 class FormValidationManager {
-  private validationTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private validationTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
   
   // Validate single field
   async validateField(

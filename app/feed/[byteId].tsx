@@ -3,11 +3,11 @@ import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ByteBlogPage } from '../../components/feed/ByteBlogPage';
 import { HeaderBar } from '../../components/nav/HeaderBar';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 
 // UI Spec: Dynamic Byte Detail Route — Renders ByteBlogPage with data from route params
 // Provides seamless navigation from feed to detailed byte view with proper theming
-export default function ByteDetailScreen(): JSX.Element {
+export default function ByteDetailScreen(): React.ReactElement {
   const { byteId, showComments } = useLocalSearchParams<{ byteId: string; showComments?: string }>();
   const { isDark, isAmoled } = useTheme();
   

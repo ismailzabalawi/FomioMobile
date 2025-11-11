@@ -32,7 +32,7 @@ import {
   Clock,
   Rocket
 } from 'phosphor-react-native';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useSearch } from '../../shared/useSearch';
 import { searchTopics } from '../../lib/discourse';
@@ -482,7 +482,7 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
   );
 }
 
-export default function SearchScreen(): JSX.Element {
+export default function SearchScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'hubs' | 'terets' | 'bytes'>('all');

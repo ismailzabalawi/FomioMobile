@@ -2,7 +2,7 @@ import React from "react";
 import { ActivityIndicator, View, StyleSheet } from "react-native";
 import { useAuth } from "../../shared/useAuth";
 import { AuthPromptView } from "./auth-prompt-view";
-import { useTheme } from "./theme-provider";
+import { useTheme } from "@/components/theme";
 
 interface AuthGateProps {
   children: React.ReactNode;

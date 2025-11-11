@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTheme } from '../shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { Heart, ChatCircle } from 'phosphor-react-native';
 
 // UI Spec: CommentItem — Renders a comment or reply with avatar, name, time, text, like/reply actions, and theming.

@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 
 const config = Constants.expoConfig?.extra || {};
 const BASE_URL = config.DISCOURSE_BASE_URL || 'https://meta.techrebels.info';

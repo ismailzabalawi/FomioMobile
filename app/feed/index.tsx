@@ -25,7 +25,7 @@ import {
   ArrowClockwise
 } from 'phosphor-react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { discourseApi } from '../../shared/discourseApi';
 import { logger } from '../../shared/logger';
@@ -264,7 +264,7 @@ function ByteCard({ topic, onPress }: { topic: Topic; onPress: () => void }) {
   );
 }
 
-export default function FeedScreen(): JSX.Element {
+export default function FeedScreen(): React.ReactElement {
   const { category } = useLocalSearchParams<{ category?: string }>();
   const { isDark, isAmoled } = useTheme();
   const [terets, setTerets] = useState<Teret[]>([]);

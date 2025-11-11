@@ -19,17 +19,18 @@ A mobile-first, privacy-conscious alternative to Reddit built with React Native 
 ## Tech Stack
 
 ### Core Framework
-- **React Native** 0.74.5 - Mobile app framework
-- **Expo** ~51.0.28 - Development platform and tooling
-- **Expo Router** ~3.5.23 - File-based navigation
-- **TypeScript** ~5.3.3 - Type safety
+- **React Native** 0.81.5 - Mobile app framework
+- **Expo** 54.0.23 - Development platform and tooling
+- **Expo Router** ~6.0.14 - File-based navigation
+- **React** 19.2.0 - UI library
+- **TypeScript** ~5.9.2 - Type safety
 
 ### UI & Styling
 - **NativeWind** ^4.1.23 - Tailwind CSS for React Native
 - **Phosphor Icons** ^3.0.0 - Icon system
-- **Lucide React Native** ^0.525.0 - Additional icons
-- **React Native Reanimated** ~3.10.1 - Animations
-- **React Native Gesture Handler** ~2.16.1 - Gesture handling
+- **Lucide React Native** ^0.553.0 - Additional icons
+- **React Native Reanimated** ~4.1.1 - Animations
+- **React Native Gesture Handler** ^2.29.1 - Gesture handling
 
 ### State Management
 - **Zustand** ^5.0.6 - Lightweight state management
@@ -51,7 +52,8 @@ A mobile-first, privacy-conscious alternative to Reddit built with React Native 
 
 ## Prerequisites
 
-- Node.js 18+ 
+- **Node.js** 18.x, 20.x, or 22.x LTS (recommended: 20.x)
+  - Use `nvm` to manage versions: `nvm use` (project includes `.nvmrc`)
 - npm or yarn
 - Expo CLI (`npm install -g expo-cli`)
 - iOS Simulator (for iOS development) or Android Emulator (for Android development)

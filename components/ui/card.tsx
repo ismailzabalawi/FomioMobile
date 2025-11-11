@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle, StyleProp } from 'react-native';
-import { useTheme } from '@/components/shared/theme-provider';
+import { View, Text, StyleSheet, ViewStyle, TextStyle, StyleProp } from 'react-native';
+import { useTheme } from '@/components/theme';
 
 export interface CardProps {
   children: React.ReactNode;
@@ -57,7 +57,7 @@ export function CardHeader({ children, style }: CardHeaderProps) {
 
 export interface CardTitleProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: TextStyle;
 }
 
 export function CardTitle({ children, style }: CardTitleProps) {
@@ -71,7 +71,7 @@ export function CardTitle({ children, style }: CardTitleProps) {
 
 export interface CardDescriptionProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: TextStyle;
 }
 
 export function CardDescription({ children, style }: CardDescriptionProps) {

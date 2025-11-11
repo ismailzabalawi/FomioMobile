@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 
 export default function ProfileLayout() {
   const { isDark, isAmoled } = useTheme();
@@ -20,4 +20,4 @@ export default function ProfileLayout() {
       <Stack.Screen name="settings" />
     </Stack>
   );
-} 
+}

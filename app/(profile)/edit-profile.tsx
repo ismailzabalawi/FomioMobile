@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { AuthGate } from '../../components/shared/auth-gate';
 import { AuthPromptView } from '../../components/shared/auth-prompt-view';
 
-export default function EditProfileScreen(): JSX.Element {
+export default function EditProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   
   const colors = {

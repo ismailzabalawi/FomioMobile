@@ -8,7 +8,7 @@ import {
   KeyboardTypeOptions,
   StyleProp,
 } from 'react-native';
-import { useTheme } from '@/components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 
 export interface InputProps {
   placeholder?: string;

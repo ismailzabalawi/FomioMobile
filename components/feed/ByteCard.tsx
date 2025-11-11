@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, Pressable, Alert } from 'react-native';
 import { Avatar } from '../ui/avatar';
 import { Heart, ChatCircle, BookmarkSimple, DotsThree, Share } from 'phosphor-react-native';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { usePostActions } from '../../shared/usePostActions';
 
 export interface ByteCardProps {

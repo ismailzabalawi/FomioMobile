@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { User } from "phosphor-react-native";
-import { useTheme } from "./theme-provider";
+import { useTheme } from "@/components/theme";
 import { router } from "expo-router";
 
 interface AuthPromptViewProps {

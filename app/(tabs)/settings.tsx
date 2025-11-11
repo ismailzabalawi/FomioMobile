@@ -36,7 +36,7 @@ import {
   Notification,
   Monitor
 } from 'phosphor-react-native';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useAuth } from '../../lib/auth';
 import { revokeKey } from '../../lib/discourse';
@@ -128,7 +128,7 @@ function SettingSection({ title, children }: { title: string; children: React.Re
   );
 }
 
-export default function SettingsScreen(): JSX.Element {
+export default function SettingsScreen(): React.ReactElement {
   const { isDark, isAmoled, theme, setTheme } = useTheme();
   const { user, authed, signOut } = useAuth();
   const { user: discourseUser, loading: userLoading } = useDiscourseUser();

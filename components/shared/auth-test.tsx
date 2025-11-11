@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CheckCircle, XCircle, Warning, Info } from 'phosphor-react-native';
-import { useTheme } from '../shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { discourseApi } from '../../shared/discourseApi';
 import { useAuth } from '../../shared/useAuth';
 import { UserApiKeyManager } from '../../shared/userApiKeyManager';

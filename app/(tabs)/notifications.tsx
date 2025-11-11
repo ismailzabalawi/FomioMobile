@@ -27,7 +27,7 @@ import {
   ArrowRight,
   Clock
 } from 'phosphor-react-native';
-import { useTheme } from '../../components/shared/theme-provider';
+import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { useAuth } from '../../lib/auth';
@@ -172,7 +172,7 @@ function NotificationSection({ title, children }: { title: string; children: Rea
   );
 }
 
-export default function NotificationsScreen(): JSX.Element {
+export default function NotificationsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { authed, ready } = useAuth();
   const { 

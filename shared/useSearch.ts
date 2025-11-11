@@ -24,7 +24,7 @@ export function useSearch() {
     hasSearched: false
   });
 
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const search = async (
     query: string,

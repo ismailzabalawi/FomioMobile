@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, ViewStyle, TouchableOpacity, DimensionValue } from 'react-native';
-import { useTheme } from './theme-provider';
+import { useTheme } from '@/components/theme';
 
 interface LoadingSpinnerProps {
   size?: 'small' | 'large';

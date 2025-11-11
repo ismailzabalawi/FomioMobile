@@ -7,7 +7,7 @@ import { render, fireEvent, screen } from '@testing-library/react-native';
 import { Button } from '../../components/ui/button';
 
 // Mock theme provider
-jest.mock('../../components/shared/theme-provider', () => ({
+jest.mock('@/components/theme', () => ({
   useTheme: () => ({
     theme: 'light',
     colors: {

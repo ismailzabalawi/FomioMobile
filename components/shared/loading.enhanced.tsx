@@ -10,7 +10,7 @@ import {
   Dimensions,
   DimensionValue,
 } from 'react-native';
-import { useTheme } from './theme-provider';
+import { useTheme } from '@/components/theme';
 import { ButtonEnhanced } from '../ui/button.enhanced';
 import { 
   typography, 
