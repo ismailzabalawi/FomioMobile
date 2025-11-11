@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { hasUserApiKey } from '../../lib/auth';
-import { discourseApi } from '../discourseApi';
+import { hasUserApiKey } from '../lib/auth';
+import { discourseApi } from './discourseApi';
 
 /**
  * Simple auth state hook for route guards
