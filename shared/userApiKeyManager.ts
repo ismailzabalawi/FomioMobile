@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+import Constants from 'expo-constants';
 import { logger } from './logger';
 import { generateRsaKeypair, decryptPayloadBase64ToUtf8 } from '../lib/crypto';
 
@@ -15,6 +16,22 @@ function loadQuickCrypto(): any {
   
   QuickCryptoLoadAttempted = true;
   
+  // Check if we're in Expo Go (where react-native-quick-crypto is not supported)
+  // Expo Go doesn't support native modules, so we skip loading react-native-quick-crypto
+  // Check multiple ways to detect Expo Go
+  const isExpoGo = 
+    Constants.executionEnvironment === 'storeClient' ||
+    (typeof Constants.expoConfig !== 'undefined' && Constants.expoConfig?.isDetached !== true) ||
+    (typeof global !== 'undefined' && (global as any).__expo !== undefined) ||
+    (typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative' && 
+     typeof (global as any).__expo !== 'undefined');
+  
+  if (isExpoGo) {
+    logger.info('UserApiKeyManager: Detected Expo Go environment, skipping react-native-quick-crypto, will use node-forge fallback');
+    QuickCrypto = null;
+    return null;
+  }
+  
   try {
     // Try to load react-native-quick-crypto
     // In React Native/Expo, we should always try to load it
@@ -23,12 +40,18 @@ function loadQuickCrypto(): any {
     let cryptoModule: any;
     
     try {
+      // Use a dynamic import-like approach with require wrapped in try-catch
       cryptoModule = require('react-native-quick-crypto');
     } catch (requireError: any) {
       // Handle the "undefined" module error specifically
       const requireErrorMsg = requireError?.message || String(requireError);
-      if (requireErrorMsg.includes('undefined') || requireErrorMsg.includes('Cannot find module') || requireErrorMsg.includes('Module not found')) {
+      if (requireErrorMsg.includes('undefined') || 
+          requireErrorMsg.includes('Cannot find module') || 
+          requireErrorMsg.includes('Module not found') ||
+          requireErrorMsg.includes('not supported in Expo Go') ||
+          requireErrorMsg.includes('Expo Go')) {
         // Module not available - this is fine, we'll use fallbacks
+        // Don't log this as an error since it's expected in Expo Go
         QuickCrypto = null;
         return null;
       }
@@ -64,7 +87,8 @@ function loadQuickCrypto(): any {
     // Only log if it's not a "module not found" type error
     if (!errorMessage.includes('Cannot find module') && 
         !errorMessage.includes('Module not found') && 
-        !errorMessage.includes('undefined')) {
+        !errorMessage.includes('undefined') &&
+        !errorMessage.includes('not supported in Expo Go')) {
       logger.warn('UserApiKeyManager: Failed to load react-native-quick-crypto', {
         error: errorMessage,
         code: error?.code,
