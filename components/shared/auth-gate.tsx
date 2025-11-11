@@ -1,28 +1,37 @@
-import React from "react";
-import { ActivityIndicator, View, StyleSheet } from "react-native";
-import { useAuth } from "../../shared/useAuth";
-import { AuthPromptView } from "./auth-prompt-view";
-import { useTheme } from "@/components/theme";
+import React from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Redirect, Slot } from 'expo-router';
+import { useAuthState } from '@/shared/useAuthState';
 
-interface AuthGateProps {
+/**
+ * AuthGate component
+ * Guards routes by checking authentication status
+ * - If not ready: shows loading
+ * - If not authenticated: redirects to signin or shows fallback
+ * - If authenticated: renders children
+ */
+export function AuthGate({ 
+  children, 
+  fallback 
+}: { 
   children: React.ReactNode;
   fallback?: React.ReactNode;
-}
+}) {
+  const { ready, signedIn } = useAuthState();
 
-export function AuthGate({ children, fallback }: AuthGateProps) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const { isDark } = useTheme();
-
-  if (isLoading) {
+  if (!ready) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={isDark ? '#3b82f6' : '#0ea5e9'} />
+        <ActivityIndicator size="large" />
       </View>
     );
   }
 
-  if (!isAuthenticated) {
-    return fallback ?? <AuthPromptView />;
+  if (!signedIn) {
+    if (fallback) {
+      return <>{fallback}</>;
+    }
+    return <Redirect href="/(auth)/signin" />;
   }
 
   return <>{children}</>;
@@ -31,8 +40,7 @@ export function AuthGate({ children, fallback }: AuthGateProps) {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
-

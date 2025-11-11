@@ -30,7 +30,7 @@ import {
 import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useNotifications, Notification } from '../../shared/useNotifications';
-import { useAuth } from '../../lib/auth';
+import { useAuth } from '../../shared/useAuth';
 import { getNotifications } from '../../lib/discourse';
 import { useEffect, useState } from 'react';
 
@@ -174,11 +174,11 @@ function NotificationSection({ title, children }: { title: string; children: Rea
 
 export default function NotificationsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
-  const { authed, ready } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { 
     notifications, 
-    isLoading: loading, 
-    hasError: hasError, 
+    isLoading: isNotificationsLoading, 
+    hasError, 
     errorMessage, 
     loadNotifications: fetchNotifications, 
     markAsRead 
@@ -188,7 +188,7 @@ export default function NotificationsScreen(): React.ReactElement {
   
   // Load notifications if authenticated
   useEffect(() => {
-    if (authed && ready) {
+    if (isAuthenticated && !isAuthLoading) {
       getNotifications()
         .then((data) => {
           // Map Discourse notifications to app format if needed
@@ -198,7 +198,7 @@ export default function NotificationsScreen(): React.ReactElement {
           console.error('Failed to load notifications:', err);
         });
     }
-  }, [authed, ready]);
+  }, [isAuthenticated, isAuthLoading]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -339,7 +339,7 @@ export default function NotificationsScreen(): React.ReactElement {
     </View>
   );
 
-  if (loading && notifications.length === 0) {
+  if (isNotificationsLoading && notifications.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <HeaderBar 

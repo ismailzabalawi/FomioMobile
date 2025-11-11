@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { v4 as uuidv4 } from 'uuid';
 import { generateRsaKeypair, decryptPayloadBase64ToUtf8, derivePublicKeyFromPrivate } from './crypto';
 import { savePrivateKey, loadPrivateKey, saveUserApiKey, loadUserApiKey, saveClientId, loadClientId, clearAll } from './store';
+import { authHeaders, signOut as authSignOut } from './auth';
 
 // Complete web browser auth session
 WebBrowser.maybeCompleteAuthSession();
@@ -111,20 +112,20 @@ export async function authorizeWithDiscourse(): Promise<string> {
 
 /**
  * Make authenticated API request to Discourse
+ * Uses the new auth system from lib/auth.ts
  */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const userApiKey = await loadUserApiKey();
-  const clientId = await loadClientId();
+  // Get auth headers from the new auth system
+  const authHeadersObj = await authHeaders();
   
-  if (!userApiKey) {
+  if (!authHeadersObj['User-Api-Key']) {
     throw new Error('Not authenticated. Please sign in.');
   }
   
   const headers: HeadersInit = {
-    'User-Api-Key': userApiKey,
-    'User-Api-Client-Id': clientId || APPLICATION_NAME,
     'Accept': 'application/json',
     'Content-Type': 'application/json',
+    ...authHeadersObj,
     ...(init?.headers || {}),
   };
   
@@ -225,17 +226,13 @@ export async function createTopic(data: {
 
 /**
  * Revoke User API Key
+ * Uses the new auth system from lib/auth.ts
  */
 export async function revokeKey(): Promise<void> {
   try {
-    await apiFetch('/user-api-key/revoke', {
-      method: 'POST',
-    });
+    await authSignOut();
   } catch (error) {
-    console.error('Failed to revoke key on server:', error);
-    // Continue with local cleanup even if server call fails
+    console.error('Failed to revoke key:', error);
+    throw error;
   }
-  
-  // Always clear local storage
-  await clearAll();
 }

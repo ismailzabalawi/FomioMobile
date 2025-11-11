@@ -346,22 +346,19 @@ class DiscourseApiService {
         ...(options.headers as Record<string, string> | undefined),
       };
 
-      // Authentication: Use User API Keys (per-user RSA key-based)
+      // Authentication: Use User API Keys (delegated auth with RSA)
       try {
-        const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
-        const apiKeyData = await UserApiKeyManager.getApiKey();
+        const { authHeaders: getAuthHeaders } = require('../lib/auth');
+        const authHeaders = await getAuthHeaders();
         
-        if (apiKeyData && apiKeyData.key) {
-          headers['User-Api-Key'] = apiKeyData.key;
-          if (apiKeyData.clientId) {
-            headers['User-Api-Client-Id'] = apiKeyData.clientId;
-          }
+        if (authHeaders['User-Api-Key']) {
+          Object.assign(headers, authHeaders);
           console.log('🔑 Using User API Key for authentication');
         } else {
           console.log('⚠️ User API Key not found, request may fail');
         }
       } catch (error) {
-        console.warn('Failed to load User API Key', error);
+        console.warn('Failed to load auth headers', error);
       }
 
       // Sanitize request body if present

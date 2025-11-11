@@ -36,7 +36,7 @@ import { useTheme } from '@/components/theme';
 import { HeaderBar } from '../../components/nav/HeaderBar';
 import { useSearch } from '../../shared/useSearch';
 import { searchTopics } from '../../lib/discourse';
-import { useAuth } from '../../lib/auth';
+import { useAuth } from '../../shared/useAuth';
 import { useCategories } from '../../shared/useCategories';
 import { useTerets } from '../../shared/useTerets';
 import { useRecentTopics } from '../../shared/useRecentTopics';

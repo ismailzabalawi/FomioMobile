@@ -11,7 +11,7 @@ import { useAuth } from '../../shared/useAuth';
 jest.mock('@react-native-async-storage/async-storage');
 
 // Mock theme provider
-jest.mock('../../components/shared/theme-provider', () => ({
+jest.mock('@/components/theme', () => ({
   useTheme: () => ({
     theme: 'light',
     colors: {
