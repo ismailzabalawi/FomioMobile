@@ -338,13 +338,18 @@ export const useAuth = () => {
         logger.warn('useAuth: Failed to clear auth storage:', storageError?.message || storageError);
       }
       
-      // Revoke User API Key
+      // Revoke User API Key using new auth system
       try {
-        await UserApiKeyAuth.revokeApiKey();
+        const { signOut: authSignOut } = require('../lib/auth');
+        await authSignOut();
       } catch (apiKeyError: any) {
         logger.warn('useAuth: Failed to revoke API key:', apiKeyError?.message || apiKeyError);
         // Still clear local key even if revocation fails
-        await UserApiKeyManager.clearApiKey();
+        try {
+          await UserApiKeyManager.clearApiKey();
+        } catch {
+          // Ignore cleanup errors
+        }
       }
       
       console.log('✅ Sign out successful');

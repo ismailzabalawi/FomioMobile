@@ -24,31 +24,40 @@ export default function SignInScreen() {
 
     try {
       // Check if we already have a valid API key
-      const storeModule = require('../../lib/store');
-      const existingKey = await storeModule.loadUserApiKey();
+      const authModule = require('../../lib/auth');
+      const hasKey = await authModule.hasUserApiKey();
       
-      if (existingKey) {
-        // Try to verify the key is still valid
+      if (hasKey) {
+        // Try to verify the key is still valid by checking session
         try {
-          const discourseModule = require('../../lib/discourse');
-          await discourseModule.getSession();
-          // Key is valid, navigate to main app
-          router.replace('/(tabs)' as any);
-          return;
+          const discourseApi = require('../../shared/discourseApi').discourseApi;
+          const userResponse = await discourseApi.getCurrentUser();
+          if (userResponse.success && userResponse.data) {
+            // Key is valid, navigate to main app
+            router.replace('/(tabs)' as any);
+            return;
+          }
         } catch (error) {
-          // Key exists but is invalid, continue to authorize screen
-          console.log('⚠️ Existing API key invalid, redirecting to authorize screen');
+          // Key exists but is invalid, continue to sign in
+          console.log('⚠️ Existing API key invalid, starting new sign in');
         }
       }
       
-      // No valid key, redirect to authorize screen
-      router.push('/(auth)/authorize' as any);
+      // Start delegated authentication flow
+      const success = await authModule.signIn();
+      
+      if (success) {
+        // Sign in successful, navigate to main app
+        router.replace('/(tabs)' as any);
+      }
     } catch (err: any) {
       const errorMessage = err?.message || 'Failed to connect. Please try again.';
       setError(errorMessage);
       
       // Show helpful hints for common errors
-      if (errorMessage.includes('redirect')) {
+      if (errorMessage.includes('cancel')) {
+        setError('Sign in cancelled. Please try again when ready.');
+      } else if (errorMessage.includes('redirect')) {
         setError('Missing redirect in Discourse settings. Please configure the redirect URL in your Discourse admin panel.');
       } else if (errorMessage.includes('scopes')) {
         setError('Insufficient scopes. Please check your API key permissions.');
