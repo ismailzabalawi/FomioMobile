@@ -5,10 +5,10 @@ import {
   StyleSheet, 
   TouchableOpacity, 
   ScrollView, 
-  Image,
   Alert,
   RefreshControl
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   ArrowLeft, 

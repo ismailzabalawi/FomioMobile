@@ -4,7 +4,8 @@
  */
 
 import React, { Suspense, lazy, ComponentType, useState, useEffect, useRef } from 'react';
-import { View, Image, ImageProps, Dimensions } from 'react-native';
+import { View, Dimensions } from 'react-native';
+import { Image, ImageProps } from 'expo-image';
 import { LoadingSpinnerEnhanced, SkeletonEnhanced } from '../components/shared/loading.enhanced';
 import { logger } from './logger';
 import { performanceMonitor } from './performance-monitor';
@@ -370,7 +371,7 @@ export const preloadManager = {
   preloadImages(imageUrls: string[]) {
     imageUrls.forEach((url, index) => {
       setTimeout(() => {
-        Image.prefetch(url).catch(() => {
+        Image.prefetch(url, { cachePolicy: 'memory-disk' }).catch(() => {
           // Ignore preload errors
         });
       }, index * 100);

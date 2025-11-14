@@ -1,15 +1,22 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { 
   View, 
   Text, 
   ActivityIndicator, 
   StyleSheet, 
   ViewStyle, 
-  Animated,
-  Easing,
   Dimensions,
   DimensionValue,
 } from 'react-native';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  withRepeat,
+  withSequence,
+  interpolate,
+  Easing as ReanimatedEasing,
+} from 'react-native-reanimated';
 import { useTheme } from '@/components/theme';
 import { ButtonEnhanced } from '../ui/button.enhanced';
 import { 
@@ -69,25 +76,25 @@ export function LoadingOverlayEnhanced({
 }: LoadingOverlayProps) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const opacity = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
+      opacity.value = withTiming(1, {
         duration: animation.duration.normal,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
+        easing: ReanimatedEasing.out(ReanimatedEasing.cubic),
+      });
     } else {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
+      opacity.value = withTiming(0, {
         duration: animation.duration.fast,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
+        easing: ReanimatedEasing.in(ReanimatedEasing.cubic),
+      });
     }
-  }, [visible, fadeAnim]);
+  }, [visible, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
 
   if (!visible) return null;
 
@@ -97,8 +104,8 @@ export function LoadingOverlayEnhanced({
         styles.overlay, 
         { 
           backgroundColor: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.95)',
-          opacity: fadeAnim,
         }, 
+        animatedStyle,
         style
       ]}
     >
@@ -159,15 +166,17 @@ export function LoadingStateEnhanced({
 }: LoadingStateProps) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const opacity = useSharedValue(1);
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: loading || error ? 0.7 : 1,
+    opacity.value = withTiming(loading || error ? 0.7 : 1, {
       duration: animation.duration.normal,
-      useNativeDriver: true,
-    }).start();
-  }, [loading, error, fadeAnim]);
+    });
+  }, [loading, error, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
 
   if (loading) {
     return (
@@ -221,7 +230,7 @@ export function LoadingStateEnhanced({
   }
 
   return (
-    <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+    <Animated.View style={[{ flex: 1 }, animatedStyle]}>
       {children}
     </Animated.View>
   );
@@ -247,36 +256,26 @@ export function SkeletonEnhanced({
 }: SkeletonProps) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  const shimmerProgress = useSharedValue(0);
 
   useEffect(() => {
     if (animated) {
-      const shimmerAnimation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(shimmerAnim, {
-            toValue: 1,
-            duration: 1000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(shimmerAnim, {
-            toValue: 0,
-            duration: 1000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
+      shimmerProgress.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 1000, easing: ReanimatedEasing.inOut(ReanimatedEasing.ease) }),
+          withTiming(0, { duration: 1000, easing: ReanimatedEasing.inOut(ReanimatedEasing.ease) })
+        ),
+        -1,
+        false
       );
-      
-      shimmerAnimation.start();
-      
-      return () => shimmerAnimation.stop();
     }
-  }, [animated, shimmerAnim]);
+  }, [animated, shimmerProgress]);
 
-  const shimmerOpacity = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 0.7],
+  const shimmerStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(shimmerProgress.value, [0, 1], [0.3, 0.7]);
+    return {
+      opacity,
+    };
   });
 
   return (
@@ -298,9 +297,9 @@ export function SkeletonEnhanced({
             StyleSheet.absoluteFill,
             {
               backgroundColor: colors.surface,
-              opacity: shimmerOpacity,
               borderRadius,
             },
+            shimmerStyle,
           ]}
         />
       )}
@@ -359,31 +358,25 @@ export function PostSkeletonEnhanced() {
 export function PullToRefreshIndicator() {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const rotation = useSharedValue(0);
 
   useEffect(() => {
-    const rotateAnimation = Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 1000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
+    rotation.value = withRepeat(
+      withTiming(360, { duration: 1000, easing: ReanimatedEasing.linear }),
+      -1,
+      false
     );
-    
-    rotateAnimation.start();
-    
-    return () => rotateAnimation.stop();
-  }, [rotateAnim]);
+  }, [rotation]);
 
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: `${rotation.value}deg` }],
+    };
   });
 
   return (
     <View style={styles.pullToRefreshContainer}>
-      <Animated.View style={{ transform: [{ rotate: rotation }] }}>
+      <Animated.View style={animatedStyle}>
         <ActivityIndicator size="small" color={colors.primary} />
       </Animated.View>
     </View>

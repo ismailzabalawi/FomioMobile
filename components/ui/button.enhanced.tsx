@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -8,9 +8,10 @@ import {
   TextStyle,
   View,
   StyleProp,
-  Animated,
   Pressable,
 } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
 import { 
   typography, 
@@ -67,31 +68,29 @@ export function ButtonEnhanced({
 }: ButtonProps) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const scale = useSharedValue(1);
+  
+  // Animated style for scale
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
   
   // Handle press with micro-interaction
   const handlePressIn = useCallback(() => {
-    Animated.timing(scaleAnim, {
-      toValue: 0.95,
-      duration: animation.duration.fast,
-      useNativeDriver: true,
-    }).start();
-  }, [scaleAnim]);
+    scale.value = withTiming(0.95, { duration: animation.duration.fast });
+  }, [scale]);
   
   const handlePressOut = useCallback(() => {
-    Animated.timing(scaleAnim, {
-      toValue: 1,
-      duration: animation.duration.fast,
-      useNativeDriver: true,
-    }).start();
-  }, [scaleAnim]);
+    scale.value = withTiming(1, { duration: animation.duration.fast });
+  }, [scale]);
   
   const handlePress = useCallback(() => {
     if (!disabled && !loading && onPress) {
-      // TODO: Add haptic feedback here when available
-      // if (hapticFeedback) {
-      //   HapticFeedback.impact(HapticFeedback.ImpactFeedbackStyle.Light);
-      // }
+      if (hapticFeedback) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+          // Ignore haptic errors (e.g., on devices that don't support it)
+        });
+      }
       onPress();
     }
   }, [disabled, loading, onPress, hapticFeedback]);
@@ -200,7 +199,7 @@ export function ButtonEnhanced({
     : colors.primary;
   
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={animatedStyle}>
       <Pressable
         style={buttonStyle}
         onPress={handlePress}

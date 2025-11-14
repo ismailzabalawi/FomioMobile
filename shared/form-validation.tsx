@@ -3,8 +3,13 @@
  * Comprehensive form validation with real-time feedback and accessibility
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming,
+} from 'react-native-reanimated';
 import { useTheme } from '../components/theme';
 import { logger } from './logger';
 import { 
@@ -646,41 +651,26 @@ interface ToastNotificationProps {
 export function ToastNotificationComponent({ toast, onDismiss }: ToastNotificationProps) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const slideAnim = useRef(new Animated.Value(-100)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const translateY = useSharedValue(-100);
+  const opacity = useSharedValue(0);
   
   useEffect(() => {
     // Slide in animation
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: animation.duration.normal,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: animation.duration.normal,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [slideAnim, opacityAnim]);
+    translateY.value = withTiming(0, { duration: animation.duration.normal });
+    opacity.value = withTiming(1, { duration: animation.duration.normal });
+  }, [translateY, opacity]);
   
   const handleDismiss = () => {
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: -100,
-        duration: animation.duration.fast,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 0,
-        duration: animation.duration.fast,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
+    translateY.value = withTiming(-100, { duration: animation.duration.fast });
+    opacity.value = withTiming(0, { duration: animation.duration.fast }, () => {
       onDismiss(toast.id);
     });
   };
+  
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: opacity.value,
+  }));
   
   const getToastColors = () => {
     switch (toast.type) {
@@ -705,9 +695,8 @@ export function ToastNotificationComponent({ toast, onDismiss }: ToastNotificati
         styles.toast,
         {
           backgroundColor: toastColors.background,
-          transform: [{ translateY: slideAnim }],
-          opacity: opacityAnim,
         },
+        animatedStyle,
       ]}
     >
       <View style={styles.toastContent}>

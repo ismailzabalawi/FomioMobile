@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -9,9 +9,15 @@ import {
   Alert,
   Linking,
   Platform,
-  Animated,
   ActivityIndicator
 } from 'react-native';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withTiming,
+  interpolate,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   Moon, 
@@ -137,9 +143,9 @@ export default function SettingsScreen(): React.ReactElement {
   const [autoSave, setAutoSave] = useState(true);
   const [showNSFW, setShowNSFW] = useState(false);
   
-  // Animation for AMOLED toggle
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
+  // Animation for AMOLED toggle with Reanimated
+  const slideProgress = useSharedValue(isDark ? 1 : 0);
+  const opacity = useSharedValue(isDark ? 1 : 0);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -177,46 +183,17 @@ export default function SettingsScreen(): React.ReactElement {
   useEffect(() => {
     if (isDark) {
       // Slide in and fade in with spring
-      Animated.parallel([
-        Animated.spring(slideAnim, {
-          toValue: 1,
-          tension: 100,
-          friction: 8,
-          useNativeDriver: false,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: false,
-        }),
-      ]).start();
+      slideProgress.value = withSpring(1, {
+        damping: 8,
+        stiffness: 100,
+      });
+      opacity.value = withTiming(1, { duration: 200 });
     } else {
       // Slide out and fade out
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: false,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: false,
-        }),
-      ]).start();
+      slideProgress.value = withTiming(0, { duration: 200 });
+      opacity.value = withTiming(0, { duration: 150 });
     }
-  }, [isDark, slideAnim, opacityAnim]);
-
-  // Initialize animation state based on current theme
-  useEffect(() => {
-    if (isDark) {
-      slideAnim.setValue(1);
-      opacityAnim.setValue(1);
-    } else {
-      slideAnim.setValue(0);
-      opacityAnim.setValue(0);
-    }
-  }, []);
+  }, [isDark, slideProgress, opacity]);
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -328,22 +305,16 @@ export default function SettingsScreen(): React.ReactElement {
           />
           
           <Animated.View
-            style={{
-              opacity: opacityAnim,
+            style={useAnimatedStyle(() => ({
+              opacity: opacity.value,
               transform: [
                 {
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-20, 0],
-                  }),
+                  translateY: interpolate(slideProgress.value, [0, 1], [-20, 0]),
                 },
               ],
-              maxHeight: slideAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, 80],
-              }),
+              maxHeight: interpolate(slideProgress.value, [0, 1], [0, 80]),
               overflow: 'hidden',
-            }}
+            }))}
           >
             <SettingItem
               title="AMOLED Mode"

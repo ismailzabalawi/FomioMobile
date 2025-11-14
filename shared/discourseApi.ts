@@ -624,31 +624,57 @@ class DiscourseApiService {
     });
   }
 
-  async uploadAvatar(username: string, imageFile: File): Promise<DiscourseApiResponse<any>> {
+  async uploadAvatar(username: string, imageFile: File | { uri: string; type?: string; name?: string; fileSize?: number }): Promise<DiscourseApiResponse<any>> {
     if (!SecurityValidator.validateUsername(username)) {
       return { success: false, error: 'Invalid username format' };
     }
 
+    // Handle React Native file format (from expo-image-picker)
+    let fileType: string;
+    let fileSize: number | undefined;
+    
+    if ('uri' in imageFile) {
+      // React Native format
+      fileType = imageFile.type || 'image/jpeg';
+      fileSize = imageFile.fileSize;
+    } else {
+      // Browser File format
+      fileType = imageFile.type;
+      fileSize = imageFile.size;
+    }
+
     // Validate file type and size
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-    if (!allowedTypes.includes(imageFile.type)) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/jpg'];
+    if (!allowedTypes.some(type => fileType.includes(type))) {
       return { success: false, error: 'Invalid file type. Only JPEG, PNG, and GIF are allowed.' };
     }
 
     const maxSize = 5 * 1024 * 1024; // 5MB
-    if (imageFile.size > maxSize) {
+    if (fileSize && fileSize > maxSize) {
       return { success: false, error: 'File too large. Maximum size is 5MB.' };
     }
 
     const formData = new FormData();
-    formData.append('upload', imageFile);
+    
+    if ('uri' in imageFile) {
+      // React Native: append as object with uri, type, name
+      formData.append('upload', {
+        uri: imageFile.uri,
+        type: fileType,
+        name: imageFile.name || 'avatar.jpg',
+      } as any);
+    } else {
+      // Browser: append File object directly
+      formData.append('upload', imageFile);
+    }
+    
     formData.append('type', 'avatar');
 
     return this.makeRequest<any>(`/users/${encodeURIComponent(username)}/preferences/avatar/pick`, {
       method: 'PUT',
       body: formData,
       headers: {
-        // Don't set Content-Type for FormData, let the browser set it
+        // Don't set Content-Type for FormData, let React Native/browser set it
       },
     });
   }

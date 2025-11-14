@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Image, Text, StyleSheet, ViewStyle, TextStyle, StyleProp } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle, TextStyle, StyleProp } from 'react-native';
+import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
 
 export interface AvatarProps {

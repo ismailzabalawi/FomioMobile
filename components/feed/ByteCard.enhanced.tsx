@@ -5,9 +5,10 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   Pressable, 
-  Animated,
   useWindowDimensions,
 } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { Avatar } from '../ui/avatar';
 import { Heart, ChatCircle, BookmarkSimple } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
@@ -76,34 +77,47 @@ export const ByteCardEnhanced = memo<ByteCardProps>(({
   const { width } = useWindowDimensions();
   const colors = getThemeColors(isDark);
   
-  // Animation states
-  const [likeAnimation] = useState(new Animated.Value(1));
+  // Animation states with Reanimated
+  const likeScale = useSharedValue(1);
   const [pressedAction, setPressedAction] = useState<number | null>(null);
+  
+  // Animated style for like button
+  const likeAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: likeScale.value }],
+  }));
   
   // Memoized callbacks for performance
   const handleLike = useCallback(() => {
-    // Micro-interaction: scale animation
-    Animated.sequence([
-      Animated.timing(likeAnimation, {
-        toValue: 1.2,
-        duration: animation.duration.fast,
-        useNativeDriver: true,
-      }),
-      Animated.timing(likeAnimation, {
-        toValue: 1,
-        duration: animation.duration.fast,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Haptic feedback for like action
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {
+      // Ignore haptic errors
+    });
+    
+    // Micro-interaction: spring animation for more natural feel
+    likeScale.value = withSpring(1.2, {
+      damping: 8,
+      stiffness: 200,
+    }, () => {
+      likeScale.value = withSpring(1, {
+        damping: 8,
+        stiffness: 200,
+      });
+    });
     
     onLike();
-  }, [onLike, likeAnimation]);
+  }, [onLike, likeScale]);
   
   const handleComment = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+      // Ignore haptic errors
+    });
     onComment();
   }, [onComment]);
   
   const handleBookmark = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+      // Ignore haptic errors
+    });
     onBookmark?.();
   }, [onBookmark]);
   
@@ -227,7 +241,7 @@ export const ByteCardEnhanced = memo<ByteCardProps>(({
           accessibilityLabel={isLiked ? accessibility.labels.unlike : accessibility.labels.like}
           accessibilityState={{ selected: isLiked }}
         >
-          <Animated.View style={{ transform: [{ scale: likeAnimation }] }}>
+          <Animated.View style={likeAnimatedStyle}>
             <Heart 
               size={20} 
               weight={isLiked ? 'fill' : 'regular'} 

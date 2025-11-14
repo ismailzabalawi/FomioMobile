@@ -207,7 +207,7 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
   }, [user?.username, refreshUser]);
 
   // Upload avatar
-  const uploadAvatar = useCallback(async (imageFile: File): Promise<boolean> => {
+  const uploadAvatar = useCallback(async (imageFile: File | { uri: string; type?: string; name?: string; fileSize?: number }): Promise<boolean> => {
     if (!user?.username) return false;
     
     setUpdating(true);
