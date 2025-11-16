@@ -1,7 +1,10 @@
 /**
- * Production-ready logging utility
- * Replaces console.log statements with proper error handling and logging
+ * Logger Utility
+ * Centralized logging with different log levels and context support
  */
+
+// Declare __DEV__ for TypeScript
+declare const __DEV__: boolean;
 
 export enum LogLevel {
   DEBUG = 0,
@@ -59,65 +62,36 @@ class Logger {
   /**
    * Log authentication events
    */
-  auth(action: string, success: boolean, details?: any): void {
-    const message = `Auth ${action}: ${success ? 'SUCCESS' : 'FAILED'}`;
-    if (success) {
-      this.info(message, details);
-    } else {
-      this.warn(message, details);
-    }
-  }
-
-  /**
-   * Log API calls
-   */
-  api(method: string, url: string, status?: number, duration?: number): void {
-    const message = `API ${method} ${url}`;
-    const context = { status, duration };
-    
-    if (status && status >= 400) {
-      this.error(message, undefined, context);
-    } else {
-      this.info(message, context);
-    }
-  }
-
-  /**
-   * Log user actions
-   */
-  userAction(action: string, details?: any): void {
-    this.info(`User Action: ${action}`, details);
+  auth(event: string, success: boolean, context?: any): void {
+    const status = success ? 'SUCCESS' : 'FAILURE';
+    this.info(`Auth ${event}: ${status}`, context);
   }
 }
 
+// Export singleton instance
 export const logger = new Logger();
 
 /**
- * Error boundary helper
+ * Helper function to log errors with context
  */
-export function logError(error: Error, errorInfo?: any): void {
-  logger.error('Unhandled Error', error, errorInfo);
+export function logError(error: Error | any, context?: any): void {
+  logger.error('Unhandled Error', error, context);
 }
 
 /**
- * Async operation wrapper with logging
+ * Wrap async operations with logging
  */
 export async function withLogging<T>(
   operation: () => Promise<T>,
-  operationName: string,
-  context?: any
+  operationName: string
 ): Promise<T> {
-  const startTime = Date.now();
-  logger.debug(`Starting ${operationName}`, context);
-  
+  logger.debug(`Starting ${operationName}`);
   try {
     const result = await operation();
-    const duration = Date.now() - startTime;
-    logger.info(`Completed ${operationName}`, { duration, ...context });
+    logger.debug(`Completed ${operationName}`);
     return result;
   } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.error(`Failed ${operationName}`, error, { duration, ...context });
+    logger.error(`Failed ${operationName}`, error);
     throw error;
   }
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { House, MagnifyingGlass, Plus, Bell, GearSix } from 'phosphor-react-native';
+import { House, MagnifyingGlass, Plus, Bell, User } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
 import { View, StyleSheet } from 'react-native';
@@ -109,14 +109,14 @@ export default function TabLayout(): React.ReactElement {
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="profile"
         options={{
-          title: 'Settings',
+          title: 'Profile',
           tabBarIcon: ({ color, size, focused }) => (
-            <GearSix 
+            <User 
               color={color} 
               size={focused ? size + 2 : size} 
-              weight="bold" 
+              weight={focused ? 'fill' : 'regular'} 
             />
           ),
         }}

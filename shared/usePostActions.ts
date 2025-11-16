@@ -11,7 +11,8 @@ export interface PostActionState {
 }
 
 export function usePostActions(
-  postId: number,
+  postId: number, // For like/bookmark actions on the post
+  topicId: number, // For comment creation (topic ID)
   initialLikeCount: number = 0,
   initialIsLiked: boolean = false,
   initialIsBookmarked: boolean = false
@@ -92,13 +93,13 @@ export function usePostActions(
     try {
       const response = await discourseApi.createComment({
         content,
-        byteId: postId,
+        byteId: topicId, // Use topicId, not postId
         replyToPostNumber
       });
 
       if (response.success) {
         setState(prev => ({ ...prev, isLoading: false }));
-        logger.info(`Comment created successfully for post ${postId}`);
+        logger.info(`Comment created successfully for topic ${topicId}`);
         return true;
       } else {
         throw new Error(response.error || 'Failed to create comment');
@@ -112,7 +113,7 @@ export function usePostActions(
       }));
       return false;
     }
-  }, [postId, state.isLoading]);
+  }, [topicId, state.isLoading]);
 
   const updateState = useCallback((updates: Partial<PostActionState>) => {
     setState(prev => ({ ...prev, ...updates }));

@@ -7,6 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "fomio",
     "android": {
+      "package": "com.fomio.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"

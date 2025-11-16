@@ -1,276 +1,130 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, Pressable, Alert } from 'react-native';
-import { Avatar } from '../ui/avatar';
-import { Heart, ChatCircle, BookmarkSimple, DotsThree, Share } from 'phosphor-react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { ChatCircle } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { usePostActions } from '../../shared/usePostActions';
+import { Avatar } from '../ui/avatar';
+import { getThemeColors, spacing, borderRadius, createTextStyle } from '@/shared/design-system';
 
 export interface ByteCardProps {
-  id: string;
-  content: string;
+  id: string | number;
+  title: string;
+  hub: string;
+  teret?: string;
   author: {
-    username: string;
-    name: string;
-    avatar: string;
+    name?: string;
+    avatar?: string;
   };
-  category: {
-    name: string;
-    color: string;
-    slug: string;
-  };
-  tags: string[];
-  likes: number;
-  comments: number;
-  timestamp: string;
-  isLiked: boolean;
-  isBookmarked?: boolean;
+  replies: number;
+  activity: string; // Pre-formatted timestamp (e.g., "3h", "2d", "Just now")
   onPress: () => void;
-  onLike: () => void;
-  onComment: () => void;
-  onBookmark?: () => void;
   onCategoryPress?: () => void;
-  onTagPress?: (tag: string) => void;
-  onShare?: () => void;
-  onMore?: () => void;
   style?: ViewStyle;
 }
 
-// UI Spec: Modern ByteCard — Clean, spacious design with subtle shadows, smooth interactions, and clear visual hierarchy. 
-// Follows Fomio's design language of clarity and minimalism while maintaining rich functionality.
+/**
+ * ByteCard Component
+ * 
+ * Simplified card component matching Discourse /latest API structure:
+ * - Title (always visible, wraps to next line)
+ * - Hub and optional Teret (category path)
+ * - Poster avatar
+ * - Number of replies
+ * - Activity (formatted timestamp)
+ */
 export function ByteCard({
   id,
-  content,
+  title,
+  hub,
+  teret,
   author,
-  category,
-  tags,
-  likes,
-  comments,
-  timestamp,
-  isLiked,
-  isBookmarked,
+  replies,
+  activity,
   onPress,
-  onLike,
-  onComment,
-  onBookmark,
   onCategoryPress,
-  onTagPress,
-  onShare,
-  onMore,
   style,
 }: ByteCardProps) {
   const { isDark, isAmoled } = useTheme();
-  const [pressed, setPressed] = useState<number | null>(null);
+  const colors = getThemeColors(isDark);
   
-  // Use the post actions hook
-  const {
-    isLiked: currentIsLiked,
-    isBookmarked: currentIsBookmarked,
-    likeCount: currentLikeCount,
-    isLoading,
-    error,
-    toggleLike,
-    toggleBookmark,
-  } = usePostActions(parseInt(id), likes, isLiked, isBookmarked);
-  
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-    card: isAmoled ? '#000000' : (isDark ? '#374151' : '#ffffff'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
-    border: isAmoled ? '#000000' : (isDark ? '#4b5563' : '#e5e7eb'),
-    teretBg: isDark ? '#1e40af' : '#dbeafe',
-    teretText: isDark ? '#93c5fd' : '#1e40af',
-    actionBg: isAmoled ? '#000000' : (isDark ? '#374151' : '#f9fafb'),
-    pressed: isAmoled ? '#1a1a1a' : (isDark ? '#4b5563' : '#f3f4f6'),
-  };
-
-  // Handle empty avatar URLs
+  // Handle avatar source
   const avatarSource = author.avatar && author.avatar.trim() !== '' 
     ? { uri: author.avatar } 
     : undefined;
-
-  // Parse content to separate title and excerpt
-  const contentParts = content.split('\n\n');
-  const title = contentParts[0] || '';
-  const excerpt = contentParts.slice(1).join('\n\n') || '';
+  
+  // Build category path: "Hub" or "Hub › Teret"
+  const categoryPath = teret ? `${hub} › ${teret}` : hub;
+  
+  // AMOLED dark mode uses true black
+  const cardBackground = isAmoled ? '#000000' : colors.surface;
+  const cardBorder = isAmoled ? '#1a1a1a' : colors.border;
 
   return (
-    <TouchableOpacity 
-      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, style]} 
-      onPress={onPress} 
-      activeOpacity={0.95}
+    <TouchableOpacity
+      style={[
+        styles.card,
+        {
+          backgroundColor: cardBackground,
+          borderColor: cardBorder,
+        },
+        style,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.9}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={`${title} by ${author.name || 'Unknown'}`}
     >
-      {/* Header with Author Info */}
-      <View style={styles.header}>
-        <View style={styles.authorSection}>
-          <Avatar source={avatarSource} size="md" fallback={author.name} />
-          <View style={styles.authorInfo}>
-            <Text style={[styles.authorName, { color: colors.text }]}>{author.name}</Text>
-            <Text style={[styles.timestamp, { color: colors.secondary }]}>{timestamp}</Text>
-          </View>
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.moreButton} 
-          onPress={onMore}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="More options"
-        >
-          <DotsThree size={20} weight="bold" color={colors.secondary} />
-        </TouchableOpacity>
-      </View>
+      <View style={styles.row}>
+        {/* Avatar */}
+        <Avatar
+          source={avatarSource}
+          size="md"
+          fallback={author.name || 'U'}
+        />
 
-      {/* Content */}
-      <View style={styles.contentSection}>
-        {title && (
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
+        {/* Content */}
+        <View style={styles.content}>
+          {/* Title - always visible, wraps to next line */}
+          <Text style={[styles.title, { color: colors.text }]}>
             {title}
           </Text>
-        )}
-        {excerpt && (
-          <Text style={[styles.content, { color: colors.text }]} numberOfLines={4}>
-            {excerpt}
-          </Text>
-        )}
-      </View>
 
-      {/* Category and Tags Section */}
-      <View style={styles.metadataSection}>
-        {/* Category Badge */}
-        <TouchableOpacity 
-          style={[styles.categoryBadge, { backgroundColor: category.color + '20' }]} 
-          onPress={onCategoryPress}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={`View all bytes in ${category.name}`}
-        >
-          <Text style={[styles.categoryText, { color: category.color }]}>
-            {category.name}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Tags */}
-        {tags.length > 0 && (
-          <View style={styles.tagsContainer}>
-            {tags.slice(0, 3).map((tag, index) => (
-              <TouchableOpacity
-                key={tag}
-                style={[styles.tagBadge, { backgroundColor: colors.teretBg }]}
-                onPress={() => onTagPress?.(tag)}
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel={`View all bytes tagged with ${tag}`}
-              >
-                <Text style={[styles.tagText, { color: colors.teretText }]}>
-                  #{tag}
-                </Text>
-              </TouchableOpacity>
-            ))}
-            {tags.length > 3 && (
-              <Text style={[styles.moreTagsText, { color: colors.secondary }]}>
-                +{tags.length - 3} more
+          {/* Meta row: Category path + Activity + Replies */}
+          <View style={styles.metaRow}>
+            {/* Category path */}
+            <TouchableOpacity
+              onPress={onCategoryPress}
+              disabled={!onCategoryPress}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessible={!!onCategoryPress}
+              accessibilityRole={onCategoryPress ? 'button' : 'text'}
+              accessibilityLabel={`View ${categoryPath}`}
+            >
+              <Text style={[styles.category, { color: colors.textSecondary }]}>
+                {categoryPath}
               </Text>
-            )}
+            </TouchableOpacity>
+
+            {/* Separator */}
+            <Text style={[styles.separator, { color: colors.textSecondary }]}>•</Text>
+
+            {/* Activity timestamp */}
+            <Text style={[styles.activity, { color: colors.textSecondary }]}>
+              {activity}
+            </Text>
+
+            {/* Spacer */}
+            <View style={styles.spacer} />
+
+            {/* Replies count */}
+            <View style={styles.replies}>
+              <ChatCircle size={16} weight="regular" color={colors.textSecondary} />
+              <Text style={[styles.repliesText, { color: colors.textSecondary }]}>
+                {replies}
+              </Text>
+            </View>
           </View>
-        )}
-      </View>
-
-      {/* Action Bar */}
-      <View style={[styles.actionBar, { backgroundColor: colors.actionBg, borderTopColor: colors.border }]}>
-        <Pressable
-          onPress={async () => {
-            try {
-              await toggleLike();
-              if (onLike) onLike();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to update like status');
-            }
-          }}
-          onPressIn={() => setPressed(0)}
-          onPressOut={() => setPressed(null)}
-          style={({ pressed: isPressed }) => [
-            styles.actionButton,
-            (pressed === 0 || isPressed) && { backgroundColor: colors.pressed },
-          ]}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={currentIsLiked ? 'Unlike' : 'Like'}
-          disabled={isLoading}
-        >
-          <Heart 
-            size={20} 
-            weight={currentIsLiked ? 'fill' : 'regular'} 
-            color={currentIsLiked ? colors.accent : colors.secondary} 
-          />
-          <Text style={[
-            styles.actionCount, 
-            { color: currentIsLiked ? colors.accent : colors.secondary }
-          ]}>
-            {currentLikeCount > 0 ? currentLikeCount : ''}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onComment}
-          onPressIn={() => setPressed(1)}
-          onPressOut={() => setPressed(null)}
-          style={({ pressed: isPressed }) => [
-            styles.actionButton,
-            (pressed === 1 || isPressed) && { backgroundColor: colors.pressed },
-          ]}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Comment"
-        >
-          <ChatCircle size={20} weight="regular" color={colors.secondary} />
-          <Text style={[styles.actionCount, { color: colors.secondary }]}>
-            {comments > 0 ? comments : ''}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onShare}
-          onPressIn={() => setPressed(2)}
-          onPressOut={() => setPressed(null)}
-          style={({ pressed: isPressed }) => [
-            styles.actionButton,
-            (pressed === 2 || isPressed) && { backgroundColor: colors.pressed },
-          ]}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Share"
-        >
-          <Share size={20} weight="regular" color={colors.secondary} />
-        </Pressable>
-
-        <Pressable
-          onPress={async () => {
-            try {
-              await toggleBookmark();
-              if (onBookmark) onBookmark();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to update bookmark status');
-            }
-          }}
-          onPressIn={() => setPressed(3)}
-          onPressOut={() => setPressed(null)}
-          style={({ pressed: isPressed }) => [
-            styles.actionButton,
-            (pressed === 3 || isPressed) && { backgroundColor: colors.pressed },
-          ]}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={currentIsBookmarked ? 'Remove bookmark' : 'Bookmark'}
-          disabled={isLoading}
-        >
-          <BookmarkSimple 
-            size={20} 
-            weight={currentIsBookmarked ? 'fill' : 'regular'} 
-            color={currentIsBookmarked ? colors.accent : colors.secondary} 
-          />
-        </Pressable>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -278,135 +132,65 @@ export function ByteCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
-    marginHorizontal: 16,
-    marginVertical: 8,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    overflow: 'hidden',
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.sm,
+    padding: spacing.md,
   } as ViewStyle,
   
-  header: {
+  row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    paddingBottom: 12,
+    alignItems: 'flex-start',
   } as ViewStyle,
   
-  authorSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  content: {
     flex: 1,
-  } as ViewStyle,
-  
-  authorInfo: {
-    marginLeft: 12,
-    flex: 1,
-  } as ViewStyle,
-  
-  authorName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  } as TextStyle,
-  
-  timestamp: {
-    fontSize: 13,
-    fontWeight: '400',
-  } as TextStyle,
-  
-  moreButton: {
-    padding: 8,
-    borderRadius: 8,
-  } as ViewStyle,
-  
-  contentSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    marginLeft: spacing.md,
+    minWidth: 0, // Allows text to wrap properly
   } as ViewStyle,
   
   title: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 8,
-    lineHeight: 24,
-  } as TextStyle,
-
-  content: {
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: '400',
-    opacity: 0.9,
+    ...createTextStyle('bodyMedium', undefined, {
+      fontWeight: '700',
+    }),
+    marginBottom: spacing.xs,
   } as TextStyle,
   
-  metadataSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  } as ViewStyle,
-  
-  categoryBadge: {
-    alignSelf: 'flex-start',
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  } as ViewStyle,
-  
-  categoryText: {
-    fontSize: 13,
-    fontWeight: '600',
-  } as TextStyle,
-  
-  tagsContainer: {
+  metaRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 6,
   } as ViewStyle,
   
-  tagBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  } as ViewStyle,
-  
-  tagText: {
-    fontSize: 12,
-    fontWeight: '500',
+  category: {
+    ...createTextStyle('caption'),
   } as TextStyle,
   
-  moreTagsText: {
-    fontSize: 12,
-    fontWeight: '400',
-    marginLeft: 4,
+  separator: {
+    ...createTextStyle('caption'),
+    marginHorizontal: spacing.xs,
   } as TextStyle,
   
-  actionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: 1,
+  activity: {
+    ...createTextStyle('caption'),
+  } as TextStyle,
+  
+  spacer: {
+    flex: 1,
+    minWidth: spacing.sm,
   } as ViewStyle,
   
-  actionButton: {
+  replies: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    minWidth: 44,
-    justifyContent: 'center',
+    marginLeft: spacing.sm,
   } as ViewStyle,
   
-  actionCount: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginLeft: 6,
+  repliesText: {
+    ...createTextStyle('caption', undefined, {
+      fontWeight: '600',
+      marginLeft: spacing.xs,
+    }),
   } as TextStyle,
-}); 
+});

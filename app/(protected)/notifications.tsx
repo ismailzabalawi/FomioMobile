@@ -24,7 +24,7 @@ import {
   Bookmark
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { HeaderBar } from '../../components/nav/HeaderBar';
+import { AppHeader } from '@/components/ui/AppHeader';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { onAuthEvent } from '../../shared/auth-events';
 
@@ -324,10 +324,11 @@ export default function NotificationsScreen(): React.ReactElement {
   if (permission !== null && permission !== 'granted') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+        <AppHeader 
           title="Notifications" 
-          showBackButton={false}
-          showProfileButton={true}
+          canGoBack={false}
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.permissionContainer}>
           <Bell size={64} color={colors.primary} weight="duotone" />
@@ -351,10 +352,11 @@ export default function NotificationsScreen(): React.ReactElement {
   if (loading && notifications.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+        <AppHeader 
           title="Notifications" 
-          showBackButton={false}
-          showProfileButton={true}
+          canGoBack={false}
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -367,10 +369,11 @@ export default function NotificationsScreen(): React.ReactElement {
   if (hasError) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+        <AppHeader 
           title="Notifications" 
-          showBackButton={false}
-          showProfileButton={true}
+          canGoBack={false}
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.errorContainer}>
           <Text style={[styles.errorTitle, { color: colors.text }]}>Unable to load notifications</Text>
@@ -393,10 +396,9 @@ export default function NotificationsScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <HeaderBar 
+      <AppHeader 
         title="Notifications" 
-        showBackButton={false}
-        showProfileButton={true}
+        canGoBack={false}
       />
       
       {/* Header Actions */}

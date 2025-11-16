@@ -391,7 +391,16 @@ class DiscourseApiService {
         // Handle HTTP errors securely
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          console.error(`❌ HTTP Error ${response.status}:`, errorData);
+          
+          // 404 on /session/current.json is expected when user is not authenticated
+          // Don't log it as an error - it's normal behavior
+          const isSessionCheck = endpoint === '/session/current.json' && response.status === 404;
+          
+          if (isSessionCheck) {
+            console.log('📱 No active session (user not authenticated)');
+          } else {
+            console.error(`❌ HTTP Error ${response.status}:`, errorData);
+          }
           
           // Handle 401/403 (unauthorized/forbidden) - API key expired or invalid
           if (response.status === 401 || response.status === 403) {
@@ -411,6 +420,15 @@ class DiscourseApiService {
               error: 'Authorization expired. Please authorize the app again.',
               errors: errorData.errors,
               status: response.status, // Include status for error handling
+            };
+          }
+          
+          // Handle 404 for session check as expected (not an error)
+          if (isSessionCheck) {
+            return {
+              success: false,
+              error: 'No active session',
+              status: 404,
             };
           }
           
@@ -903,8 +921,47 @@ class DiscourseApiService {
     return this.makeRequest<any>(endpoint);
   }
 
-  async getTopic(topicId: number): Promise<DiscourseApiResponse<any>> {
-    return this.makeRequest<any>(`/t/${topicId}.json`);
+  async getTopic(
+    topicId: number,
+    options?: {
+      includeRaw?: boolean;
+      trackVisit?: boolean;
+      includePostActions?: boolean;
+      includeSuggested?: boolean;
+      page?: number;
+    }
+  ): Promise<DiscourseApiResponse<any>> {
+    const params = new URLSearchParams();
+    
+    // Get raw markdown for editing capability
+    if (options?.includeRaw) {
+      params.append('include_raw', '1');
+    }
+    
+    // Track visit for analytics
+    if (options?.trackVisit !== false) {
+      params.append('track_visit', '1');
+    }
+    
+    // Include user actions (likes, bookmarks) in response
+    if (options?.includePostActions) {
+      params.append('include_post_actions', '1');
+    }
+    
+    // Get suggested topics
+    if (options?.includeSuggested) {
+      params.append('include_suggested', '1');
+    }
+    
+    // Pagination for large topics
+    if (options?.page) {
+      params.append('page', options.page.toString());
+    }
+    
+    const queryString = params.toString();
+    const endpoint = `/t/${topicId}.json${queryString ? `?${queryString}` : ''}`;
+    
+    return this.makeRequest<any>(endpoint);
   }
 
   async getTopicPosts(topicId: number, postIds: number[] = []): Promise<DiscourseApiResponse<any>> {

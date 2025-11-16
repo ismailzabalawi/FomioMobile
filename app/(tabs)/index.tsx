@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
 import { ByteCard } from '../../components/feed/ByteCard';
-import { HeaderBar } from '../../components/nav/HeaderBar';
+import { AppHeader } from '@/components/ui/AppHeader';
 import { useFeed, FeedItem } from '../../shared/useFeed';
 import { useAuth } from '../../shared/useAuth';
 import { getSession, getLatest } from '../../lib/discourse';
@@ -114,32 +114,18 @@ export default function HomeScreen(): React.ReactElement {
 
   const renderFeedItem = ({ item }: { item: FeedItem }): React.ReactElement => (
     <ByteCard
-      id={item.id.toString()}
-      content={`${item.title}\n\n${item.excerpt}`}
+      id={item.id}
+      title={item.title}
+      hub={item.hubName || item.category.name}
+      teret={item.category.name !== item.hubName ? item.category.name : undefined}
       author={{
-        username: item.author.username,
         name: item.author.name || 'Unknown User',
         avatar: item.author.avatar || '',
       }}
-      category={{
-        name: item.category.name,
-        color: item.category.color,
-        slug: item.category.name.toLowerCase().replace(/\s+/g, '-'),
-      }}
-      tags={item.tags}
-      timestamp={formatTimestamp(item.createdAt)}
-      likes={item.likeCount}
-      comments={item.replyCount}
-      isLiked={false} // TODO: Implement like state
-      isBookmarked={false} // TODO: Implement bookmark state
-      onLike={() => handleLike(item.id)}
-      onComment={() => handleComment(item.id)}
-      onBookmark={() => handleBookmark(item.id)}
-      onShare={() => handleShare(item.id)}
-      onMore={() => handleMore(item.id)}
+      replies={item.replyCount}
+      activity={formatTimestamp(item.lastActivity || item.createdAt)}
       onPress={() => handleBytePress(item.id)}
       onCategoryPress={() => handleTeretPress(item.category.name)}
-      onTagPress={(tag) => handleTagPress(tag)}
     />
   );
 
@@ -190,10 +176,12 @@ export default function HomeScreen(): React.ReactElement {
   if (!isAuthenticated && !isAuthLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
-          title="Feed" 
-          showBackButton={false}
-          showProfileButton={true}
+        <AppHeader 
+          title="Fomio" 
+          subtitle="Latest Bytes"
+          canGoBack={false}
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: colors.text, marginBottom: 16 }]}>
@@ -218,10 +206,12 @@ export default function HomeScreen(): React.ReactElement {
   if (isFeedLoading && items.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
-          title="Feed" 
-          showBackButton={false}
-          showProfileButton={true}
+        <AppHeader 
+          title="Fomio" 
+          subtitle="Latest Bytes"
+          canGoBack={false}
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.text} />
@@ -235,10 +225,11 @@ export default function HomeScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <HeaderBar 
-        title="Feed" 
-        showBackButton={false}
-        showProfileButton={true}
+      <AppHeader 
+        title="Fomio" 
+        subtitle="Latest Bytes"
+        canGoBack={false}
+        withSafeTop={false}
       />
       
       <FlatList

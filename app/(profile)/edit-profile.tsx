@@ -9,11 +9,11 @@ import {
   ActivityIndicator,
   Platform
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
-import { HeaderBar } from '../../components/nav/HeaderBar';
+import { AppHeader } from '@/components/ui/AppHeader';
+import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AuthGate } from '../../components/shared/auth-gate';
 import { AuthPromptView } from '../../components/shared/auth-prompt-view';
 import { useDiscourseUser } from '../../shared/useDiscourseUser';
@@ -28,10 +28,10 @@ import { router } from 'expo-router';
 export default function EditProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { user: authUser } = useAuth();
-  const { user, settings, isLoading, isUpdating, error, updateProfile, uploadAvatar, refreshUser } = useDiscourseUser(authUser?.username);
+  const { user, settings, loading, updating, error, updateProfile, uploadAvatar, refreshUser } = useDiscourseUser(authUser?.username);
   
   const [displayName, setDisplayName] = useState(user?.name || '');
-  const [bio, setBio] = useState(user?.bio || '');
+  const [bio, setBio] = useState(user?.bio_raw || '');
   const [location, setLocation] = useState(user?.location || '');
   const [website, setWebsite] = useState(user?.website || '');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export default function EditProfileScreen(): React.ReactElement {
   React.useEffect(() => {
     if (user) {
       setDisplayName(user.name || '');
-      setBio(user.bio || '');
+      setBio(user.bio_raw || '');
       setLocation(user.location || '');
       setWebsite(user.website || '');
       setAvatarUrl(user.avatar_template ? discourseApi.getAvatarUrl(user.avatar_template, 120) : null);
@@ -88,12 +88,13 @@ export default function EditProfileScreen(): React.ReactElement {
         setUploadingAvatar(true);
         setAvatarUrl(asset.uri);
 
-        // Upload avatar
-        const success = await uploadAvatar({
+        // Upload avatar - use object format compatible with uploadAvatar signature
+        const imageFile = {
           uri: asset.uri,
           type: asset.mimeType || 'image/jpeg',
           fileSize: asset.fileSize,
-        });
+        } as { uri: string; type?: string; name?: string; fileSize?: number };
+        const success = await uploadAvatar(imageFile);
 
         if (success) {
           Alert.alert('Success', 'Avatar updated successfully!');
@@ -132,8 +133,8 @@ export default function EditProfileScreen(): React.ReactElement {
       if (displayName !== (user.name || '')) {
         updates.name = displayName;
       }
-      if (bio !== (user.bio || '')) {
-        updates.bio = bio;
+      if (bio !== (user.bio_raw || '')) {
+        updates.bio_raw = bio;
       }
       if (location !== (user.location || '')) {
         updates.location = location;
@@ -176,44 +177,46 @@ export default function EditProfileScreen(): React.ReactElement {
     }
   }, [hasChanges]);
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+      <ScreenContainer variant="bg">
+        <AppHeader 
           title="Edit Profile" 
-          showBackButton={true}
-          showProfileButton={false}
+          canGoBack
+          tone="bg"
+          withSafeTop={false}
         />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.accent} />
           <Text style={[styles.loadingText, { color: colors.text }]}>Loading profile...</Text>
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   if (!user) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+      <ScreenContainer variant="bg">
+        <AppHeader 
           title="Edit Profile" 
-          showBackButton={true}
-          showProfileButton={false}
+          canGoBack
+          tone="bg"
+          withSafeTop={false}
         />
         <View style={styles.centered}>
           <Text style={[styles.errorText, { color: colors.error }]}>Failed to load profile</Text>
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <HeaderBar 
+    <ScreenContainer variant="bg">
+      <AppHeader 
         title="Edit Profile" 
-        showBackButton={true}
-        showProfileButton={false}
-        onBack={handleCancel}
+        canGoBack
+        onBackPress={handleCancel}
+        withSafeTop={false}
       />
       <AuthGate
         fallback={
@@ -297,7 +300,7 @@ export default function EditProfileScreen(): React.ReactElement {
                 placeholder="Tell us about yourself"
                 multiline
                 numberOfLines={4}
-                style={[styles.input, styles.textArea]}
+                style={StyleSheet.flatten([styles.input, styles.textArea])}
               />
             </View>
 
@@ -342,10 +345,10 @@ export default function EditProfileScreen(): React.ReactElement {
               Cancel
             </Button>
             <Button
-              variant="primary"
+              variant="default"
               onPress={handleSave}
-              disabled={!hasChanges || isUpdating}
-              loading={isUpdating}
+              disabled={!hasChanges || updating}
+              loading={updating}
               style={styles.saveButton}
             >
               Save Changes
@@ -353,7 +356,7 @@ export default function EditProfileScreen(): React.ReactElement {
           </View>
         </ScrollView>
       </AuthGate>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 

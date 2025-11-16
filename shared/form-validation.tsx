@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -19,8 +19,13 @@ import {
   animation,
 } from './design-system';
 
+// Note: getScreenWidth is used in utility functions, not components
+// For components, use useWindowDimensions() hook instead
+// This function remains for backward compatibility in non-component contexts
 const getScreenWidth = () => {
   try {
+    // Use Dimensions as fallback for non-component contexts
+    const { Dimensions } = require('react-native');
     return Dimensions.get('window').width;
   } catch {
     return 375; // Default fallback for test environment

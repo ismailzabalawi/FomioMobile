@@ -56,7 +56,6 @@ export function useTerets() {
       const terets = response.data.category_list.categories
         .filter((cat: any) => cat.parent_category_id) // Only subcategories
         .sort((a: any, b: any) => b.topic_count - a.topic_count) // Sort by activity
-        .slice(0, 5) // Limit to top 5
         .map((cat: any) => {
           // Find parent category
           const parentCategory = response.data.category_list.categories.find(
@@ -119,9 +118,14 @@ export function useTerets() {
     loadTerets();
   }, [loadTerets]);
 
+  const refreshTerets = useCallback(() => {
+    loadTerets();
+  }, [loadTerets]);
+
   return {
     ...state,
     loadTerets,
     retry,
+    refreshTerets,
   };
 } 

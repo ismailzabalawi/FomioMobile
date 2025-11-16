@@ -6,9 +6,9 @@
 export const COLORS = {
   light: {
     // Primary colors
-    background: '#ffffff',
+    background: '#FFFFFF', // Pure white
     foreground: '#17131B',
-    card: '#f8fafc',
+    card: '#FFFFFF', // Pure white
     cardForeground: '#17131B',
     
     // Secondary colors
@@ -42,9 +42,9 @@ export const COLORS = {
   },
   dark: {
     // Primary colors
-    background: '#18181b',
+    background: '#000000', // AMOLED true black
     foreground: '#f4f4f5',
-    card: '#23232b',
+    card: '#000000', // AMOLED true black
     cardForeground: '#f4f4f5',
     
     // Secondary colors

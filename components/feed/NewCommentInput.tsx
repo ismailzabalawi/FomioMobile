@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { PaperPlaneRight } from 'phosphor-react-native';
 
 // UI Spec: NewCommentInput — Input for adding a new comment or reply, with send button, theming, and accessibility.
 interface NewCommentInputProps {
-  onSend?: (text: string) => void;
+  onSend?: (text: string, replyToPostNumber?: number) => void;
+  replyTo?: {
+    postNumber: number;
+    username: string;
+  };
 }
 
-export function NewCommentInput({ onSend }: NewCommentInputProps) {
+export function NewCommentInput({ onSend, replyTo }: NewCommentInputProps) {
   const { isDark, isAmoled } = useTheme();
   const [text, setText] = useState('');
   const colors = {
@@ -20,20 +24,27 @@ export function NewCommentInput({ onSend }: NewCommentInputProps) {
   };
   function handleSend() {
     if (text.trim().length > 0) {
-      onSend?.(text.trim());
+      onSend?.(text.trim(), replyTo?.postNumber);
       setText('');
     }
   }
   return (
     <View style={[styles.inputRow, { backgroundColor: colors.background, borderColor: colors.border }]}> 
+      {replyTo && (
+        <View style={styles.replyIndicator}>
+          <Text style={[styles.replyText, { color: colors.accent }]}>
+            Replying to @{replyTo.username}
+          </Text>
+        </View>
+      )}
       <TextInput
         style={[styles.input, { color: colors.text }]}
-        placeholder="Add a comment..."
+        placeholder={replyTo ? `Reply to @${replyTo.username}...` : "Add a comment..."}
         placeholderTextColor={colors.placeholder}
         value={text}
         onChangeText={setText}
         multiline
-        accessibilityLabel="Add a comment"
+        accessibilityLabel={replyTo ? `Reply to ${replyTo.username}` : "Add a comment"}
         accessible
       />
       <TouchableOpacity
@@ -72,5 +83,13 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     padding: 6,
     borderRadius: 8,
+  },
+  replyIndicator: {
+    paddingBottom: 4,
+    paddingHorizontal: 8,
+  },
+  replyText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 }); 

@@ -41,6 +41,7 @@ export interface TopicData {
     updatedAt: string;
     likeCount: number;
     isLiked: boolean;
+    reply_to_post_number?: number;
   }>;
 }
 
@@ -69,8 +70,12 @@ export function useTopic(topicId: number | null) {
         errorMessage: undefined,
       }));
 
-      // Get topic details
-      const topicResponse = await discourseApi.getTopic(id);
+      // Single optimized API call with all needed data
+      const topicResponse = await discourseApi.getTopic(id, {
+        includeRaw: true,
+        trackVisit: true,
+        includePostActions: true,
+      });
       
       if (!topicResponse.success || !topicResponse.data) {
         throw new Error(topicResponse.error || 'Failed to load topic');
@@ -78,31 +83,34 @@ export function useTopic(topicId: number | null) {
 
       const topic = topicResponse.data;
 
-      // Get topic posts
-      const postsResponse = await discourseApi.getTopicPosts(id);
-      
-      if (!postsResponse.success || !postsResponse.data) {
-        throw new Error(postsResponse.error || 'Failed to load topic posts');
-      }
+      // Extract posts from topic.post_stream.posts (already in response)
+      const posts = topic.post_stream?.posts || [];
 
-      const posts = postsResponse.data.post_stream.posts;
-
-      // Get category information
+      // Extract category information from topic.details.category (already in response)
       let categoryInfo = {
-        id: topic.category_id,
+        id: topic.category_id || 0,
         name: 'Uncategorized',
         color: '#000000',
         slug: 'uncategorized',
       };
       
-      if (topic.category_id) {
+      if (topic.details?.category) {
+        // Category info is already in the response
+        categoryInfo = {
+          id: topic.details.category.id,
+          name: topic.details.category.name,
+          color: topic.details.category.color ? `#${topic.details.category.color}` : '#000000',
+          slug: topic.details.category.slug,
+        };
+      } else if (topic.category_id) {
+        // Fallback: try to get category info if not in details
         try {
           const categoryResponse = await discourseApi.getCategory(topic.category_id);
           if (categoryResponse.success && categoryResponse.data) {
             categoryInfo = {
               id: categoryResponse.data.id,
               name: categoryResponse.data.name,
-              color: categoryResponse.data.color || '#000000',
+              color: categoryResponse.data.color ? `#${categoryResponse.data.color}` : '#000000',
               slug: categoryResponse.data.slug,
             };
           }
@@ -126,6 +134,13 @@ export function useTopic(topicId: number | null) {
           avatar: discourseApi.getAvatarUrl(firstPost.avatar_template || '', 120),
         };
       }
+
+      // Extract user actions from post.actions_summary for like/bookmark status
+      const extractUserAction = (post: any, actionTypeId: number): boolean => {
+        if (!post.actions_summary) return false;
+        const action = post.actions_summary.find((a: any) => a.id === actionTypeId);
+        return action?.acted === true;
+      };
 
       // Transform topic data
       const topicData: TopicData = {
@@ -157,7 +172,8 @@ export function useTopic(topicId: number | null) {
           createdAt: post.created_at,
           updatedAt: post.updated_at,
           likeCount: post.like_count || 0,
-          isLiked: false, // TODO: Implement like state
+          isLiked: extractUserAction(post, 2), // Action type 2 is like
+          reply_to_post_number: post.reply_to_post_number,
         })),
       };
 

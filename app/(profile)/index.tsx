@@ -9,7 +9,6 @@ import {
   RefreshControl
 } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   ArrowLeft, 
   Gear, 
@@ -35,7 +34,8 @@ import {
   UserPlus
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { HeaderBar } from '../../components/nav/HeaderBar';
+import { AppHeader } from '@/components/ui/AppHeader';
+import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { useDiscourseUser } from '../../shared/useDiscourseUser';
 import { useAuth } from '../../shared/useAuth';
 import { getSession } from '../../lib/discourse';
@@ -319,11 +319,18 @@ export default function ProfileScreen(): React.ReactElement {
   };
 
   const handleSettings = () => {
+    console.log('handleSettings called', { isAuthenticated, isLoading });
     if (!isAuthenticated || isLoading) {
       handleSignIn();
       return;
     }
-    router.push('/(tabs)/settings' as any);
+    try {
+      router.push('/(profile)/settings' as any);
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: try alternative route format
+      router.push('/profile/settings' as any);
+    }
   };
 
   const handleSignIn = () => {
@@ -383,15 +390,38 @@ export default function ProfileScreen(): React.ReactElement {
     }
   };
 
+  // Gear button for header
+  const settingsGearButton = (
+    <TouchableOpacity
+      key="settings"
+      accessibilityRole="button"
+      accessibilityLabel="Open settings"
+      onPress={() => {
+        console.log('Settings gear pressed', { isAuthenticated, isLoading });
+        if (!isAuthenticated || isLoading) {
+          handleSignIn();
+          return;
+        }
+        router.push('/(profile)/settings' as any);
+      }}
+      hitSlop={12}
+      style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <Gear size={28} color={colors.text} weight="bold" />
+    </TouchableOpacity>
+  );
+
   // Show authentication prompt for unsigned users
   if (!isAuthenticated || isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+      <ScreenContainer variant="bg">
+        <AppHeader 
           title="Profile" 
-          showBackButton={true}
-          showProfileButton={false}
-          onBack={handleBack}
+          canGoBack
+          tone="bg"
+          onBackPress={handleBack}
+          withSafeTop={false}
+          rightActions={[settingsGearButton]}
         />
         
         <ScrollView 
@@ -441,36 +471,40 @@ export default function ProfileScreen(): React.ReactElement {
             </View>
           </ProfileSection>
         </ScrollView>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   // Show loading only if we're authenticated but don't have any user data yet
   if (loading && isAuthenticated && !isLoading && !discourseUser && !sessionUser) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+      <ScreenContainer variant="bg">
+        <AppHeader 
           title="Profile" 
-          showBackButton={true}
-          showProfileButton={false}
-          onBack={handleBack}
+          canGoBack
+          tone="bg"
+          onBackPress={handleBack}
+          withSafeTop={false}
+          rightActions={[settingsGearButton]}
         />
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: colors.text }]}>Loading profile...</Text>
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   // Show error only if we're authenticated but there's an error and no user data
   if (error && isAuthenticated && !isLoading && !discourseUser && !sessionUser) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+      <ScreenContainer variant="bg">
+        <AppHeader 
           title="Profile" 
-          showBackButton={true}
-          showProfileButton={false}
-          onBack={handleBack}
+          canGoBack
+          tone="bg"
+          onBackPress={handleBack}
+          withSafeTop={false}
+          rightActions={[settingsGearButton]}
         />
         <View style={styles.errorContainer}>
           <Text style={[styles.errorText, { color: colors.text }]}>
@@ -480,19 +514,21 @@ export default function ProfileScreen(): React.ReactElement {
             <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   // If we're authenticated but don't have any user data, show a fallback
   if (isAuthenticated && !isLoading && !user) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+      <ScreenContainer variant="bg">
+        <AppHeader 
           title="Profile" 
-          showBackButton={true}
-          showProfileButton={false}
-          onBack={handleBack}
+          canGoBack
+          tone="bg"
+          onBackPress={handleBack}
+          withSafeTop={false}
+          rightActions={[settingsGearButton]}
         />
         <View style={styles.errorContainer}>
           <Text style={[styles.errorText, { color: colors.text }]}>Failed to load profile</Text>
@@ -500,17 +536,18 @@ export default function ProfileScreen(): React.ReactElement {
             <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <HeaderBar 
+    <ScreenContainer variant="bg">
+      <AppHeader 
         title="Profile" 
-        showBackButton={true}
-        showProfileButton={false}
-        onBack={handleBack}
+        canGoBack
+        onBackPress={handleBack}
+        withSafeTop={false}
+        rightActions={[settingsGearButton]}
       />
       
       <ScrollView 
@@ -642,14 +679,6 @@ export default function ProfileScreen(): React.ReactElement {
           />
           
           <ActionButton
-            icon={<Gear size={24} color={colors.accent} weight="regular" />}
-            title="Settings"
-            subtitle="Manage your preferences and privacy"
-            onPress={handleSettings}
-            color={colors.accent}
-          />
-          
-          <ActionButton
             icon={<Bell size={24} color={colors.warning} weight="regular" />}
             title="Notification Preferences"
             subtitle="Control what you're notified about"
@@ -716,7 +745,7 @@ export default function ProfileScreen(): React.ReactElement {
           />
         </ProfileSection>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 

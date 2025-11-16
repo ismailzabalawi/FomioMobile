@@ -1,866 +1,448 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
-  ScrollView,
-  Modal,
-  FlatList,
-  Dimensions,
-  KeyboardAvoidingView,
-  Platform
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+// UI Spec: ComposeScreen
+// - Editor-first create experience with zero friction
+// - Uses NativeWind semantic tokens throughout
+// - Bottom sheet for Teret selection
+// - Full image picker support
+// - Haptic feedback on key interactions
+// - Inline validation (no Alert dialogs)
+// - Smart Post button enable/disable
+
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { ScreenContainer } from '@/components/ui/ScreenContainer';
+import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/theme';
 import { useHubs } from '../../shared/useHubs';
+import { useTerets, Teret } from '../../shared/useTerets';
 import { useAuth } from '../../shared/useAuth';
+import { useDiscourseSettings } from '../../shared/useDiscourseSettings';
 import { createTopic } from '../../lib/discourse';
-import { discourseApi, Hub } from '../../shared/discourseApi';
+import { SignIn, ImageSquare, Check, Warning } from 'phosphor-react-native';
 import { 
-  CaretDown, 
-  Hash, 
-  Users, 
-  TrendUp, 
-  Star,
-  X,
-  MagnifyingGlass,
-  Check,
-  Warning,
-  Info,
-  SignIn
-} from 'phosphor-react-native';
+  ComposeEditor,
+  TeretSelector,
+  MediaGrid,
+  useImagePicker,
+  MediaItem,
+} from '@/components/compose';
+import { AppHeader } from '@/components/ui/AppHeader';
+
+interface ValidationErrors {
+  title?: string;
+  content?: string;
+  hub?: string;
+  general?: string;
+}
 
 export default function ComposeScreen(): React.ReactElement {
-  const { isDark, isAmoled } = useTheme();
-  const { hubs, isLoading: hubsLoading, error: hubsError, refreshHubs } = useHubs();
-  const { authed, ready, user } = useAuth();
+  const { isDark } = useTheme();
+  const { hubs } = useHubs(); // For grouping/display context only
+  const { terets, isLoading: teretsLoading, errorMessage: teretsError, refreshTerets } = useTerets();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
+  const { minTitle, minPost, loading: settingsLoading } = useDiscourseSettings();
+  const { pickImages, isPicking } = useImagePicker();
   
-  const [content, setContent] = useState<string>('');
+  // Editor state - structured cleanly for future draft autosave
   const [title, setTitle] = useState<string>('');
-  const [selectedHub, setSelectedHub] = useState<Hub | null>(null);
-  const [showHubDropdown, setShowHubDropdown] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [content, setContent] = useState<string>('');
+  const [selectedTeret, setSelectedTeret] = useState<Teret | null>(null);
+  const [images, setImages] = useState<MediaItem[]>([]);
+
+  // UI state
   const [isCreating, setIsCreating] = useState(false);
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
-    card: isAmoled ? '#000000' : (isDark ? '#27272a' : '#ffffff'),
-    text: isDark ? '#f4f4f5' : '#1e293b',
-    secondary: isDark ? '#a1a1aa' : '#64748b',
-    primary: isDark ? '#38bdf8' : '#0ea5e9',
-    accent: isDark ? '#8b5cf6' : '#7c3aed',
-    success: isDark ? '#10b981' : '#059669',
-    warning: isDark ? '#f59e0b' : '#d97706',
-    error: isDark ? '#ef4444' : '#dc2626',
-    inputBg: isDark ? '#27272a' : '#ffffff',
-    inputBorder: isDark ? '#334155' : '#d1d5db',
-    border: isDark ? '#334155' : '#e2e8f0',
-    overlay: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(0, 0, 0, 0.5)',
-  };
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [successMessage, setSuccessMessage] = useState<string>('');
 
-  const filteredHubs = hubs.filter(hub =>
-    hub.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    hub.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Debug authentication state
-  React.useEffect(() => {
-    console.log('🔐 Compose Screen Auth State:', {
-      authed,
-      ready,
-      user: user?.username,
-      canPost: authed && ready,
-    });
-  }, [authed, ready, user]);
-
-  // Clear state when component unmounts
-  React.useEffect(() => {
-    return () => {
-      setHasError(false);
-      setErrorMessage('');
-      setSuccessMessage('');
-    };
-  }, []);
-
-  const toggleDropdown = useCallback(() => {
-    setShowHubDropdown(!showHubDropdown);
-    if (!showHubDropdown) {
-      setSearchQuery(''); // Clear search when opening
+  // Clear errors when user starts typing
+  useEffect(() => {
+    if (title.trim() && errors.title) {
+      setErrors((prev) => ({ ...prev, title: undefined }));
     }
-  }, [showHubDropdown]);
+  }, [title, errors.title]);
 
-  const selectHub = useCallback((hub: Hub) => {
-    setSelectedHub(hub);
-    setShowHubDropdown(false);
-    setSearchQuery(''); // Clear search when selecting
-  }, []);
-
-  const clearSelection = useCallback(() => {
-    setSelectedHub(null);
-  }, []);
-
-  const handlePost = useCallback(async (): Promise<void> => {
-    // Wait for auth to load before checking
-    if (!ready) {
-      Alert.alert('Please wait', 'Authentication is still loading...');
-      return;
+  useEffect(() => {
+    if (content.trim() && errors.content) {
+      setErrors((prev) => ({ ...prev, content: undefined }));
     }
+  }, [content, errors.content]);
 
-    if (!authed) {
-      Alert.alert(
-        'Authentication Required', 
-        'You need to be logged in to create posts. Please sign in first.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/(auth)/signin' as any) }
-        ]
-      );
-      return;
+  useEffect(() => {
+    if (selectedTeret && errors.hub) {
+      setErrors((prev) => ({ ...prev, hub: undefined }));
     }
+  }, [selectedTeret, errors.hub]);
 
-    if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title for your post');
-      return;
+  // Clear success message after 3 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(''), 3000);
+      return () => clearTimeout(timer);
     }
-    
-    if (!content.trim()) {
-      Alert.alert('Error', 'Please enter some content');
-      return;
-    }
-    
-    if (!selectedHub) {
-      Alert.alert('Error', 'Please select a hub to post in');
-      return;
-    }
+  }, [successMessage]);
 
-    try {
-      console.log('📝 Creating post with hub:', {
-        hubId: selectedHub.id,
-        hubName: selectedHub.name,
-        hubSlug: selectedHub.slug,
-        user: user?.username,
-        isAuthenticated: authed
-      });
+  // Compute lengths for validation
+  const titleLen = title.trim().length;
+  const bodyLen = content.trim().length;
 
-      setIsCreating(true);
-      setHasError(false);
-      setErrorMessage('');
-
-      const result = await createTopic({
-        title: title.trim(),
-        raw: content.trim(),
-        categoryId: selectedHub.id,
-      });
-
-      setSuccessMessage('Your post has been published!');
-      Alert.alert('Success', 'Your post has been published!');
-      setContent('');
-      setTitle('');
-      setSelectedHub(null);
-      router.back();
-    } catch (error: any) {
-      setHasError(true);
-      const errorMsg = error?.message || 'Failed to create post. Please try again.';
-      setErrorMessage(errorMsg);
-      Alert.alert('Error', errorMsg);
-    } finally {
-      setIsCreating(false);
-    }
-  }, [title, content, selectedHub, authed, user, ready]);
+  // Smart Post button enable logic - enforces Discourse minimums
+  const canPost = useMemo(() => {
+    return (
+      titleLen >= minTitle &&
+      bodyLen >= minPost &&
+      selectedTeret !== null &&
+      isAuthenticated &&
+      !isAuthLoading &&
+      !isCreating &&
+      !settingsLoading
+    );
+  }, [titleLen, bodyLen, minTitle, minPost, selectedTeret, isAuthenticated, isAuthLoading, isCreating, settingsLoading]);
 
   const handleCancel = useCallback((): void => {
     router.back();
   }, []);
 
-  const formatCount = useCallback((count: number): string => {
-    if (count >= 1000000) {
-      return `${(count / 1000000).toFixed(1)}M`;
-    } else if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K`;
+  const handlePost = useCallback(async (): Promise<void> => {
+    // Clear previous errors
+    setErrors({});
+    setSuccessMessage('');
+
+    // Wait for auth to load
+    if (isAuthLoading) {
+      setErrors({ general: 'Please wait, authentication is loading...' });
+      return;
     }
-    return count.toString();
+
+    // Validate authentication
+    if (!isAuthenticated) {
+      setErrors({ general: 'You need to be logged in to create posts' });
+      return;
+    }
+
+    // Validate teret selection (first - most important)
+    if (!selectedTeret) {
+      setErrors((prev) => ({ ...prev, hub: 'Please select a Teret to post in' }));
+      return;
+    }
+
+    // Validate title with Discourse minimum
+    const titleLen = title.trim().length;
+    if (titleLen < minTitle) {
+      setErrors((prev) => ({ 
+        ...prev, 
+        title: `Title must be at least ${minTitle} characters (currently ${titleLen})` 
+      }));
+      return;
+    }
+    
+    // Validate content with Discourse minimum
+    const bodyLen = content.trim().length;
+    if (bodyLen < minPost) {
+      setErrors((prev) => ({ 
+        ...prev, 
+        content: `Content must be at least ${minPost} characters (currently ${bodyLen})` 
+      }));
+      return;
+    }
+
+    try {
+      // Haptic feedback on post
+      try {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch {
+        // Ignore haptic errors
+      }
+
+      setIsCreating(true);
+      setErrors({});
+
+      console.log('📝 Creating post with teret:', {
+        teretId: selectedTeret.id, // This is the subcategory ID (what Discourse needs)
+        teretName: selectedTeret.name,
+        parentHub: selectedTeret.parent_category.name,
+        parentHubId: selectedTeret.parent_category_id,
+        user: user?.username,
+        isAuthenticated: isAuthenticated,
+        hasImages: images.length > 0,
+      });
+
+      // TODO: Upload images first if any, then embed URLs in content
+      // For MVP, we'll just create the post with text content
+      //
+      // IMPORTANT: Fomio → Discourse category mapping:
+      // - Hub = Discourse parent category (used for grouping/display only)
+      // - Teret = Discourse subcategory (this is what we post to!)
+      // - Bytes must be created in Terets (subcategories), never directly in Hubs
+      // - selectedTeret.id is the subcategory ID that Discourse requires
+      const result = await createTopic({
+        title: title.trim(),
+        raw: content.trim(),
+        categoryId: selectedTeret.id, // Subcategory ID (Teret), not parent category ID (Hub)
+      });
+
+      // Success feedback
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {
+        // Ignore haptic errors
+      }
+
+      setSuccessMessage('Your post has been published!');
+
+      // Clear form and navigate back after short delay
+      setTimeout(() => {
+        setTitle('');
+      setContent('');
+        setSelectedTeret(null);
+        setImages([]);
+        setSuccessMessage('');
+      router.back();
+      }, 1500);
+    } catch (error: any) {
+      const errorMsg = error?.message || 'Failed to create post. Please try again.';
+      setErrors({ general: errorMsg });
+
+      // Error haptic feedback
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } catch {
+        // Ignore haptic errors
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  }, [
+    title,
+    content,
+    selectedTeret,
+    images,
+    isAuthenticated,
+    isAuthLoading,
+    user,
+  ]);
+
+  const handleSelectTeret = useCallback(
+    (teret: Teret) => {
+      setSelectedTeret(teret);
+      // Haptic feedback on selection
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+        // Ignore haptic errors
+      });
+    },
+    []
+  );
+
+  const handleClearTeret = useCallback(() => {
+    setSelectedTeret(null);
   }, []);
 
-  const renderHubItem = useCallback(({ item }: { item: Hub }) => (
-    <TouchableOpacity
-      style={[styles.hubItem, { 
-        backgroundColor: colors.card,
-        borderColor: colors.border 
-      }]}
-      onPress={() => selectHub(item)}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`Select hub ${item.name}`}
-      activeOpacity={0.7}
-    >
-      <View style={styles.hubHeader}>
-        <View style={styles.hubInfo}>
-          <View style={styles.hubNameRow}>
-            <Hash size={16} color={colors.primary} weight="fill" />
-            <Text style={[styles.hubName, { color: colors.text }]}>
-              {item.name}
-            </Text>
-            {item.topicsCount > 100 && (
-              <View style={[styles.popularBadge, { backgroundColor: colors.warning }]}>
-                <Star size={12} color="#ffffff" weight="fill" />
-              </View>
-            )}
-          </View>
-          <Text style={[styles.hubDescription, { color: colors.secondary }]} numberOfLines={2}>
-            {item.description}
+  const handleAddImages = useCallback(async () => {
+    const pickedImages = await pickImages();
+    if (pickedImages.length > 0) {
+      setImages((prev) => [...prev, ...pickedImages]);
+    }
+  }, [pickImages]);
+
+  const handleRemoveImage = useCallback((index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+    // Haptic feedback on removal
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+      // Ignore haptic errors
+    });
+  }, []);
+
+  // Loading state
+  if (teretsLoading) {
+    return (
+      <ScreenContainer variant="card">
+        <AppHeader 
+          title="Create Byte" 
+          canGoBack 
+          onBackPress={handleCancel} 
+          withSafeTop={false}
+          tone="card"
+          rightActions={[
+            <Button key="post" disabled variant="default" size="sm">
+              Post
+            </Button>
+          ]}
+        />
+        <View className="flex-1 justify-center items-center">
+          <Text className="text-body text-fomio-muted dark:text-fomio-muted-dark">
+            Loading terets...
           </Text>
         </View>
-        <View style={styles.hubStats}>
-          <View style={styles.statItem}>
-            <Users size={14} color={colors.secondary} weight="regular" />
-            <Text style={[styles.statText, { color: colors.secondary }]}>
-              {formatCount(item.topicsCount)} topics
-            </Text>
-          </View>
-          {item.topicsCount > 50 && (
-            <View style={styles.statItem}>
-              <TrendUp size={14} color={colors.warning} weight="fill" />
-              <Text style={[styles.statText, { color: colors.warning }]}>
-                Active
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
-  ), [colors, selectHub, formatCount]);
-
-  const renderEmptySearch = useCallback(() => (
-    <View style={styles.emptySearchContainer}>
-      <MagnifyingGlass size={48} color={colors.secondary} weight="regular" />
-      <Text style={[styles.emptySearchText, { color: colors.secondary }]}>
-        {searchQuery ? `No hubs found matching "${searchQuery}"` : 'No hubs available'}
-      </Text>
-      <Text style={[styles.emptySearchSubtext, { color: colors.secondary }]}>
-        {searchQuery ? 'Try a different search term' : 'Please try again later'}
-      </Text>
-    </View>
-  ), [colors, searchQuery]);
-
-  const renderErrorState = useCallback(() => (
-    <View style={styles.errorContainer}>
-      <Warning size={48} color={colors.error} weight="regular" />
-      <Text style={[styles.errorText, { color: colors.error }]}>
-        Failed to load hubs
-      </Text>
-      <Text style={[styles.errorSubtext, { color: colors.secondary }]}>
-        {hubsError || 'Please check your connection and try again'}
-      </Text>
-      <TouchableOpacity
-        style={[styles.retryButton, { backgroundColor: colors.primary }]}
-        onPress={refreshHubs}
-      >
-        <Text style={[styles.retryButtonText, { color: '#ffffff' }]}>
-          Retry
-        </Text>
-      </TouchableOpacity>
-    </View>
-  ), [colors, hubsError, refreshHubs]);
-
-  const renderLoadingState = useCallback(() => (
-    <View style={styles.loadingContainer}>
-      <Text style={[styles.loadingText, { color: colors.secondary }]}>
-        Loading hubs...
-      </Text>
-    </View>
-  ), [colors]);
-
-  const renderAuthWarning = useCallback(() => (
-    <View style={[styles.authWarningContainer, { backgroundColor: colors.warning + '20' }]}>
-      <SignIn size={20} color={colors.warning} weight="regular" />
-      <View style={styles.authWarningText}>
-        <Text style={[styles.authWarningTitle, { color: colors.warning }]}>
-          Sign in to post
-        </Text>
-        <Text style={[styles.authWarningSubtext, { color: colors.secondary }]}>
-          You need to be logged in to create posts
-        </Text>
-      </View>
-      <TouchableOpacity
-        style={[styles.signInButton, { backgroundColor: colors.primary }]}
-        onPress={() => router.push('/(auth)/signin' as any)}
-      >
-        <Text style={[styles.signInButtonText, { color: '#ffffff' }]}>
-          Sign In
-        </Text>
-      </TouchableOpacity>
-    </View>
-  ), [colors]);
-
-  if (hubsLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-            <Text style={[styles.cancelText, { color: colors.secondary }]}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>New Byte</Text>
-          <View style={styles.postButton} />
-        </View>
-        {renderLoadingState()}
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
-  if (hubsError) {
+  // Error state
+  if (teretsError) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-            <Text style={[styles.cancelText, { color: colors.secondary }]}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>New Byte</Text>
-          <View style={styles.postButton} />
+      <ScreenContainer variant="card">
+        <AppHeader 
+          title="Create Byte" 
+          canGoBack 
+          onBackPress={handleCancel} 
+          withSafeTop={false}
+          tone="card"
+          rightActions={[
+            <Button key="post" disabled variant="default" size="sm">
+              Post
+            </Button>
+          ]}
+        />
+        <View className="flex-1 justify-center items-center px-4">
+          <Warning size={48} color="#EF4444" weight="regular" />
+          <Text className="text-title font-semibold text-fomio-danger dark:text-fomio-danger-dark mt-4 mb-2 text-center">
+            Failed to load terets
+          </Text>
+          <Text className="text-body text-fomio-muted dark:text-fomio-muted-dark mb-6 text-center">
+            {teretsError || 'Please check your connection and try again'}
+          </Text>
+          <Button onPress={refreshTerets} variant="default">
+            Retry
+          </Button>
         </View>
-        {renderErrorState()}
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView 
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-            <Text style={[styles.cancelText, { color: colors.secondary }]}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>New Byte</Text>
-          <TouchableOpacity 
+    <ScreenContainer variant="card">
+      <AppHeader 
+        title="Create Byte" 
+        canGoBack 
+        onBackPress={handleCancel} 
+        withSafeTop={false}
+        tone="card"
+        progress={isCreating ? 0.5 : undefined}
+        rightActions={[
+          <Button
+            key="post"
             onPress={handlePost}
-            style={[
-              styles.postButton, 
-              { 
-                backgroundColor: selectedHub && content.trim() && title.trim() && !isCreating && authed && ready ? colors.primary : colors.secondary,
-                opacity: selectedHub && content.trim() && title.trim() && !isCreating && authed && ready ? 1 : 0.5
-              }
-            ]}
-            disabled={!selectedHub || !content.trim() || !title.trim() || isCreating || !authed || !ready}
+            disabled={!canPost}
+            loading={isCreating}
+            variant={canPost ? 'default' : 'ghost'}
+            size="sm"
+            style={{ minWidth: 70 }}
           >
-            <Text style={[styles.postText, { color: '#ffffff' }]}>
-              {isCreating ? 'Posting...' : 'Post'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Authentication Warning */}
-          {ready && !authed && (
-            renderAuthWarning()
-          )}
+            {isCreating ? 'Posting...' : 'Post'}
+          </Button>
+        ]}
+      />
 
-          {/* Title Input */}
-          <View style={styles.titleSection}>
-            <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-              Title
+      <KeyboardAvoidingView 
+        className="flex-1"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView
+          className="flex-1"
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Authentication Warning */}
+          {!isAuthLoading && !isAuthenticated && (
+            <View className="mx-4 mt-4 p-4 rounded-fomio-card bg-fomio-warning/20 dark:bg-fomio-warning-dark/20 flex-row items-center">
+              <SignIn size={20} color="#F59E0B" weight="regular" />
+              <View className="flex-1 ml-3">
+                <Text className="text-body font-semibold text-fomio-warning dark:text-fomio-warning-dark mb-1">
+                  Sign in to post
             </Text>
-            <TextInput
-              style={[
-                styles.titleInput,
-                {
-                  backgroundColor: colors.inputBg,
-                  borderColor: colors.inputBorder,
-                  color: colors.text,
-                }
-              ]}
-              placeholder="Enter your post title..."
-              placeholderTextColor={colors.secondary}
-              value={title}
-              onChangeText={setTitle}
-              maxLength={255}
-              accessible
-              accessibilityLabel="Post title input"
-            />
-            <Text style={[styles.characterCount, { color: colors.secondary }]}>
-              {title.length}/255 characters
+                <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
+                  You need to be logged in to create posts
             </Text>
           </View>
-
-          {/* Hub Selection */}
-          <View style={styles.hubSection}>
-            <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-              Post in Hub ({hubs.length} available)
-            </Text>
-            <TouchableOpacity
-              style={[styles.hubSelector, { 
-                backgroundColor: colors.card,
-                borderColor: showHubDropdown ? colors.primary : colors.border 
-              }]}
-              onPress={toggleDropdown}
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel={selectedHub ? `Selected hub: ${selectedHub.name}` : "Select a hub to post in"}
-              activeOpacity={0.7}
-            >
-              {selectedHub ? (
-                <View style={styles.selectedHub}>
-                  <View style={styles.selectedHubInfo}>
-                    <Hash size={16} color={colors.primary} weight="fill" />
-                    <Text style={[styles.selectedHubName, { color: colors.text }]}>
-                      {selectedHub.name}
-                    </Text>
-                    {selectedHub.topicsCount > 100 && (
-                      <View style={[styles.popularBadge, { backgroundColor: colors.warning }]}>
-                        <Star size={12} color="#ffffff" weight="fill" />
-                      </View>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    onPress={clearSelection}
-                    style={styles.clearButton}
-                    accessible
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear hub selection"
-                  >
-                    <X size={16} color={colors.secondary} weight="regular" />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.placeholderHub}>
-                  <Text style={[styles.placeholderText, { color: colors.secondary }]}>
-                    Choose a hub to post in...
-                  </Text>
-                  <CaretDown size={16} color={colors.secondary} weight="regular" />
+              <Button
+                onPress={() => router.push('/(auth)/signin' as any)}
+                variant="default"
+                size="sm"
+              >
+                Sign In
+              </Button>
                 </View>
               )}
-            </TouchableOpacity>
-          </View>
 
-          {/* Content Input */}
-          <View style={styles.contentSection}>
-            <Text style={[styles.sectionLabel, { color: colors.secondary }]}>
-              Your Byte
-            </Text>
-            <TextInput
-              style={[
-                styles.textInput,
-                {
-                  backgroundColor: colors.inputBg,
-                  borderColor: colors.inputBorder,
-                  color: colors.text,
-                }
-              ]}
-              placeholder="What's on your mind?"
-              placeholderTextColor={colors.secondary}
-              value={content}
-              onChangeText={setContent}
-              multiline
-              textAlignVertical="top"
-              accessible
-              accessibilityLabel="Post content input"
-            />
-            <Text style={[styles.characterCount, { color: colors.secondary }]}>
-              {content.length} characters
-            </Text>
-          </View>
-
-          {/* Error/Success Messages */}
-          {hasError && errorMessage && (
-            <View style={[styles.messageContainer, { backgroundColor: colors.error + '20' }]}>
-              <Warning size={16} color={colors.error} weight="regular" />
-              <Text style={[styles.messageText, { color: colors.error }]}>
-                {errorMessage}
+          {/* General Error Message */}
+          {errors.general && (
+            <View className="mx-4 mt-4 p-3 rounded-fomio-card bg-fomio-danger/20 dark:bg-fomio-danger-dark/20 flex-row items-center">
+              <Warning size={16} color="#EF4444" weight="regular" />
+              <Text className="text-body text-fomio-danger dark:text-fomio-danger-dark ml-2 flex-1">
+                {errors.general}
               </Text>
             </View>
           )}
 
+          {/* Success Message */}
           {successMessage && (
-            <View style={[styles.messageContainer, { backgroundColor: colors.success + '20' }]}>
-              <Check size={16} color={colors.success} weight="regular" />
-              <Text style={[styles.messageText, { color: colors.success }]}>
+            <View className="mx-4 mt-4 p-3 rounded-fomio-card bg-fomio-accent/20 dark:bg-fomio-accent-dark/20 flex-row items-center">
+              <Check size={16} color="#22C55E" weight="regular" />
+              <Text className="text-body text-fomio-accent dark:text-fomio-accent-dark ml-2 flex-1">
                 {successMessage}
               </Text>
             </View>
           )}
+
+          {/* Teret Selector - First step */}
+          <TeretSelector
+            hubs={hubs}
+            terets={terets}
+            selectedTeret={selectedTeret}
+            onSelectTeret={handleSelectTeret}
+            onClearSelection={handleClearTeret}
+            isLoading={teretsLoading}
+            error={teretsError}
+          />
+
+          {/* Teret Selection Error */}
+          {errors.hub && (
+            <View className="mx-4 mt-2 mb-2 flex-row items-center">
+              <Warning size={14} color="#EF4444" weight="regular" />
+              <Text className="text-caption text-fomio-danger dark:text-fomio-danger-dark ml-2">
+                {errors.hub}
+              </Text>
+            </View>
+          )}
+
+          {/* Compose Editor - Title + Body with Discourse rules */}
+          <ComposeEditor
+            title={title}
+            content={content}
+            onTitleChange={setTitle}
+            onContentChange={setContent}
+            titleError={errors.title}
+            contentError={errors.content}
+            minTitle={minTitle}
+            minContent={minPost}
+          />
+
+          {/* Media Grid */}
+          {images.length > 0 && (
+            <MediaGrid media={images} onRemove={handleRemoveImage} />
+          )}
+
+          {/* Add Images Button - Modern tool-style button */}
+          <TouchableOpacity 
+            onPress={handleAddImages}
+            disabled={isPicking}
+            className="mx-4 mt-3 px-3 py-2 rounded-fomio-pill bg-transparent border border-transparent flex-row items-center self-start"
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Add images"
+            activeOpacity={0.7}
+          >
+            <ImageSquare size={18} color="#2563EB" weight="regular" />
+            <Text className="ml-2 text-body font-semibold text-fomio-primary dark:text-fomio-primary-dark">
+              {isPicking ? 'Selecting images...' : 'Add images'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Bottom spacing */}
+          <View className="h-8" />
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Hub Dropdown Modal - Fixed Safe Area with proper edges */}
-      <Modal
-        visible={showHubDropdown}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowHubDropdown(false)}
-      >
-        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
-          <TouchableOpacity 
-            style={styles.modalOverlayTouch}
-            activeOpacity={1}
-            onPress={() => setShowHubDropdown(false)}
-          >
-            <View style={styles.modalContentContainer}>
-              <SafeAreaView style={styles.modalSafeArea} edges={['top']}>
-                <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-                  <View style={[styles.dropdownHeader, { borderBottomColor: colors.border }]}>
-                    <Text style={[styles.dropdownTitle, { color: colors.text }]}>
-                      Select Hub ({filteredHubs.length} available)
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => setShowHubDropdown(false)}
-                      style={styles.closeButton}
-                      accessible
-                      accessibilityRole="button"
-                      accessibilityLabel="Close hub selection"
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <X size={20} color={colors.secondary} weight="regular" />
-                    </TouchableOpacity>
-                  </View>
-                  
-                  <View style={[styles.searchContainer, {
-                    backgroundColor: colors.inputBg,
-                    borderColor: colors.inputBorder,
-                  }]}>
-                    <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
-                    <TextInput
-                      style={[styles.searchInput, {
-                        color: colors.text,
-                      }]}
-                      placeholder="Search hubs..."
-                      placeholderTextColor={colors.secondary}
-                      value={searchQuery}
-                      onChangeText={setSearchQuery}
-                      accessible
-                      accessibilityLabel="Search hubs input"
-                    />
-                  </View>
-                  
-                  <FlatList
-                    data={filteredHubs}
-                    renderItem={renderHubItem}
-                    keyExtractor={(item) => item.id.toString()}
-                    showsVerticalScrollIndicator={false}
-                    style={styles.hubList}
-                    contentContainerStyle={styles.hubListContent}
-                    ListEmptyComponent={renderEmptySearch}
-                  />
-                </View>
-              </SafeAreaView>
-            </View>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-  },
-  cancelButton: {
-    padding: 8,
-  },
-  cancelText: {
-    fontSize: 16,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  postButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  postText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  titleSection: {
-    marginBottom: 24,
-  },
-  hubSection: {
-    marginBottom: 24,
-  },
-  contentSection: {
-    flex: 1,
-  },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  hubSelector: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    minHeight: 56,
-    justifyContent: 'center',
-  },
-  selectedHub: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectedHubInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  selectedHubName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  clearButton: {
-    padding: 4,
-  },
-  placeholderHub: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  placeholderText: {
-    fontSize: 16,
-  },
-  titleInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    lineHeight: 24,
-    minHeight: 50,
-    textAlignVertical: 'top',
-  },
-  textInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    lineHeight: 24,
-    minHeight: 120,
-    textAlignVertical: 'top',
-  },
-  characterCount: {
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'right',
-  },
-  messageContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  messageText: {
-    fontSize: 14,
-    marginLeft: 8,
-    flex: 1,
-  },
-  authWarningContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  authWarningText: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  authWarningTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  authWarningSubtext: {
-    fontSize: 14,
-  },
-  signInButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  signInButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-  },
-  modalOverlayTouch: {
-    flex: 1,
-    justifyContent: 'flex-start',
-  },
-  modalContentContainer: {
-    flex: 1,
-    marginTop: Platform.OS === 'ios' ? 44 : 24, // Add margin to stay under HeaderBar
-  },
-  modalSafeArea: {
-    flex: 1,
-  },
-  modalContainer: {
-    flex: 1,
-    marginTop: 0,
-  },
-  dropdownHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 20,
-    borderBottomWidth: 1,
-  },
-  dropdownTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  searchContainer: {
-    margin: 20,
-    marginTop: 0,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 16,
-  },
-  hubList: {
-    flex: 1,
-  },
-  hubListContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  hubItem: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  hubHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  hubInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  hubNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  hubName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  popularBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  hubDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  hubStats: {
-    alignItems: 'flex-end',
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  statText: {
-    fontSize: 12,
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  errorSubtext: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  emptySearchContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptySearchText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 10,
-  },
-  emptySearchSubtext: {
-    fontSize: 14,
-    marginTop: 5,
-    textAlign: 'center',
-  },
-}); 

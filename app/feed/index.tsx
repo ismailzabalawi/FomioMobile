@@ -11,22 +11,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
-  ArrowLeft, 
   Hash, 
   Fire, 
   TrendUp, 
-  Star, 
-  Users, 
-  Heart,
-  ChatCircle,
-  BookmarkSimple,
-  Share,
   Warning,
   ArrowClockwise
 } from 'phosphor-react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useTheme } from '@/components/theme';
-import { HeaderBar } from '../../components/nav/HeaderBar';
+import { AppHeader } from '@/components/ui/AppHeader';
+import { ByteCard } from '@/components/feed/ByteCard';
 import { discourseApi } from '../../shared/discourseApi';
 import { logger } from '../../shared/logger';
 
@@ -131,136 +125,48 @@ function TeretCard({ teret, onPress }: { teret: Teret; onPress: () => void }) {
   );
 }
 
-function ByteCard({ topic, onPress }: { topic: Topic; onPress: () => void }) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
-  };
-
-  // Handle empty avatar URLs
-  const avatarSource = topic.author.avatar && topic.author.avatar.trim() !== '' 
-    ? { uri: topic.author.avatar } 
-    : undefined;
-
-  // Format the date
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      const now = new Date();
-      const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-      
-      if (diffInHours < 1) {
-        return 'Just now';
-      } else if (diffInHours < 24) {
-        return `${diffInHours}h ago`;
-      } else if (diffInHours < 168) { // 7 days
-        const days = Math.floor(diffInHours / 24);
-        return `${days}d ago`;
-      } else {
-        return date.toLocaleDateString('en-US', { 
-          month: 'short', 
-          day: 'numeric',
-          year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-        });
-      }
-    } catch (error) {
-      return 'Unknown time';
+// Format date helper for activity timestamp
+const formatDate = (dateString: string): string => {
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) {
+      return 'Just now';
+    } else if (diffInHours < 24) {
+      return `${diffInHours}h ago`;
+    } else if (diffInHours < 168) { // 7 days
+      const days = Math.floor(diffInHours / 24);
+      return `${days}d ago`;
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      });
     }
-  };
+  } catch (error) {
+    return 'Unknown time';
+  }
+};
 
-  // Format numbers for display
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
-    } else if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
-    }
-    return num.toString();
-  };
-
+// Helper to render ByteCard from Topic
+function renderTopicCard(topic: Topic, onPress: () => void, onCategoryPress?: () => void) {
   return (
-    <TouchableOpacity
-      style={[styles.byteCard, { 
-        backgroundColor: colors.background, 
-        borderColor: colors.border 
-      }]}
+    <ByteCard
+      id={topic.id}
+      title={topic.title}
+      hub={topic.category.name}
+      author={{
+        name: topic.author.name,
+        avatar: topic.author.avatar,
+      }}
+      replies={topic.replyCount}
+      activity={formatDate(topic.lastPostedAt || topic.createdAt)}
       onPress={onPress}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${topic.title} topic`}
-    >
-      <View style={styles.byteHeader}>
-        {avatarSource ? (
-          <View style={styles.byteAvatar}>
-            <Text style={[styles.byteAvatarFallback, { color: colors.background }]}>
-              {topic.author.name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        ) : (
-          <View style={[styles.byteAvatar, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
-            <Text style={[styles.byteAvatarFallback, { color: colors.background }]}>
-              {topic.author.name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
-        <View style={styles.byteInfo}>
-          <Text style={[styles.byteAuthor, { color: colors.text }]}>{topic.author.name}</Text>
-          <Text style={[styles.byteMeta, { color: colors.secondary }]}>
-            {topic.category.name} • {formatDate(topic.createdAt)}
-          </Text>
-        </View>
-        {topic.isPinned && (
-          <View style={styles.pinnedBadge}>
-            <Star size={12} color={colors.accent} weight="fill" />
-          </View>
-        )}
-      </View>
-      <Text style={[styles.byteTitle, { color: colors.text }]} numberOfLines={2}>
-        {topic.title}
-      </Text>
-      <Text style={[styles.byteContent, { color: colors.secondary }]} numberOfLines={3}>
-        {topic.excerpt || 'No content available'}
-      </Text>
-      {topic.tags && topic.tags.length > 0 && (
-        <View style={styles.tagsContainer}>
-          {topic.tags.slice(0, 3).map((tag: string, index: number) => (
-            <View key={index} style={[styles.tag, { backgroundColor: colors.border }]}>
-              <Text style={[styles.tagText, { color: colors.secondary }]}>#{tag}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-      <View style={styles.byteActions}>
-        <View style={styles.byteAction}>
-          <Heart size={16} weight="regular" color={colors.secondary} />
-          <Text style={[styles.byteActionText, { color: colors.secondary }]}>
-            {formatNumber(topic.likeCount)}
-          </Text>
-        </View>
-        <View style={styles.byteAction}>
-          <ChatCircle size={16} weight="regular" color={colors.secondary} />
-          <Text style={[styles.byteActionText, { color: colors.secondary }]}>
-            {formatNumber(topic.replyCount)}
-          </Text>
-        </View>
-        <View style={styles.byteAction}>
-          <Users size={14} weight="regular" color={colors.secondary} />
-          <Text style={[styles.byteActionText, { color: colors.secondary }]}>
-            {formatNumber(topic.views || 0)}
-          </Text>
-        </View>
-        <View style={styles.byteAction}>
-          <BookmarkSimple size={16} weight="regular" color={colors.secondary} />
-        </View>
-        <View style={styles.byteAction}>
-          <Share size={16} weight="regular" color={colors.secondary} />
-        </View>
-      </View>
-    </TouchableOpacity>
+      onCategoryPress={onCategoryPress}
+    />
   );
 }
 
@@ -493,10 +399,11 @@ export default function FeedScreen(): React.ReactElement {
   if (isLoading && !isRefreshing) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+        <AppHeader 
           title={pageTitle}
-          showBackButton={true}
-          showProfileButton={true}
+          canGoBack
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.text} />
@@ -511,10 +418,11 @@ export default function FeedScreen(): React.ReactElement {
   if (hasError) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+        <AppHeader 
           title={pageTitle}
-          showBackButton={true}
-          showProfileButton={true}
+          canGoBack
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.errorContainer}>
           <Warning size={48} color={colors.error} />
@@ -532,10 +440,10 @@ export default function FeedScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <HeaderBar 
+      <AppHeader 
         title={pageTitle}
-        showBackButton={true}
-        showProfileButton={true}
+        canGoBack
+        tone="bg"
       />
       
       <ScrollView 
@@ -578,7 +486,13 @@ export default function FeedScreen(): React.ReactElement {
               </View>
             ) : (
               topics.map((topic) => (
-                <ByteCard key={topic.id} topic={topic} onPress={() => handleBytePress(topic)} />
+                <View key={topic.id}>
+                  {renderTopicCard(
+                    topic,
+                    () => handleBytePress(topic),
+                    () => router.push(`/feed?category=${topic.category.slug}`)
+                  )}
+                </View>
               ))
             )}
           </View>
@@ -682,84 +596,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   teretStat: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  byteCard: {
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  byteHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  byteAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 12,
-    backgroundColor: '#6b7280',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  byteInfo: {
-    flex: 1,
-  },
-  byteAuthor: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  byteMeta: {
-    fontSize: 12,
-  },
-  byteTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  byteContent: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  byteActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  byteAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  byteActionText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  byteAvatarFallback: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  pinnedBadge: {
-    marginLeft: 8,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 12,
-    gap: 6,
-  },
-  tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  tagText: {
     fontSize: 12,
     fontWeight: '500',
   },

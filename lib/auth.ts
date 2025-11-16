@@ -73,8 +73,8 @@ export async function signIn(): Promise<boolean> {
     // Generate or get client ID
     const clientId = await UserApiKeyManager.getOrGenerateClientId();
     
-    // Create redirect URI
-    const redirectUri = Linking.createURL('auth/callback');
+    // Create redirect URI - MUST start with / for proper routing on both iOS and Android
+    const redirectUri = Linking.createURL('/auth/callback');
     
     // Build authorization URL
     const scopes = 'read,write,notifications,session_info,one_time_password';

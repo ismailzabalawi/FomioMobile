@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
-
-const { width } = Dimensions.get('window');
 
 const onboardingSteps = [
   {
@@ -27,6 +25,7 @@ const onboardingSteps = [
 export default function OnboardingScreen() {
   const [currentStep, setCurrentStep] = useState(0);
   const { isDark } = useTheme();
+  const { width } = useWindowDimensions(); // Responsive to dimension changes (foldable devices)
   const colors = {
     background: isDark ? '#18181b' : '#fff',
     primary: isDark ? '#38bdf8' : '#0ea5e9',

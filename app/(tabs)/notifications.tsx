@@ -28,7 +28,7 @@ import {
   Clock
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { HeaderBar } from '../../components/nav/HeaderBar';
+import { AppHeader } from '@/components/ui/AppHeader';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { useAuth } from '../../shared/useAuth';
 import { getNotifications } from '../../lib/discourse';
@@ -342,10 +342,11 @@ export default function NotificationsScreen(): React.ReactElement {
   if (isNotificationsLoading && notifications.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+        <AppHeader 
           title="Notifications" 
-          showBackButton={false}
-          showProfileButton={true}
+          canGoBack={false}
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -358,10 +359,11 @@ export default function NotificationsScreen(): React.ReactElement {
   if (hasError) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <HeaderBar 
+        <AppHeader 
           title="Notifications" 
-          showBackButton={false}
-          showProfileButton={true}
+          canGoBack={false}
+          withSafeTop={false}
+          tone="bg"
         />
         <View style={styles.errorContainer}>
           <Text style={[styles.errorText, { color: colors.text }]}>Error loading notifications: {errorMessage}</Text>
@@ -375,10 +377,10 @@ export default function NotificationsScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <HeaderBar 
+      <AppHeader 
         title="Notifications" 
-        showBackButton={false}
-        showProfileButton={true}
+        canGoBack={false}
+        withSafeTop={false}
       />
       
       {/* Header Actions */}

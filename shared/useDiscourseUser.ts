@@ -24,7 +24,7 @@ export interface UseDiscourseUserReturn {
   updateSettings: (updates: Partial<UserSettings>) => Promise<boolean>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   changeEmail: (newEmail: string) => Promise<boolean>;
-  uploadAvatar: (imageFile: File) => Promise<boolean>;
+  uploadAvatar: (imageFile: { uri: string; type?: string; name?: string; fileSize?: number }) => Promise<boolean>;
   
   // Utility
   isAuthenticated: boolean;
@@ -207,7 +207,7 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
   }, [user?.username, refreshUser]);
 
   // Upload avatar
-  const uploadAvatar = useCallback(async (imageFile: File | { uri: string; type?: string; name?: string; fileSize?: number }): Promise<boolean> => {
+  const uploadAvatar = useCallback(async (imageFile: { uri: string; type?: string; name?: string; fileSize?: number }): Promise<boolean> => {
     if (!user?.username) return false;
     
     setUpdating(true);

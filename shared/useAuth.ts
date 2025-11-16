@@ -51,16 +51,15 @@ const useAuthStore = create<AuthStore>((set, get) => ({
       console.log('📱 Loading stored authentication...');
       set({ isLoading: true });
       
-      // Check for User API Key
-      let hasValidAuth = false;
-      const hasApiKey = await UserApiKeyManager.hasApiKey();
-      if (hasApiKey) {
-        // Verify API key is still valid by making a test request
-        const userResponse = await discourseApi.getCurrentUser();
-        hasValidAuth = userResponse.success && !!userResponse.data;
-      }
+      // CRITICAL FIX: Always try API call first, regardless of hasApiKey() check
+      // This handles both legacy ('disc_user_api_key') and new ('fomio_user_api_key') storage
+      // The authHeaders() function checks both locations, so if API works, we have valid auth
+      // hasApiKey() only checks new storage, but keys might exist in legacy location
+      let userResponse = await discourseApi.getCurrentUser();
+      const hasValidAuth = userResponse.success && !!userResponse.data;
       
       if (hasValidAuth) {
+        console.log('✅ Valid API key found (verified via API call)');
         // Try to load user data from storage first
         try {
           const storedData = await SecureStore.getItemAsync(AUTH_STORAGE_KEY);
@@ -85,8 +84,8 @@ const useAuthStore = create<AuthStore>((set, get) => ({
           console.warn('Failed to read stored auth:', storageError?.message || storageError);
         }
         
-        // If no stored user data, fetch from API
-        const userResponse = await discourseApi.getCurrentUser();
+        // If no stored user data, use the API response we already fetched
+        // No need to make another API call - we already have the data
         if (userResponse.success && userResponse.data) {
           const appUser = mapDiscourseUserToAppUser(userResponse.data);
           try {
@@ -106,21 +105,39 @@ const useAuthStore = create<AuthStore>((set, get) => ({
         }
       }
       
-      // Clear invalid auth data
-      try {
-        await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
-      } catch (storageError: any) {
-        console.warn('Failed to clear auth storage:', storageError?.message || storageError);
+      // Handle different failure scenarios based on response status
+      const responseStatus = userResponse.status;
+      const is404NoSession = responseStatus === 404 && userResponse.error === 'No active session';
+      const isAuthError = responseStatus === 401 || responseStatus === 403;
+      
+      if (is404NoSession) {
+        // 404 is expected when user is not authenticated - don't treat as error
+        console.log('📱 No active session (user not authenticated)');
+        // Clear stored user data since API confirms no session, but keep API keys
+        // (they might be valid but user just needs to authorize)
+        try {
+          await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
+        } catch (storageError: any) {
+          console.warn('Failed to clear auth storage:', storageError?.message || storageError);
+        }
+      } else if (isAuthError) {
+        // 401/403 means API key is invalid/expired - clear everything
+        console.log('🔒 API key invalid or expired (401/403), clearing authentication');
+        try {
+          await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
+          // Clear API keys since they're invalid
+          await UserApiKeyManager.clearApiKey();
+        } catch (storageError: any) {
+          console.warn('Failed to clear auth storage:', storageError?.message || storageError);
+        }
+      } else {
+        // Other errors (network, server, etc.) - don't clear storage
+        console.log('⚠️ API call failed (non-auth error), keeping stored data');
+        // Don't clear storage on network/server errors - might be temporary
       }
       
-      try {
-        await UserApiKeyManager.clearApiKey();
-      } catch (apiKeyError: any) {
-        console.warn('Failed to clear API key:', apiKeyError?.message || apiKeyError);
-      }
-      
-      console.log('📱 No valid authorization found');
       set({ user: null, isLoading: false, isAuthenticated: false });
+      // CRITICAL: Reset flags BEFORE returning to prevent loops
       isLoadingAuth = false;
       hasLoadedAuth = true;
     } catch (error) {
@@ -193,14 +210,28 @@ export const useAuth = () => {
   // Listen to auth events to sync state across components
   useEffect(() => {
     const unsubscribe = onAuthEvent((event) => {
+      // CRITICAL: Prevent loops by checking if we're already loading
+      if (isLoadingAuth) {
+        console.log('⚠️ Auth event received while loading, skipping to prevent loop');
+        return;
+      }
+      
       if (event === 'auth:signed-in' || event === 'auth:refreshed') {
-        // Refresh auth state when events are emitted
-        // Reset the flag so we can reload
-        hasLoadedAuth = false;
-        loadStoredAuth();
+        // Only reload if we haven't loaded recently and aren't currently loading
+        // Reset the flag so we can reload, but only if not already in progress
+        if (!isLoadingAuth) {
+          hasLoadedAuth = false;
+          // Use setTimeout to prevent immediate recursive calls
+          setTimeout(() => {
+            if (!isLoadingAuth) {
+              loadStoredAuth();
+            }
+          }, 100);
+        }
       } else if (event === 'auth:signed-out') {
         reset();
         hasLoadedAuth = true; // Mark as loaded (even though it's empty)
+        isLoadingAuth = false; // Reset loading flag on sign out
       }
     });
     return () => {
@@ -213,18 +244,13 @@ export const useAuth = () => {
       console.log('🔐 Checking authentication status...');
       setLoading(true);
 
-      // Check for User API Key
-      let isValid = false;
-      const hasApiKey = await UserApiKeyManager.hasApiKey();
-      if (hasApiKey) {
-        const userResponse = await discourseApi.getCurrentUser();
-        isValid = userResponse.success && !!userResponse.data;
-      }
+      // CRITICAL FIX: Always try API call first, regardless of hasApiKey() check
+      // This handles both legacy ('disc_user_api_key') and new ('fomio_user_api_key') storage
+      // The authHeaders() function checks both locations, so if API works, we have valid auth
+      const userResponse = await discourseApi.getCurrentUser();
+      const isValid = userResponse.success && !!userResponse.data;
       
-      if (isValid) {
-        const userResponse = await discourseApi.getCurrentUser();
-        
-        if (userResponse.success && userResponse.data) {
+      if (isValid && userResponse.data) {
           const appUser = mapDiscourseUserToAppUser(userResponse.data);
           try {
             await SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(appUser));
@@ -237,16 +263,36 @@ export const useAuth = () => {
           setAuthenticated(true);
           setLoading(false);
           
-          emitAuthEvent('auth:signed-in');
+          // Mark as loaded BEFORE emitting event to prevent loop
+          hasLoadedAuth = true;
+          isLoadingAuth = false;
+          
+          // Small delay before emitting to let state settle
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
+          // Only emit if not currently loading (guard against loops)
+          if (!isLoadingAuth) {
+            emitAuthEvent('auth:signed-in');
+          }
           return { success: true };
-        }
       }
       
-      console.log('❌ No valid authentication found');
+      // Check response status to provide better error messages
+      const responseStatus = userResponse.status;
+      const is404NoSession = responseStatus === 404 && userResponse.error === 'No active session';
+      
+      if (is404NoSession) {
+        console.log('📱 No active session - user needs to authorize');
+      } else {
+        console.log('❌ Authentication check failed:', userResponse.error);
+      }
+      
       setLoading(false);
       return { 
         success: false, 
-        error: 'Please authorize the app to access your account'
+        error: is404NoSession 
+          ? 'Please authorize the app to access your account'
+          : userResponse.error || 'Authentication failed. Please try again.'
       };
     } catch (error) {
       console.error('❌ Sign in error:', error);
@@ -274,15 +320,18 @@ export const useAuth = () => {
         isLoading: false 
       });
       
-      // Mark as loaded so we don't reload unnecessarily
+      // CRITICAL: Mark as loaded BEFORE emitting event to prevent loop
       hasLoadedAuth = true;
       isLoadingAuth = false;
       
-      emitAuthEvent('auth:signed-in');
-      logger.info('useAuth: User authenticated via API key', { username: user.username });
+      // Small delay before emitting to let state settle
+      await new Promise(resolve => setTimeout(resolve, 50));
       
-      // Small delay to ensure state propagates
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Only emit if not currently loading (guard against loops)
+      if (!isLoadingAuth) {
+        emitAuthEvent('auth:signed-in');
+        logger.info('useAuth: User authenticated via API key', { username: user.username });
+      }
     } catch (error) {
       logger.error('useAuth: Failed to set authenticated user', error);
       
@@ -293,9 +342,17 @@ export const useAuth = () => {
         isLoading: false 
       });
       
+      // Mark as loaded BEFORE emitting event
       hasLoadedAuth = true;
       isLoadingAuth = false;
-      emitAuthEvent('auth:signed-in');
+      
+      // Small delay before emitting
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Only emit if not currently loading
+      if (!isLoadingAuth) {
+        emitAuthEvent('auth:signed-in');
+      }
     }
   };
 
@@ -417,28 +474,45 @@ export const useAuth = () => {
     try {
       console.log('🔄 Refreshing authentication...');
       
-      // Check for User API Key
-      let isValid = false;
-      const hasApiKey = await UserApiKeyManager.hasApiKey();
-      if (hasApiKey) {
-        // Verify by making API call
-        const userResponse = await discourseApi.getCurrentUser();
-        isValid = userResponse.success && !!userResponse.data;
-      }
+      // CRITICAL FIX: Always try API call first, regardless of hasApiKey() check
+      // This handles both legacy ('disc_user_api_key') and new ('fomio_user_api_key') storage
+      // The authHeaders() function checks both locations, so if API works, we have valid auth
+      const userResponse = await discourseApi.getCurrentUser();
+      const isValid = userResponse.success && !!userResponse.data;
       
       if (!isValid) {
-        try {
-          await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
-        } catch {
-          // Ignore storage errors
+        const responseStatus = userResponse.status;
+        const is404NoSession = responseStatus === 404 && userResponse.error === 'No active session';
+        const isAuthError = responseStatus === 401 || responseStatus === 403;
+        
+        if (isAuthError) {
+          // API key invalid - clear everything
+          console.log('🔒 API key invalid during refresh, clearing authentication');
+          try {
+            await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
+            await UserApiKeyManager.clearApiKey();
+          } catch {
+            // Ignore storage errors
+          }
+        } else if (is404NoSession) {
+          // Just no session - clear user data but keep API key
+          console.log('📱 No active session during refresh');
+          try {
+            await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
+          } catch {
+            // Ignore storage errors
+          }
+        } else {
+          // Other errors (network, etc.) - don't clear storage
+          console.log('⚠️ Refresh failed (non-auth error), keeping stored data');
         }
+        
         reset();
         emitAuthEvent('auth:signed-out');
         return;
       }
       
-      const userResponse = await discourseApi.getCurrentUser();
-      
+      // Use the API response we already fetched - no need for another call
       if (userResponse.success && userResponse.data) {
         const appUser = mapDiscourseUserToAppUser(userResponse.data);
         try {
@@ -450,19 +524,26 @@ export const useAuth = () => {
         setUser(appUser);
         setAuthenticated(true);
         
+        // Mark as loaded before emitting
+        hasLoadedAuth = true;
+        isLoadingAuth = false;
+        
         console.log('✅ Auth refresh successful');
-        emitAuthEvent('auth:refreshed');
+        
+        // Small delay before emitting to prevent loops
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Only emit if not currently loading
+        if (!isLoadingAuth) {
+          emitAuthEvent('auth:refreshed');
+        }
       } else {
+        // Shouldn't reach here if isValid check passed, but handle anyway
+        console.log('⚠️ Unexpected state in refreshAuth - clearing auth');
         try {
           await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
         } catch {
           // Ignore storage errors
-        }
-        
-        try {
-          await UserApiKeyManager.clearApiKey();
-        } catch {
-          // Ignore API key errors
         }
         reset();
         emitAuthEvent('auth:signed-out');
@@ -470,17 +551,8 @@ export const useAuth = () => {
     } catch (error) {
       console.error('❌ Auth refresh error:', error);
       logger.error('Auth refresh failed', error);
-      try {
-        await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
-      } catch {
-        // Ignore storage errors
-      }
-      
-      try {
-        await UserApiKeyManager.clearApiKey();
-      } catch {
-        // Ignore API key errors
-      }
+      // Don't clear storage on network errors - might be temporary
+      // Only reset state, keep stored data for retry
       reset();
     }
   };

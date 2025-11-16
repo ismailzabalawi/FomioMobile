@@ -4,7 +4,7 @@
  */
 
 import React, { Component, ReactNode, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../components/theme';
 import { logger } from './logger';
@@ -14,8 +14,6 @@ import {
   createTextStyle,
   animation,
 } from './design-system';
-
-const { width: screenWidth } = Dimensions.get('window');
 
 // =============================================================================
 // ERROR TYPES AND INTERFACES
@@ -408,6 +406,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 function DefaultErrorFallback({ error, retry, reset, level }: ErrorFallbackProps) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const { width: screenWidth } = useWindowDimensions(); // Responsive to dimension changes
   
   if (!error) {
     return (
@@ -423,7 +422,7 @@ function DefaultErrorFallback({ error, retry, reset, level }: ErrorFallbackProps
   
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.content}>
+      <View style={[styles.content, { maxWidth: screenWidth - spacing.xl * 2 }]}>
         {/* Error Icon */}
         <View style={[styles.iconContainer, { backgroundColor: colors.error + '20' }]}>
           <Text style={[styles.icon, { color: colors.error }]}>⚠️</Text>
@@ -590,7 +589,7 @@ const styles = StyleSheet.create({
   
   content: {
     alignItems: 'center',
-    maxWidth: screenWidth - spacing.xl * 2,
+    // maxWidth is set dynamically in component to respond to dimension changes
   },
   
   iconContainer: {

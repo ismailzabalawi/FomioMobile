@@ -5,6 +5,8 @@ import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/nati
 import { useFonts } from 'expo-font';
 import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import '../global.css';
 
 import { ThemeProvider, useTheme } from '@/components/theme';
@@ -50,9 +52,13 @@ export default function RootLayout(): React.ReactElement | null {
   }
 
   return (
-    <ThemeProvider defaultTheme="system">
-      <RootLayoutNav />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <BottomSheetModalProvider>
+        <ThemeProvider defaultTheme="system">
+          <RootLayoutNav />
+        </ThemeProvider>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -167,6 +173,7 @@ function RootLayoutNav(): React.ReactElement {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(protected)" />
+        <Stack.Screen name="(profile)" />
         <Stack.Screen name="feed" />
       </Stack>
     </NavigationThemeProvider>

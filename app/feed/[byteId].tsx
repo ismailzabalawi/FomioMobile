@@ -2,7 +2,7 @@ import React from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ByteBlogPage } from '../../components/feed/ByteBlogPage';
-import { HeaderBar } from '../../components/nav/HeaderBar';
+import { AppHeader } from '@/components/ui';
 import { useTheme } from '@/components/theme';
 
 // UI Spec: Dynamic Byte Detail Route — Renders ByteBlogPage with data from route params
@@ -35,10 +35,15 @@ export default function ByteDetailScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.background }]}>
-      <HeaderBar 
-        title="Byte Details"
-        showBackButton={true}
-        showProfileButton={true}
+      <AppHeader 
+        title="Byte"
+        canGoBack
+        centerTitle
+        tone="bg"
+        withSafeTop={false}
+        titleFontSize={22}
+        statusBarStyle={isDark ? 'light' : 'dark'}
+        extendToStatusBar
       />
       <ByteBlogPage
         topicId={parseInt(byteId || '0')}

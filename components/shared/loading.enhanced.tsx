@@ -5,7 +5,7 @@ import {
   ActivityIndicator, 
   StyleSheet, 
   ViewStyle, 
-  Dimensions,
+  useWindowDimensions,
   DimensionValue,
 } from 'react-native';
 import Animated, { 
@@ -28,8 +28,6 @@ import {
   createTextStyle,
   createShadowStyle,
 } from '@/shared/design-system';
-
-const { width: screenWidth } = Dimensions.get('window');
 
 interface LoadingSpinnerProps {
   size?: 'small' | 'large';
@@ -76,6 +74,7 @@ export function LoadingOverlayEnhanced({
 }: LoadingOverlayProps) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const { width: screenWidth } = useWindowDimensions(); // Responsive to dimension changes
   const opacity = useSharedValue(0);
 
   useEffect(() => {
@@ -113,6 +112,7 @@ export function LoadingOverlayEnhanced({
         styles.overlayContent, 
         { 
           backgroundColor: colors.surface,
+          maxWidth: screenWidth * 0.8, // Dynamic maxWidth based on current screen width
           ...createShadowStyle('xl', isDark),
         }
       ]}>
@@ -406,7 +406,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.xl,
     alignItems: 'center',
     minWidth: 200,
-    maxWidth: screenWidth * 0.8,
+    // maxWidth is set dynamically in component to respond to dimension changes
   },
   
   overlaySpinner: {

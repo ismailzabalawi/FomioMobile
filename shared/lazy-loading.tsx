@@ -4,13 +4,11 @@
  */
 
 import React, { Suspense, lazy, ComponentType, useState, useEffect, useRef } from 'react';
-import { View, Dimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { Image, ImageProps } from 'expo-image';
 import { LoadingSpinnerEnhanced, SkeletonEnhanced } from '../components/shared/loading.enhanced';
 import { logger } from './logger';
 import { performanceMonitor } from './performance-monitor';
-
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 // =============================================================================
 // COMPONENT LAZY LOADING
@@ -109,7 +107,7 @@ export function createLazyComponent<T extends ComponentType<any>>(
 // IMAGE LAZY LOADING
 // =============================================================================
 
-interface LazyImageProps extends Omit<ImageProps, 'source'> {
+interface LazyImageProps extends Omit<ImageProps, 'source' | 'placeholder'> {
   source: { uri: string } | number;
   placeholder?: React.ReactNode;
   threshold?: number;

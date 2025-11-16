@@ -1,15 +1,21 @@
+// UI Spec: Button
+// - Uses Fomio semantic tokens: bg-fomio-primary, text-fomio-foreground
+// - Supports dark: variants for AMOLED Dark mode
+// - Variants: default, destructive, outline, secondary, ghost, link
+// - Sizes: default, sm, lg, icon
+// - Touch-safe targets (min 44px height per design rules)
+
 import React from 'react';
 import {
   TouchableOpacity,
   Text,
   ActivityIndicator,
-  StyleSheet,
   ViewStyle,
   TextStyle,
   View,
   StyleProp,
 } from 'react-native';
-import { useTheme } from '@/components/theme';
+import { cn } from '@/lib/utils/cn';
 
 export interface ButtonProps {
   children: React.ReactNode;
@@ -32,180 +38,95 @@ export function Button({
   style,
   textStyle,
 }: ButtonProps) {
-  const { isDark } = useTheme();
-
-  const getVariantStyle = () => {
-    const baseStyles = {
-      default: {
-        backgroundColor: '#0ea5e9',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        minHeight: 44,
-      },
-      destructive: {
-        backgroundColor: '#ef4444',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        minHeight: 44,
-      },
-      outline: {
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: isDark ? '#374151' : '#d1d5db',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        minHeight: 44,
-      },
-      secondary: {
-        backgroundColor: isDark ? '#374151' : '#f1f5f9',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        minHeight: 44,
-      },
-      ghost: {
-        backgroundColor: 'transparent',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        minHeight: 44,
-      },
-      link: {
-        backgroundColor: 'transparent',
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        minHeight: 44,
-      },
+  const getVariantClasses = () => {
+    const variantClasses = {
+      default: 'bg-fomio-primary dark:bg-fomio-primary-dark',
+      destructive: 'bg-fomio-danger dark:bg-fomio-danger-dark',
+      outline: 'bg-transparent border border-fomio-border-soft dark:border-fomio-border-soft-dark',
+      secondary: 'bg-fomio-card dark:bg-fomio-card-dark border border-fomio-border-soft dark:border-fomio-border-soft-dark',
+      ghost: 'bg-transparent',
+      link: 'bg-transparent',
     };
-    return baseStyles[variant];
+    return variantClasses[variant];
   };
 
-  const getSizeStyle = () => {
-    switch (size) {
-      case 'sm': return styles.smButton;
-      case 'lg': return styles.lgButton;
-      case 'icon': return styles.iconButton;
-      default: return {};
-    }
-  };
-
-  const getVariantTextStyle = () => {
-    const baseTextStyles = {
-      default: { color: '#ffffff' },
-      destructive: { color: '#ffffff' },
-      outline: { color: isDark ? '#f9fafb' : '#374151' },
-      secondary: { color: isDark ? '#f9fafb' : '#374151' },
-      ghost: { color: isDark ? '#f9fafb' : '#374151' },
-      link: { color: '#0ea5e9', textDecorationLine: 'underline' as const },
+  const getSizeClasses = () => {
+    const sizeClasses = {
+      default: 'h-11 px-4',
+      sm: 'h-9 px-3',
+      lg: 'h-12 px-5',
+      icon: 'w-11 h-11 p-0',
     };
-    return baseTextStyles[variant];
+    return sizeClasses[size];
   };
 
-  const getSizeTextStyle = () => {
-    switch (size) {
-      case 'sm': return styles.smText;
-      case 'lg': return styles.lgText;
-      case 'icon': return styles.iconText;
-      default: return {};
+  const getTextVariantClasses = () => {
+    const textVariantClasses = {
+      default: 'text-white',
+      destructive: 'text-white',
+      outline: 'text-fomio-foreground dark:text-fomio-foreground-dark',
+      secondary: 'text-fomio-foreground dark:text-fomio-foreground-dark',
+      ghost: 'text-fomio-primary dark:text-fomio-primary-dark',
+      link: 'text-fomio-primary dark:text-fomio-primary-dark underline',
+    };
+    return textVariantClasses[variant];
+  };
+
+  const getTextSizeClasses = () => {
+    const textSizeClasses = {
+      default: 'text-body',
+      sm: 'text-caption',
+      lg: 'text-subtitle',
+      icon: 'text-body',
+    };
+    return textSizeClasses[size];
+  };
+
+  const getLoadingIndicatorColor = () => {
+    if (variant === 'default' || variant === 'destructive') {
+      return '#ffffff';
     }
+    return '#2563EB'; // fomio-primary
   };
 
-  const buttonStyle: StyleProp<ViewStyle> = [
-    styles.base,
-    getVariantStyle(),
-    getSizeStyle(),
-    disabled && styles.disabled,
-    style,
-  ];
+  const buttonClasses = cn(
+    'rounded-fomio-pill items-center justify-center flex-row',
+    getVariantClasses(),
+    getSizeClasses(),
+    disabled && 'opacity-50'
+  );
 
-  const textStyleCombined: StyleProp<TextStyle> = [
-    styles.baseText,
-    getVariantTextStyle(),
-    getSizeTextStyle(),
-    disabled && styles.disabledText,
-    textStyle,
-  ];
+  const textClasses = cn(
+    'font-semibold text-center',
+    getTextVariantClasses(),
+    getTextSizeClasses(),
+    disabled && 'opacity-50'
+  );
 
   return (
     <TouchableOpacity
       testID="button-touchable"
-      style={buttonStyle}
+      className={buttonClasses}
+      style={style}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.7}
       accessibilityRole="button"
     >
-      <View style={styles.content}>
+      <View className="flex-row items-center justify-center">
         {loading && (
-          <ActivityIndicator
-            testID="button-loading-indicator"
-            size="small"
-            color={variant === 'default' ? '#ffffff' : '#0ea5e9'}
-            style={styles.spinner}
-          />
+          <View className="mr-2">
+            <ActivityIndicator
+              testID="button-loading-indicator"
+              size="small"
+              color={getLoadingIndicatorColor()}
+            />
+          </View>
         )}
-        <Text style={textStyleCombined}>{children}</Text>
+        <Text className={textClasses} style={textStyle}>
+          {children}
+        </Text>
       </View>
     </TouchableOpacity>
   );
 }
-
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  spinner: {
-    marginRight: 8,
-  },
-  
-  // Size styles
-  smButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    minHeight: 36,
-  },
-  lgButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    minHeight: 52,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-  },
-  
-  // Text styles
-  baseText: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  
-  // Size text styles
-  smText: {
-    fontSize: 14,
-  },
-  lgText: {
-    fontSize: 18,
-  },
-  iconText: {
-    fontSize: 16,
-  },
-  
-  // Disabled styles
-  disabled: {
-    opacity: 0.5,
-  },
-  disabledText: {
-    opacity: 0.5,
-  },
-});
-

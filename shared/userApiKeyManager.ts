@@ -21,7 +21,7 @@ function loadQuickCrypto(): any {
   // Check multiple ways to detect Expo Go
   const isExpoGo = 
     Constants.executionEnvironment === 'storeClient' ||
-    (typeof Constants.expoConfig !== 'undefined' && Constants.expoConfig?.isDetached !== true) ||
+    (typeof Constants.expoConfig !== 'undefined' && !(Constants.expoConfig as any)?.isDetached) ||
     (typeof global !== 'undefined' && (global as any).__expo !== undefined) ||
     (typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative' && 
      typeof (global as any).__expo !== 'undefined');
