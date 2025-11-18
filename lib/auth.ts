@@ -3,9 +3,11 @@ import * as WebBrowser from 'expo-web-browser';
 import type { WebBrowserRedirectResult } from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
+import { makeRedirectUri } from 'expo-auth-session';
 import { UserApiKeyManager } from '../shared/userApiKeyManager';
 import { emitAuthEvent } from '../shared/auth-events';
 import { logger } from '../shared/logger';
+import { parseURLParameters } from './auth-utils';
 
 // Complete auth session when browser closes
 WebBrowser.maybeCompleteAuthSession();
@@ -14,6 +16,48 @@ const config = Constants.expoConfig?.extra || {};
 const SITE = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
 const STORAGE_KEY = 'disc_user_api_key';
 const CLIENT_ID_KEY = 'disc_client_id';
+
+/**
+ * Build redirect URI using expo-auth-session's makeRedirectUri
+ * This follows the official Discourse Mobile app pattern
+ * Forces fomio:// scheme even in Expo Go development
+ * 
+ * Respects EXPO_PUBLIC_AUTH_REDIRECT_SCHEME environment variable if set,
+ * otherwise uses makeRedirectUri with fomio://auth/callback
+ */
+function getRedirectUri(): string {
+  // Check if environment variable is set (allows configuration via .env)
+  const envRedirect = process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME;
+  if (envRedirect) {
+    logger.info('Using redirect URI from EXPO_PUBLIC_AUTH_REDIRECT_SCHEME', { redirectUri: envRedirect });
+    return envRedirect;
+  }
+  
+  // Use makeRedirectUri to ensure proper scheme handling
+  // native parameter forces the fomio:// scheme even in development
+  const baseUri = makeRedirectUri({
+    preferLocalhost: false,
+    native: 'fomio://auth/callback',
+  });
+  
+  // makeRedirectUri might return with or without path, ensure we have /auth/callback
+  if (baseUri.includes('fomio://')) {
+    // If it already has the correct scheme, use it
+    return baseUri;
+  }
+  
+  // Fallback: construct manually if makeRedirectUri doesn't work as expected
+  try {
+    const Platform = require('react-native').Platform;
+    if (Platform.OS === 'ios') {
+      return 'fomio:///auth/callback';
+    }
+  } catch {
+    // Fallback
+  }
+  
+  return 'fomio://auth/callback';
+}
 
 /**
  * Generate RSA keypair for authentication
@@ -47,7 +91,7 @@ async function getRsaKeypair(): Promise<{ publicKey: string; privateKey: string 
 /**
  * Decrypt payload from Discourse
  */
-async function decryptPayload(encryptedPayload: string, privateKey: string): Promise<{ key: string; one_time_password?: string }> {
+async function decryptPayload(encryptedPayload: string, privateKey: string): Promise<{ key: string; one_time_password?: string; nonce?: string }> {
   try {
     // Store private key temporarily for decryption
     await UserApiKeyManager.storePrivateKey(privateKey);
@@ -73,8 +117,17 @@ export async function signIn(): Promise<boolean> {
     // Generate or get client ID
     const clientId = await UserApiKeyManager.getOrGenerateClientId();
     
-    // Create redirect URI - MUST start with / for proper routing on both iOS and Android
-    const redirectUri = Linking.createURL('/auth/callback');
+    // Create redirect URI - Force fomio:// scheme even in development
+    // In Expo Go, Linking.createURL returns exp://, but Discourse needs fomio://
+    const redirectUri = getRedirectUri();
+    
+    // Log redirect URI format for debugging
+    logger.info('Generated redirect URI for auth', {
+      redirectUri,
+      platform: require('react-native').Platform.OS,
+      scheme: 'fomio',
+      path: '/auth/callback',
+    });
     
     // Build authorization URL
     const scopes = 'read,write,notifications,session_info,one_time_password';
@@ -113,11 +166,11 @@ export async function signIn(): Promise<boolean> {
     }
     
     // Extract payload from the redirect URL
-    // Parse the URL manually for React Native compatibility
+    // Parse the URL using utility function
     const redirectResult = result as WebBrowserRedirectResult;
     const urlString = redirectResult.url ?? '';
-    const payloadMatch = urlString.match(/[?&]payload=([^&]+)/);
-    const payload = payloadMatch ? decodeURIComponent(payloadMatch[1]) : null;
+    const urlParams = parseURLParameters(urlString);
+    const payload = urlParams.payload || null;
     
     if (!payload) {
       logger.error('No payload in redirect URL', { url: urlString });
@@ -126,11 +179,33 @@ export async function signIn(): Promise<boolean> {
     logger.info('Received authorization payload, decrypting...');
     
     // Decrypt payload
-    const { key, one_time_password } = await decryptPayload(payload, privateKey);
+    const { key, one_time_password, nonce: decryptedNonce } = await decryptPayload(payload, privateKey);
     
     if (!key) {
       throw new Error('Invalid authorization response: API key not found');
     }
+    
+    // Verify nonce matches stored nonce (security check to prevent replay attacks)
+    const storedNonce = await UserApiKeyManager.getNonce();
+    if (decryptedNonce && storedNonce) {
+      if (decryptedNonce !== storedNonce) {
+        logger.error('Nonce mismatch - possible replay attack', {
+          storedNonce: storedNonce.substring(0, 10) + '...',
+          decryptedNonce: decryptedNonce.substring(0, 10) + '...',
+        });
+        throw new Error('Security verification failed. Please try again.');
+      }
+      logger.info('Nonce verification successful');
+    } else if (decryptedNonce || storedNonce) {
+      // If only one is present, log warning but don't fail (for backward compatibility)
+      logger.warn('Partial nonce data - one missing', {
+        hasDecryptedNonce: !!decryptedNonce,
+        hasStoredNonce: !!storedNonce,
+      });
+    }
+    
+    // Clear nonce after successful verification (prevents reuse)
+    await UserApiKeyManager.clearNonce();
     
     // Store API key securely
     await SecureStore.setItemAsync(STORAGE_KEY, key);
@@ -155,8 +230,9 @@ export async function signIn(): Promise<boolean> {
         logger.info('Warming browser cookies with OTP...');
         const otpUrl = `${SITE}/session/otp/${one_time_password}`;
         
-        // Open OTP URL in browser to set logged-in cookie
-        await WebBrowser.openAuthSessionAsync(otpUrl, redirectUri);
+        // Open OTP URL in system browser to set logged-in cookie
+        // Using openBrowserAsync ensures cookies are set in the user's default browser
+        await WebBrowser.openBrowserAsync(otpUrl);
         
         logger.info('OTP cookie warming completed');
       } catch (otpError) {
@@ -241,7 +317,16 @@ export async function signOut(): Promise<void> {
   try {
     logger.info('Signing out...');
     
-    const key = await SecureStore.getItemAsync(STORAGE_KEY);
+    // Get API key from either storage location for revocation
+    let key: string | null = null;
+    const apiKeyData = await UserApiKeyManager.getApiKey();
+    if (apiKeyData?.key) {
+      key = apiKeyData.key;
+    }
+    
+    if (!key) {
+      key = await SecureStore.getItemAsync(STORAGE_KEY);
+    }
     
     if (key) {
       try {
@@ -267,11 +352,11 @@ export async function signOut(): Promise<void> {
       }
     }
     
-    // Clear local storage
+    // Clear local storage (both new and legacy locations)
     await SecureStore.deleteItemAsync(STORAGE_KEY);
     await SecureStore.deleteItemAsync(CLIENT_ID_KEY);
     
-    // Clear keypair (optional, but good for security)
+    // Clear keypair and API key data (optional, but good for security)
     await UserApiKeyManager.clearApiKey();
     
     logger.info('Sign out completed');
@@ -281,6 +366,7 @@ export async function signOut(): Promise<void> {
     try {
       await SecureStore.deleteItemAsync(STORAGE_KEY);
       await SecureStore.deleteItemAsync(CLIENT_ID_KEY);
+      await UserApiKeyManager.clearApiKey();
     } catch {
       // Ignore cleanup errors
     }

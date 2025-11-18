@@ -1,12 +1,61 @@
+/**
+ * @deprecated This class is deprecated. Use the unified authentication flow in lib/auth.ts instead.
+ * 
+ * The UserApiKeyAuth class has been replaced by the signIn() function in lib/auth.ts,
+ * which provides a complete, unified authentication flow following the official
+ * Discourse User API Keys specification.
+ * 
+ * Migration guide:
+ * - Replace UserApiKeyAuth.initiateAuthorization() with signIn() from lib/auth.ts
+ * - The signIn() function handles: RSA key generation, browser session, payload
+ *   decryption, storage, and OTP warming automatically
+ * 
+ * This file is kept for backward compatibility but will be removed in a future version.
+ */
+
 import { UserApiKeyManager, UserApiKeyData } from './userApiKeyManager';
 import { discourseApi } from './discourseApi';
 import { logger } from './logger';
 import * as Linking from 'expo-linking';
+import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
+
+/**
+ * Build redirect URI using expo-auth-session's makeRedirectUri
+ * This follows the official Discourse Mobile app pattern
+ * Forces fomio:// scheme even in Expo Go development
+ * @deprecated Use getRedirectUri() from lib/auth.ts instead
+ */
+function getRedirectUri(): string {
+  // Use makeRedirectUri to ensure proper scheme handling
+  // native parameter forces the fomio:// scheme even in development
+  const baseUri = makeRedirectUri({
+    preferLocalhost: false,
+    native: 'fomio://auth/callback',
+  });
+  
+  // makeRedirectUri might return with or without path, ensure we have /auth/callback
+  if (baseUri.includes('fomio://')) {
+    // If it already has the correct scheme, use it
+    return baseUri;
+  }
+  
+  // Fallback: construct manually if makeRedirectUri doesn't work as expected
+  try {
+    const Platform = require('react-native').Platform;
+    if (Platform.OS === 'ios') {
+      return 'fomio:///auth/callback';
+    }
+  } catch {
+    // Fallback
+  }
+  
+  return 'fomio://auth/callback';
+}
 
 const config = Constants.expoConfig?.extra || {};
 const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
-const DEFAULT_AUTH_REDIRECT = Linking.createURL('/auth/callback');
+const DEFAULT_AUTH_REDIRECT = getRedirectUri();
 const AUTH_REDIRECT_SCHEME = process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || DEFAULT_AUTH_REDIRECT;
 
 export interface AuthorizationResult {
@@ -27,6 +76,9 @@ export interface AuthorizationOptions {
  * User API Key Authentication Service
  * Handles the complete authorization flow for Discourse User API Keys
  * Following Discourse User API Keys specification
+ * 
+ * @deprecated Use signIn() from lib/auth.ts instead. This class is kept for
+ * backward compatibility only and will be removed in a future version.
  */
 export class UserApiKeyAuth {
   /**

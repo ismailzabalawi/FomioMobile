@@ -390,6 +390,18 @@ export class UserApiKeyManager {
   }
 
   /**
+   * Clear stored nonce (after successful auth)
+   */
+  static async clearNonce(): Promise<void> {
+    try {
+      await SecureStore.deleteItemAsync(NONCE_STORAGE_KEY);
+      logger.info('UserApiKeyManager: Nonce cleared');
+    } catch (error: any) {
+      logger.error('UserApiKeyManager: Failed to clear nonce', error);
+    }
+  }
+
+  /**
    * Get stored private key
    * @returns Private key or null if not found
    */
@@ -492,9 +504,9 @@ export class UserApiKeyManager {
   /**
    * Decrypt encrypted payload from Discourse
    * @param encryptedPayload - Base64 encoded encrypted payload
-   * @returns Decrypted payload containing API key and optional one-time password
+   * @returns Decrypted payload containing API key, optional one-time password, and optional nonce
    */
-  static async decryptPayload(encryptedPayload: string): Promise<{ key: string; one_time_password?: string }> {
+  static async decryptPayload(encryptedPayload: string): Promise<{ key: string; one_time_password?: string; nonce?: string }> {
     try {
       logger.info('UserApiKeyManager: Decrypting payload...');
       

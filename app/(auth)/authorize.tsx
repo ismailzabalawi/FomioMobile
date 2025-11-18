@@ -1,15 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
-import { UserApiKeyAuth } from '../../shared/userApiKeyAuth';
+import { signIn } from '../../lib/auth';
 import { useAuth } from '../../shared/useAuth';
 import { logger } from '../../shared/logger';
-
-// Complete auth session when browser closes
-WebBrowser.maybeCompleteAuthSession();
 
 export default function AuthorizeScreen() {
   const { isDark } = useTheme();
@@ -25,9 +21,7 @@ export default function AuthorizeScreen() {
   };
 
   const [error, setError] = useState<string | null>(null);
-  const [authUrl, setAuthUrl] = useState<string | null>(null);
-  const [loadingUrl, setLoadingUrl] = useState(true);
-  const [isOpeningBrowser, setIsOpeningBrowser] = useState(false);
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -36,69 +30,51 @@ export default function AuthorizeScreen() {
     }
   }, [isAuthenticated, isLoading]);
 
-  // Load authorization URL
-  useEffect(() => {
-    const loadAuthUrl = async () => {
-      try {
-        setLoadingUrl(true);
-        setError(null);
-        
-        const url = await UserApiKeyAuth.initiateAuthorization({
-          applicationName: 'Fomio',
-          scopes: ['read', 'write', 'message_bus', 'notifications', 'one_time_password'],
-        });
-        
-        setAuthUrl(url);
-        logger.info('AuthorizeScreen: Authorization URL loaded');
-      } catch (err) {
-        logger.error('AuthorizeScreen: Failed to load auth URL', err);
-        setError('Failed to initialize authorization. Please try again.');
-      } finally {
-        setLoadingUrl(false);
-      }
-    };
-
-    loadAuthUrl();
-  }, []);
-
-  // Handle opening browser for authorization
-  const handleOpenBrowser = async () => {
-    if (!authUrl) {
-      setError('Authorization URL not ready. Please wait.');
+  // Handle authorization
+  const handleAuthorize = async () => {
+    // Prevent multiple simultaneous auth attempts
+    if (isAuthorizing) {
       return;
     }
 
     try {
-      setIsOpeningBrowser(true);
+      setIsAuthorizing(true);
       setError(null);
       
-      logger.info('AuthorizeScreen: Opening browser for authorization', {
-        url: authUrl.replace(/public_key=[^&]+/, 'public_key=[REDACTED]'),
-      });
-
-      // Open browser with the authorization URL
-      // The deep link will automatically route to auth/callback.tsx when Discourse redirects
-      const result = await WebBrowser.openBrowserAsync(authUrl, {
-        showInRecents: true,
-        enableBarCollapsing: false,
-      });
-
-      logger.info('AuthorizeScreen: Browser closed', { type: result.type });
-
-      // If user cancelled, show error
-      if (result.type === 'cancel') {
-        setError('Authorization cancelled. Please try again.');
+      logger.info('AuthorizeScreen: Starting authorization flow...');
+      
+      // Use unified signIn() from lib/auth.ts
+      // This handles: RSA key generation, browser session, payload decryption, storage, and OTP warming
+      const success = await signIn();
+      
+      if (success) {
+        logger.info('AuthorizeScreen: Authorization successful');
+        // signIn() emits 'auth:signed-in' event, which will trigger useAuth hook
+        // to refresh user data and navigate. We can navigate here as well for immediate feedback.
+        router.replace('/(tabs)');
+      } else {
+        throw new Error('Authorization failed. Please try again.');
       }
-      // If there's an error, show it
-      else if (result.type === 'dismiss') {
-        // User dismissed the browser - this is okay, deep linking will handle the callback
-        logger.info('AuthorizeScreen: Browser dismissed, waiting for deep link callback');
+    } catch (err: any) {
+      logger.error('AuthorizeScreen: Authorization failed', err);
+      
+      // Provide user-friendly error messages
+      let displayError = 'Authorization failed. Please try again.';
+      
+      const errorMessage = err?.message || '';
+      if (errorMessage.toLowerCase().includes('cancel') || errorMessage.toLowerCase().includes('cancelled')) {
+        displayError = 'Authorization was cancelled. Please try again when ready.';
+      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('connection')) {
+        displayError = 'Network error. Please check your internet connection and try again.';
+      } else if (errorMessage.toLowerCase().includes('decrypt') || errorMessage.toLowerCase().includes('payload')) {
+        displayError = 'Failed to process authorization response. Please try again.';
+      } else if (errorMessage) {
+        displayError = errorMessage;
       }
-    } catch (err) {
-      logger.error('AuthorizeScreen: Failed to open browser', err);
-      setError('Failed to open authorization page. Please try again.');
+      
+      setError(displayError);
     } finally {
-      setIsOpeningBrowser(false);
+      setIsAuthorizing(false);
     }
   };
 
@@ -166,50 +142,41 @@ export default function AuthorizeScreen() {
       )}
 
       <View style={styles.contentContainer}>
-        {loadingUrl || !authUrl ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.secondary }]}>
-              Preparing authorization...
-            </Text>
+        <View style={styles.authorizeContainer}>
+          <View style={styles.iconContainer}>
+            <Text style={[styles.iconText, { color: colors.primary }]}>🔐</Text>
           </View>
-        ) : (
-          <View style={styles.authorizeContainer}>
-            <View style={styles.iconContainer}>
-              <Text style={[styles.iconText, { color: colors.primary }]}>🔐</Text>
-            </View>
-            <Text style={[styles.titleText, { color: colors.text }]}>
-              Authorize Fomio
-            </Text>
-            <Text style={[styles.descriptionText, { color: colors.secondary }]}>
-              You'll be redirected to TechRebels to authorize Fomio to access your account.
-            </Text>
-            <TouchableOpacity
-              onPress={handleOpenBrowser}
-              disabled={isOpeningBrowser}
-              style={[
-                styles.authorizeButton,
-                { backgroundColor: colors.primary },
-                isOpeningBrowser && styles.authorizeButtonDisabled,
-              ]}
-              accessible
-              accessibilityRole="button"
-              accessibilityLabel="Open authorization page"
-              accessibilityHint="Opens your browser to authorize Fomio"
-            >
-              {isOpeningBrowser ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.authorizeButtonText}>
-                  Open Authorization Page
-                </Text>
-              )}
-            </TouchableOpacity>
-            <Text style={[styles.hintText, { color: colors.secondary }]}>
-              After authorizing, you'll be automatically redirected back to the app.
-            </Text>
-          </View>
-        )}
+          <Text style={[styles.titleText, { color: colors.text }]}>
+            Authorize Fomio
+          </Text>
+          <Text style={[styles.descriptionText, { color: colors.secondary }]}>
+            You'll be redirected to TechRebels to authorize Fomio to access your account.
+          </Text>
+          <TouchableOpacity
+            onPress={handleAuthorize}
+            disabled={isAuthorizing}
+            style={[
+              styles.authorizeButton,
+              { backgroundColor: colors.primary },
+              isAuthorizing && styles.authorizeButtonDisabled,
+            ]}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Authorize Fomio"
+            accessibilityHint="Opens your browser to authorize Fomio to access your account"
+          >
+            {isAuthorizing ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.authorizeButtonText}>
+                Authorize Fomio
+              </Text>
+            )}
+          </TouchableOpacity>
+          <Text style={[styles.hintText, { color: colors.secondary }]}>
+            After authorizing, you'll be automatically redirected back to the app.
+          </Text>
+        </View>
       </View>
 
       <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>

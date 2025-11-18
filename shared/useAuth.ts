@@ -209,33 +209,60 @@ export const useAuth = () => {
 
   // Listen to auth events to sync state across components
   useEffect(() => {
+    let reloadTimeout: ReturnType<typeof setTimeout> | null = null;
+    let isProcessingEvent = false;
+
     const unsubscribe = onAuthEvent((event) => {
-      // CRITICAL: Prevent loops by checking if we're already loading
-      if (isLoadingAuth) {
-        console.log('⚠️ Auth event received while loading, skipping to prevent loop');
+      // CRITICAL: Prevent loops by checking if we're already loading or processing
+      if (isLoadingAuth || isProcessingEvent) {
+        console.log('⚠️ Auth event received while loading/processing, skipping to prevent loop', {
+          event,
+          isLoadingAuth,
+          isProcessingEvent,
+        });
         return;
       }
-      
+
       if (event === 'auth:signed-in' || event === 'auth:refreshed') {
         // Only reload if we haven't loaded recently and aren't currently loading
-        // Reset the flag so we can reload, but only if not already in progress
-        if (!isLoadingAuth) {
-          hasLoadedAuth = false;
-          // Use setTimeout to prevent immediate recursive calls
-          setTimeout(() => {
-            if (!isLoadingAuth) {
-              loadStoredAuth();
-            }
-          }, 100);
+        // Use debouncing to prevent rapid-fire reloads
+        if (reloadTimeout) {
+          clearTimeout(reloadTimeout);
         }
+
+        isProcessingEvent = true;
+        hasLoadedAuth = false;
+
+        // Use setTimeout with longer delay to prevent immediate recursive calls
+        reloadTimeout = setTimeout(() => {
+          if (!isLoadingAuth) {
+            loadStoredAuth().finally(() => {
+              isProcessingEvent = false;
+            });
+          } else {
+            isProcessingEvent = false;
+          }
+        }, 300); // Increased delay to prevent race conditions
       } else if (event === 'auth:signed-out') {
+        // Clear any pending reload
+        if (reloadTimeout) {
+          clearTimeout(reloadTimeout);
+          reloadTimeout = null;
+        }
+
+        isProcessingEvent = true;
         reset();
         hasLoadedAuth = true; // Mark as loaded (even though it's empty)
         isLoadingAuth = false; // Reset loading flag on sign out
+        isProcessingEvent = false;
       }
     });
+
     return () => {
       unsubscribe();
+      if (reloadTimeout) {
+        clearTimeout(reloadTimeout);
+      }
     };
   }, [loadStoredAuth, reset]);
 

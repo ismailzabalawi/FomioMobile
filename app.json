@@ -28,7 +28,15 @@
       ]
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fomio.mobile",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": ["fomio"]
+          }
+        ]
+      }
     },
     "extra": {
       "DISCOURSE_BASE_URL": "https://meta.techrebels.info",

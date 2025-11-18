@@ -17,10 +17,22 @@ export default function SignInScreen() {
   };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
+  const isProcessingRef = React.useRef(false);
 
-  const handleConnect = async () => {
+  const handleConnect = async (isRetry = false) => {
+    // Prevent multiple simultaneous auth attempts
+    if (isProcessingRef.current) {
+      return;
+    }
+
+    if (!isRetry) {
+      setRetryCount(0);
+    }
+
     setLoading(true);
     setError('');
+    isProcessingRef.current = true;
 
     try {
       // Check if we already have a valid API key
@@ -37,7 +49,7 @@ export default function SignInScreen() {
             router.replace('/(tabs)' as any);
             return;
           }
-        } catch (error) {
+        } catch (error: any) {
           // Key exists but is invalid, continue to sign in
           console.log('⚠️ Existing API key invalid, starting new sign in');
         }
@@ -49,21 +61,38 @@ export default function SignInScreen() {
       if (success) {
         // Sign in successful, navigate to main app
         router.replace('/(tabs)' as any);
+      } else {
+        throw new Error('Sign in failed. Please try again.');
       }
     } catch (err: any) {
       const errorMessage = err?.message || 'Failed to connect. Please try again.';
-      setError(errorMessage);
+      let displayError = errorMessage;
       
       // Show helpful hints for common errors
-      if (errorMessage.includes('cancel')) {
-        setError('Sign in cancelled. Please try again when ready.');
-      } else if (errorMessage.includes('redirect')) {
-        setError('Missing redirect in Discourse settings. Please configure the redirect URL in your Discourse admin panel.');
-      } else if (errorMessage.includes('scopes')) {
-        setError('Insufficient scopes. Please check your API key permissions.');
+      if (errorMessage.toLowerCase().includes('cancel') || errorMessage.toLowerCase().includes('cancelled')) {
+        displayError = 'Sign in was cancelled. Please try again when ready.';
+      } else if (errorMessage.toLowerCase().includes('redirect') || errorMessage.toLowerCase().includes('url')) {
+        displayError = 'Configuration error: Missing redirect URL in Discourse settings. Please contact support.';
+      } else if (errorMessage.toLowerCase().includes('scope')) {
+        displayError = 'Permission error: Insufficient scopes. Please check your API key permissions.';
+      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('timeout') || errorMessage.toLowerCase().includes('connection')) {
+        displayError = 'Network error: Please check your internet connection and try again.';
+        // Allow retry for network errors
+        if (retryCount < 2) {
+          setRetryCount(retryCount + 1);
+          setTimeout(() => {
+            handleConnect(true);
+          }, 2000 * (retryCount + 1)); // Exponential backoff
+          return;
+        }
+      } else if (errorMessage.toLowerCase().includes('decrypt') || errorMessage.toLowerCase().includes('payload')) {
+        displayError = 'Authorization error: Failed to process authorization response. Please try again.';
       }
+      
+      setError(displayError);
     } finally {
       setLoading(false);
+      isProcessingRef.current = false;
     }
   };
 
@@ -94,6 +123,11 @@ export default function SignInScreen() {
           {error ? (
             <View style={[styles.errorContainer, { backgroundColor: `${colors.error}10`, borderColor: colors.error }]}>
               <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+              {retryCount > 0 && (
+                <Text style={[styles.retryText, { color: colors.secondary }]}>
+                  Retrying... ({retryCount}/2)
+                </Text>
+              )}
             </View>
           ) : null}
 
@@ -190,6 +224,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  retryText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
   },
   infoContainer: {
     marginBottom: 32,

@@ -68,14 +68,13 @@ export async function processAuthorizationCallback(payload: string): Promise<str
  * Authorize with Discourse using User API Key flow
  * 
  * NOTE: This function is deprecated. The authorization flow now uses deep linking
- * and must be initiated through the authorize screen (/(auth)/authorize).
+ * and must be initiated through the authorize screen (/(auth)/authorize) or signin screen (/(auth)/signin).
  * 
  * This function checks for an existing valid API key, but cannot complete
- * new authorizations synchronously. Use UserApiKeyAuth.initiateAuthorization()
- * and handle the redirect via deep linking instead.
+ * new authorizations synchronously. Use signIn() from lib/auth.ts instead.
  * 
  * @returns Promise resolving to existing API key if valid, otherwise throws error
- * @deprecated Use UserApiKeyAuth.initiateAuthorization() and handle redirect via deep linking
+ * @deprecated Use signIn() from lib/auth.ts for new authorizations
  */
 export async function authorizeWithDiscourse(): Promise<string> {
   try {

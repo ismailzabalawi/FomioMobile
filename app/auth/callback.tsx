@@ -5,6 +5,9 @@ import * as Linking from 'expo-linking';
 import { logger } from '../../shared/logger';
 import { useAuth } from '../../shared/useAuth';
 import { discourseApi } from '../../shared/discourseApi';
+import { UserApiKeyManager } from '../../shared/userApiKeyManager';
+import { hasUserApiKey } from '../../lib/auth';
+import { parseURLParameters } from '../../lib/auth-utils';
 import Constants from 'expo-constants';
 
 const config = Constants.expoConfig?.extra || {};
@@ -12,11 +15,14 @@ const config = Constants.expoConfig?.extra || {};
 /**
  * Auth callback handler
  * This screen handles the deep link callback from Discourse after authorization
- * Note: expo-auth-session handles most of this automatically, but this route
- * serves as a fallback for direct deep link navigation
+ * Extracts encrypted payload from URL, decrypts it, stores API key, then verifies user
+ * 
+ * Note: This serves as a fallback for direct deep links. The main auth flow in lib/auth.ts
+ * already handles payload extraction and storage when using signIn(), so this handler
+ * checks if auth is already complete to prevent double-processing.
  */
 export default function AuthCallbackScreen() {
-  const { setAuthenticatedUser } = useAuth();
+  const { setAuthenticatedUser, isAuthenticated } = useAuth();
   const hasProcessedRef = useRef(false);
   const params = useLocalSearchParams();
 
@@ -30,28 +36,95 @@ export default function AuthCallbackScreen() {
     
     async function handleCallback() {
       try {
-        // Log deep link information for debugging (platform-agnostic)
-        const urlString = typeof params.url === 'string' ? params.url : '';
         logger.info('AuthCallbackScreen: Processing callback...', {
           platform: Platform.OS,
-          hasUrlParam: !!urlString,
           paramsKeys: Object.keys(params),
         });
 
-        // Extract payload from URL if present (handles both iOS and Android formats)
-        // iOS: fomio:///auth/callback?payload=... (triple slash)
-        // Android: fomio://auth/callback?payload=... (double slash)
-        if (urlString) {
-          const payloadMatch = urlString.match(/[?&]payload=([^&]+)/);
-          if (payloadMatch) {
-            logger.info('AuthCallbackScreen: Found payload in URL params');
+        // Early return: Check if authentication is already complete
+        // This prevents double-processing when lib/auth.ts.signIn() has already handled the auth flow
+        const hasApiKey = await hasUserApiKey();
+        if (hasApiKey) {
+          // Verify the API key is valid by checking user data
+          const userResponse = await discourseApi.getCurrentUser();
+          if (userResponse.success && userResponse.data) {
+            logger.info('AuthCallbackScreen: Authentication already complete, navigating to main app');
+            router.replace('/(tabs)');
+            return;
           } else {
-            logger.warn('AuthCallbackScreen: No payload found in URL', { urlString });
+            // API key exists but is invalid, continue with callback processing
+            logger.warn('AuthCallbackScreen: API key exists but is invalid, processing callback');
           }
         }
 
-        // If expo-auth-session handled it, we should already be authenticated
-        // Just verify and fetch user data
+        // Extract payload from URL query parameters
+        // Can come from params.url (full URL string) or params.payload (direct param)
+        let payload: string | null = null;
+        
+        // Try direct payload parameter first
+        if (typeof params.payload === 'string') {
+          payload = decodeURIComponent(params.payload);
+          logger.info('AuthCallbackScreen: Found payload in direct param');
+        } 
+        // Try extracting from URL string using utility function
+        else if (typeof params.url === 'string') {
+          const urlString = params.url;
+          const urlParams = parseURLParameters(urlString);
+          payload = urlParams.payload || null;
+          if (payload) {
+            logger.info('AuthCallbackScreen: Found payload in URL string');
+          }
+        }
+
+        if (!payload) {
+          logger.error('AuthCallbackScreen: No payload found in callback URL', {
+            params: Object.keys(params),
+            urlParam: typeof params.url === 'string' ? params.url.substring(0, 100) : 'not a string',
+          });
+          
+          // If no payload, check if we already have a valid API key (maybe from openAuthSessionAsync)
+          const userResponse = await discourseApi.getCurrentUser();
+          if (userResponse.success && userResponse.data) {
+            logger.info('AuthCallbackScreen: No payload but API key already valid, proceeding with user fetch');
+            // Continue to user mapping below
+          } else {
+            throw new Error('No payload found in callback URL and no valid API key. Please try authorizing again.');
+          }
+        } else {
+          // Decrypt payload and store API key
+          logger.info('AuthCallbackScreen: Decrypting payload...');
+          try {
+            const decrypted = await UserApiKeyManager.decryptPayload(payload);
+            
+            if (!decrypted.key) {
+              throw new Error('Invalid payload: API key not found after decryption');
+            }
+
+            // Get or generate client ID
+            const clientId = await UserApiKeyManager.getOrGenerateClientId();
+
+            // Store API key securely
+            await UserApiKeyManager.storeApiKey({
+              key: decrypted.key,
+              clientId,
+              oneTimePassword: decrypted.one_time_password,
+              createdAt: Date.now(),
+            });
+
+            // Store one-time password if provided
+            if (decrypted.one_time_password) {
+              await UserApiKeyManager.storeOneTimePassword(decrypted.one_time_password);
+            }
+
+            logger.info('AuthCallbackScreen: API key stored successfully');
+          } catch (decryptError: any) {
+            logger.error('AuthCallbackScreen: Failed to decrypt payload', decryptError);
+            throw new Error(`Failed to decrypt authorization payload: ${decryptError.message || 'Unknown error'}. Please try authorizing again.`);
+          }
+        }
+
+        // Verify authentication by fetching user data
+        logger.info('AuthCallbackScreen: Verifying authentication...');
         const userResponse = await discourseApi.getCurrentUser();
 
         if (userResponse.success && userResponse.data) {
@@ -84,11 +157,31 @@ export default function AuthCallbackScreen() {
           // Navigate to main app
           router.replace('/(tabs)');
         } else {
-          logger.error('AuthCallbackScreen: Failed to fetch user data');
+          const errorMsg = userResponse.error || 'Failed to fetch user data';
+          logger.error('AuthCallbackScreen: Failed to fetch user data', {
+            error: errorMsg,
+            status: userResponse.status,
+          });
+          
+          // Clear potentially invalid API key
+          try {
+            await UserApiKeyManager.clearApiKey();
+          } catch (clearError) {
+            logger.warn('AuthCallbackScreen: Failed to clear API key', clearError);
+          }
+          
           router.replace('/(auth)/signin');
         }
       } catch (error: any) {
         logger.error('AuthCallbackScreen: Error processing callback', error);
+        
+        // Clear potentially invalid API key on error
+        try {
+          await UserApiKeyManager.clearApiKey();
+        } catch (clearError) {
+          logger.warn('AuthCallbackScreen: Failed to clear API key on error', clearError);
+        }
+        
         router.replace('/(auth)/signin');
       }
     }
