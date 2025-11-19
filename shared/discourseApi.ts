@@ -697,6 +697,59 @@ class DiscourseApiService {
     });
   }
 
+  // Upload image for composer/post content
+  async uploadImage(imageFile: { uri: string; type?: string; name?: string; fileSize?: number }): Promise<DiscourseApiResponse<{ url: string; id: number }>> {
+    // Handle React Native file format (from expo-image-picker)
+    let fileType: string;
+    let fileSize: number | undefined;
+    
+    if ('uri' in imageFile) {
+      // React Native format
+      fileType = imageFile.type || 'image/jpeg';
+      fileSize = imageFile.fileSize;
+    } else {
+      // Browser File format (fallback, though we primarily use React Native)
+      fileType = (imageFile as File).type || 'image/jpeg';
+      fileSize = (imageFile as File).size;
+    }
+
+    // Validate file type and size (same as uploadAvatar)
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/jpg'];
+    if (!allowedTypes.some(type => fileType.includes(type))) {
+      return { success: false, error: 'Invalid file type. Only JPEG, PNG, and GIF are allowed.' };
+    }
+
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (fileSize && fileSize > maxSize) {
+      return { success: false, error: 'File too large. Maximum size is 5MB.' };
+    }
+
+    const formData = new FormData();
+    
+    if ('uri' in imageFile) {
+      // React Native: append as object with uri, type, name
+      formData.append('file', {
+        uri: imageFile.uri,
+        type: fileType,
+        name: imageFile.name || `image.${fileType.split('/')[1] || 'jpg'}`,
+      } as any);
+    } else {
+      // Browser: append File object directly
+      formData.append('file', imageFile as File);
+    }
+    
+    // Include type field for composer uploads (most Discourse setups require this)
+    formData.append('type', 'composer');
+
+    return this.makeRequest<{ url: string; id: number }>('/uploads.json', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        // Don't set Content-Type for FormData, let React Native/browser set it
+      },
+    });
+  }
+
   // User Settings API
   async getUserSettings(username: string): Promise<DiscourseApiResponse<UserSettings>> {
     if (!SecurityValidator.validateUsername(username)) {

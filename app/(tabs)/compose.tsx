@@ -18,12 +18,14 @@ import { useTerets, Teret } from '../../shared/useTerets';
 import { useAuth } from '../../shared/useAuth';
 import { useDiscourseSettings } from '../../shared/useDiscourseSettings';
 import { createTopic } from '../../lib/discourse';
-import { SignIn, ImageSquare, Check, Warning } from 'phosphor-react-native';
+import { discourseApi } from '@/shared/discourseApi';
+import { SignIn, Check, Warning } from 'phosphor-react-native';
 import { 
   ComposeEditor,
   MediaGrid,
   useImagePicker,
   MediaItem,
+  HelpSheet,
 } from '@/components/compose';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { TeretPickerSheet } from '@/components/terets/TeretPickerSheet';
@@ -50,7 +52,7 @@ export default function ComposeScreen(): React.ReactElement {
   
   // Editor state - structured cleanly for future draft autosave
   const [title, setTitle] = useState<string>('');
-  const [content, setContent] = useState<string>('');
+  const [body, setBody] = useState<string>('');
   const [selectedTeret, setSelectedTeret] = useState<Teret | null>(null);
   const [images, setImages] = useState<MediaItem[]>([]);
 
@@ -59,6 +61,13 @@ export default function ComposeScreen(): React.ReactElement {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [isTeretSheetOpen, setIsTeretSheetOpen] = useState(false);
+  const [isHelpSheetOpen, setIsHelpSheetOpen] = useState(false);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+
+  // Debug: Track isHelpSheetOpen changes
+  useEffect(() => {
+    console.log('🔍 [ComposeScreen] isHelpSheetOpen changed to:', isHelpSheetOpen);
+  }, [isHelpSheetOpen]);
 
   // Clear errors when user starts typing
   useEffect(() => {
@@ -68,10 +77,10 @@ export default function ComposeScreen(): React.ReactElement {
   }, [title, errors.title]);
 
   useEffect(() => {
-    if (content.trim() && errors.content) {
+    if (body.trim() && errors.content) {
       setErrors((prev) => ({ ...prev, content: undefined }));
     }
-  }, [content, errors.content]);
+  }, [body, errors.content]);
 
   useEffect(() => {
     if (selectedTeret && errors.hub) {
@@ -100,7 +109,7 @@ export default function ComposeScreen(): React.ReactElement {
 
   // Compute lengths for validation
   const titleLen = title.trim().length;
-  const bodyLen = content.trim().length;
+  const bodyLen = body.trim().length;
 
   // Smart Post button enable logic - enforces Discourse minimums
   const canPost = useMemo(() => {
@@ -153,8 +162,8 @@ export default function ComposeScreen(): React.ReactElement {
       return;
     }
     
-    // Validate content with Discourse minimum
-    const bodyLen = content.trim().length;
+    // Validate body with Discourse minimum
+    const bodyLen = body.trim().length;
     if (bodyLen < minPost) {
       setErrors((prev) => ({ 
         ...prev, 
@@ -184,8 +193,8 @@ export default function ComposeScreen(): React.ReactElement {
         hasImages: images.length > 0,
       });
 
-      // TODO: Upload images first if any, then embed URLs in content
-      // For MVP, we'll just create the post with text content
+      // Images are uploaded when added (via /image command).
+      // Body already contains Markdown with their URLs.
       //
       // IMPORTANT: Fomio → Discourse category mapping:
       // - Hub = Discourse parent category (used for grouping/display only)
@@ -194,7 +203,7 @@ export default function ComposeScreen(): React.ReactElement {
       // - selectedTeret.id is the subcategory ID that Discourse requires
       const result = await createTopic({
         title: title.trim(),
-        raw: content.trim(),
+        raw: body.trim(),
         categoryId: selectedTeret.id, // Subcategory ID (Teret), not parent category ID (Hub)
       });
 
@@ -210,11 +219,11 @@ export default function ComposeScreen(): React.ReactElement {
       // Clear form and navigate back after short delay
       setTimeout(() => {
         setTitle('');
-      setContent('');
+        setBody('');
         setSelectedTeret(null);
         setImages([]);
         setSuccessMessage('');
-      router.back();
+        router.back();
       }, 1500);
     } catch (error: any) {
       const errorMsg = error?.message || 'Failed to create post. Please try again.';
@@ -231,12 +240,14 @@ export default function ComposeScreen(): React.ReactElement {
     }
   }, [
     title,
-    content,
+    body,
     selectedTeret,
     images,
     isAuthenticated,
     isAuthLoading,
     user,
+    minTitle,
+    minPost,
   ]);
 
   const handleTeretPress = useCallback(() => {
@@ -247,12 +258,95 @@ export default function ComposeScreen(): React.ReactElement {
     setIsTeretSheetOpen(true);
   }, []);
 
+  // Helper to insert image markdown into body
+  const insertImageMarkdown = useCallback(
+    (urls: string[]) => {
+      if (!urls.length) return;
+      
+      setBody((prev) => {
+        const sep = prev.trim().length === 0 ? '' : '\n\n';
+        const markdown = urls
+          .map((url) => `![image](${url})`)
+          .join('\n\n');
+        return `${prev}${sep}${markdown}\n`;
+      });
+    },
+    []
+  );
+
   const handleAddImages = useCallback(async () => {
     const pickedImages = await pickImages();
-    if (pickedImages.length > 0) {
-      setImages((prev) => [...prev, ...pickedImages]);
+    if (pickedImages.length === 0) return;
+
+    setIsUploadingImages(true);
+    
+    try {
+      // Upload images sequentially and get URLs
+      const uploadedImages: Array<{ url: string; uri: string }> = [];
+      
+      for (const image of pickedImages) {
+        try {
+          // Detect MIME type from image or default to JPEG
+          const mimeType = 'image/jpeg'; // expo-image-picker doesn't provide type in result, default to JPEG
+          
+          const result = await discourseApi.uploadImage({
+            uri: image.uri,
+            type: mimeType,
+            name: `image.jpg`,
+          });
+          
+          if (result.success && result.data?.url) {
+            uploadedImages.push({
+              url: result.data.url,
+              uri: image.uri,
+            });
+          } else {
+            console.error('Failed to upload image:', result.error);
+            // Continue with other images even if one fails
+          }
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          // Continue with other images
+        }
+      }
+
+      // Update images state with uploaded URLs
+      if (uploadedImages.length > 0) {
+        setImages((prev) => [
+          ...prev,
+          ...uploadedImages.map((img) => ({
+            uri: img.url, // Store uploaded URL as uri for MediaGrid
+            type: 'image' as const,
+          })),
+        ]);
+
+        // Insert markdown into body
+        const urls = uploadedImages.map((img) => img.url).filter(Boolean);
+        insertImageMarkdown(urls);
+
+        // Haptic feedback on success
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {
+          // Ignore haptic errors
+        });
+      }
+    } catch (error) {
+      console.error('Error in handleAddImages:', error);
+      // User feedback can be added here if needed
+    } finally {
+      setIsUploadingImages(false);
     }
-  }, [pickImages]);
+  }, [pickImages, insertImageMarkdown]);
+
+  // Handler for /help slash command
+  const handleSlashHelp = useCallback(() => {
+    console.log('🔍 [ComposeScreen] handleSlashHelp called');
+    setIsHelpSheetOpen(true);
+  }, []);
+
+  // Handler for /image slash command - reuses handleAddImages (Phase B: uploads and inserts markdown)
+  const handleSlashImage = useCallback(() => {
+    handleAddImages();
+  }, [handleAddImages]);
 
   const handleRemoveImage = useCallback((index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
@@ -408,15 +502,13 @@ export default function ComposeScreen(): React.ReactElement {
           {/* Compose Editor - Title → Teret Row → Body */}
           <ComposeEditor
             title={title}
-            content={content}
-            onTitleChange={setTitle}
-            onContentChange={setContent}
+            body={body}
+            onChangeTitle={setTitle}
+            onChangeBody={setBody}
             selectedTeret={selectedTeret}
             onTeretPress={handleTeretPress}
-            titleError={errors.title}
-            contentError={errors.content}
-            minTitle={minTitle}
-            minContent={minPost}
+            onSlashHelp={handleSlashHelp}
+            onSlashImage={handleSlashImage}
           />
 
           {/* Media Grid */}
@@ -424,21 +516,14 @@ export default function ComposeScreen(): React.ReactElement {
             <MediaGrid media={images} onRemove={handleRemoveImage} />
           )}
 
-          {/* Add Images Button - Modern tool-style button */}
-          <TouchableOpacity 
-            onPress={handleAddImages}
-            disabled={isPicking}
-            className="mx-4 mt-3 px-3 py-2 rounded-fomio-pill bg-transparent border border-transparent flex-row items-center self-start"
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Add images"
-            activeOpacity={0.7}
-          >
-            <ImageSquare size={18} color="#2563EB" weight="regular" />
-            <Text className="ml-2 text-body font-semibold text-fomio-primary dark:text-fomio-primary-dark">
-              {isPicking ? 'Selecting images...' : 'Add images'}
-            </Text>
-          </TouchableOpacity>
+          {/* Upload feedback */}
+          {isUploadingImages && (
+            <View className="mx-4 mt-2 p-2 rounded-fomio-card bg-fomio-muted/20 dark:bg-fomio-muted-dark/20">
+              <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark text-center">
+                Uploading images...
+              </Text>
+            </View>
+          )}
 
           {/* Bottom spacing */}
           <View className="h-8" />
@@ -457,6 +542,12 @@ export default function ComposeScreen(): React.ReactElement {
           setSelectedTeret(teret);
           setIsTeretSheetOpen(false);
         }}
+      />
+
+      {/* Help Sheet Modal */}
+      <HelpSheet
+        visible={isHelpSheetOpen}
+        onClose={() => setIsHelpSheetOpen(false)}
       />
     </ScreenContainer>
   );
