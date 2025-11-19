@@ -511,6 +511,17 @@ export default function ComposeScreen(): React.ReactElement {
             onSlashImage={handleSlashImage}
           />
 
+          {/* Small hint under editor */}
+          <View className="px-4 mt-2">
+            <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
+              Pro tip:{' '}
+              <Text className="font-mono">
+                /help
+              </Text>{' '}
+              shows all slash commands.
+            </Text>
+          </View>
+
           {/* Media Grid */}
           {images.length > 0 && (
             <MediaGrid media={images} onRemove={handleRemoveImage} />

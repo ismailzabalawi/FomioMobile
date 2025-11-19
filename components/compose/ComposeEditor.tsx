@@ -85,35 +85,224 @@ export function ComposeEditor({
     },
   }), []);
 
+  // Helper: wrap selection or insert inline wrapper (e.g. bold/italic)
+  const applyInlineWrap = useCallback(
+    (currentBody: string, sel: { start: number; end: number }, wrapper: string) => {
+      const { start, end } = sel;
+
+      if (start !== end) {
+        // Wrap selected text
+        const before = currentBody.slice(0, start);
+        const middle = currentBody.slice(start, end);
+        const after = currentBody.slice(end);
+
+        const next = `${before}${wrapper}${middle}${wrapper}${after}`;
+        const newStart = start + wrapper.length;
+        const newEnd = newStart + middle.length;
+
+        onChangeBody(next);
+        setSelection({ start: newStart, end: newEnd });
+      } else {
+        // No selection: insert wrapperwrapper and place cursor in the middle
+        const before = currentBody.slice(0, start);
+        const after = currentBody.slice(end);
+        const snippet = `${wrapper}${wrapper}`;
+
+        const next = before + snippet + after;
+        const cursor = before.length + wrapper.length;
+
+        onChangeBody(next);
+        setSelection({ start: cursor, end: cursor });
+      }
+    },
+    [onChangeBody],
+  );
+
+  const applyBold = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      applyInlineWrap(currentBody, sel, '**');
+    },
+    [applyInlineWrap],
+  );
+
+  const applyItalic = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      applyInlineWrap(currentBody, sel, '_');
+    },
+    [applyInlineWrap],
+  );
+
+  // Helper: apply prefix to the current line (for headings, quote, list)
+  const applyLinePrefix = useCallback(
+    (currentBody: string, sel: { start: number; end: number }, prefix: string) => {
+      const { start } = sel;
+
+      const before = currentBody.slice(0, start);
+      const after = currentBody.slice(start);
+
+      const lastNewline = before.lastIndexOf('\n');
+      const lineStartIndex = lastNewline === -1 ? 0 : lastNewline + 1;
+
+      const lineRest = currentBody.slice(lineStartIndex);
+      const firstNewline = lineRest.indexOf('\n');
+      const lineEndIndex =
+        firstNewline === -1 ? currentBody.length : lineStartIndex + firstNewline;
+
+      const line = currentBody.slice(lineStartIndex, lineEndIndex);
+
+      // Keep leading spaces, then add prefix
+      const leadingSpacesMatch = line.match(/^\s*/);
+      const leadingSpaces = leadingSpacesMatch ? leadingSpacesMatch[0] : '';
+      const rest = line.slice(leadingSpaces.length);
+
+      const newLine = leadingSpaces + prefix + rest;
+
+      const next =
+        currentBody.slice(0, lineStartIndex) + newLine + currentBody.slice(lineEndIndex);
+
+      const newCursor = start + prefix.length;
+
+      onChangeBody(next);
+      setSelection({ start: newCursor, end: newCursor });
+    },
+    [onChangeBody],
+  );
+
+  const applyH1 = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      applyLinePrefix(currentBody, sel, '# ');
+    },
+    [applyLinePrefix],
+  );
+
+  const applyH2 = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      applyLinePrefix(currentBody, sel, '## ');
+    },
+    [applyLinePrefix],
+  );
+
+  const applyQuote = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      applyLinePrefix(currentBody, sel, '> ');
+    },
+    [applyLinePrefix],
+  );
+
+  const applyList = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      applyLinePrefix(currentBody, sel, '- ');
+    },
+    [applyLinePrefix],
+  );
+
   // Detect and handle slash commands
-  const handleBodyChange = useCallback((text: string) => {
-    // Check for slash commands at the start of a line
-    const lines = text.split('\n');
-    const lastLineIndex = lines.length - 1;
-    const lastLine = lines[lastLineIndex];
-    const trimmed = lastLine.trimStart(); // Preserve leading spaces if needed
+  const handleBodyChange = useCallback(
+    (text: string) => {
+      const lines = text.split('\n');
+      const lastLineIndex = lines.length - 1;
+      const lastLine = lines[lastLineIndex] ?? '';
 
-    // Only process if last line starts with a slash command
-    if (trimmed === '/help' && onSlashHelp) {
-      if (__DEV__) console.log('🔍 [ComposeEditor] /help detected! Calling onSlashHelp');
-      // Remove command from last line (set to empty string)
-      lines[lastLineIndex] = '';
-      onChangeBody(lines.join('\n'));
-      onSlashHelp();
-      return;
-    }
+      // Find a slash command at the end of the line
+      const match = lastLine.match(/(?:^|\s)(\/[a-zA-Z0-9]+)\s*$/);
+      const command = match?.[1]; // e.g. "/b", "/h1", "/quote"
 
-    if (trimmed === '/image' && onSlashImage) {
-      // Remove command from last line (set to empty string)
-      lines[lastLineIndex] = '';
-      onChangeBody(lines.join('\n'));
-      onSlashImage();
-      return;
-    }
+      if (command) {
+        // Remove the matched part (including leading space) from the line
+        const lineWithoutCommand = lastLine.slice(0, lastLine.length - match[0].length);
+        lines[lastLineIndex] = lineWithoutCommand;
+        const clean = lines.join('\n'); // body without the /command token
 
-    // No command matched, update normally
-    onChangeBody(text);
-  }, [onChangeBody, onSlashHelp, onSlashImage]);
+        // Calculate command position in the original text
+        const commandLength = match[0].length;
+        const commandStartPos = text.length - commandLength;
+        const commandEndPos = text.length;
+
+        // Adjust selection to account for removed command
+        let adjustedStart = selection.start;
+        let adjustedEnd = selection.end;
+
+        if (selection.start >= commandEndPos) {
+          // Cursor was after the command, move it back
+          adjustedStart = selection.start - commandLength;
+          adjustedEnd = selection.end - commandLength;
+        } else if (selection.end > commandStartPos) {
+          // Selection overlaps with command area
+          if (selection.start >= commandStartPos) {
+            // Entire selection was in the command, place cursor at removal point
+            adjustedStart = commandStartPos;
+            adjustedEnd = commandStartPos;
+          } else {
+            // Selection starts before but extends into command, clamp end to command start
+            adjustedEnd = commandStartPos;
+          }
+        }
+
+        const adjustedSel = { start: adjustedStart, end: adjustedEnd };
+        setSelection(adjustedSel);
+
+        switch (command) {
+          case '/help':
+            if (onSlashHelp) {
+              if (__DEV__) {
+                console.log('🔍 [ComposeEditor] /help detected! Calling onSlashHelp');
+              }
+              onChangeBody(clean);
+              onSlashHelp();
+            }
+            return;
+
+          case '/image':
+            if (onSlashImage) {
+              onChangeBody(clean);
+              onSlashImage();
+            }
+            return;
+
+          case '/b':
+          case '/bold':
+            applyBold(clean, adjustedSel);
+            return;
+
+          case '/i':
+          case '/italic':
+            applyItalic(clean, adjustedSel);
+            return;
+
+          case '/h1':
+            applyH1(clean, adjustedSel);
+            return;
+
+          case '/h2':
+            applyH2(clean, adjustedSel);
+            return;
+
+          case '/quote':
+            applyQuote(clean, adjustedSel);
+            return;
+
+          case '/list':
+            applyList(clean, adjustedSel);
+            return;
+        }
+      }
+
+      // No command matched → normal update
+      onChangeBody(text);
+    },
+    [
+      onChangeBody,
+      onSlashHelp,
+      onSlashImage,
+      applyBold,
+      applyItalic,
+      applyH1,
+      applyH2,
+      applyQuote,
+      applyList,
+      selection,
+    ],
+  );
 
   // Helper for inserting text at cursor position (for future formatting features)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -253,7 +442,7 @@ export function ComposeEditor({
             accessibilityLabel="Post body input"
             onContentSizeChange={(e) => {
               const h = e.nativeEvent.contentSize.height;
-              setBodyHeight(Math.min(Math.max(h, 120), 600));
+              setBodyHeight(Math.max(h, 120));
             }}
             selection={selection}
             onSelectionChange={(e) => {
@@ -263,7 +452,7 @@ export function ComposeEditor({
               fontSize: 17,
               lineHeight: 24,
               minHeight: 120,
-              height: bodyHeight,
+              flexGrow: 1,
               backgroundColor: inputBg,
             }}
           />
