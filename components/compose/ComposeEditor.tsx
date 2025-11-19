@@ -1,22 +1,26 @@
 // UI Spec: ComposeEditor
 // - Auto-expanding TextInput for content (multiline, min 120px height)
 // - Minimal inline title TextInput above content area
+// - Teret row between title and body (simple, tappable row)
 // - Uses NativeWind classes with semantic tokens
-// - Placeholder: "Write your Byte..." for content
-// - Placeholder: "Title" for title field
+// - Placeholder: "Start writing…" for content
+// - Placeholder: "Add title" for title field
 // - Inline validation error display
 
 import React, { useState } from 'react';
-import { View, Text, TextInput } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { cn } from '@/lib/utils/cn';
-import { Warning } from 'phosphor-react-native';
+import { Warning, CaretRight } from 'phosphor-react-native';
+import { Teret } from '@/shared/useTerets';
 
 interface ComposeEditorProps {
   title: string;
   content: string;
   onTitleChange: (text: string) => void;
   onContentChange: (text: string) => void;
+  selectedTeret: Teret | null;
+  onTeretPress: () => void;
   titleError?: string;
   contentError?: string;
   minTitle: number;
@@ -28,6 +32,8 @@ export function ComposeEditor({
   content,
   onTitleChange,
   onContentChange,
+  selectedTeret,
+  onTeretPress,
   titleError,
   contentError,
   minTitle,
@@ -45,7 +51,7 @@ export function ComposeEditor({
       <View className="mb-3">
         <TextInput
           className="text-body text-fomio-foreground dark:text-fomio-foreground-dark rounded-fomio-card px-5 py-4"
-          placeholder="Title"
+          placeholder="Add title"
           placeholderTextColor="rgba(161, 161, 170, 0.8)"
           value={title}
           onChangeText={onTitleChange}
@@ -75,11 +81,46 @@ export function ComposeEditor({
         )}
       </View>
 
+      {/* Teret Row - Simple, minimal row between title and body */}
+      <TouchableOpacity
+        className="mb-3 py-3 flex-row items-center justify-between"
+        onPress={onTeretPress}
+        activeOpacity={0.7}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={
+          selectedTeret === null
+            ? 'Choose Teret'
+            : `Change Teret. Current Teret: ${selectedTeret.name}`
+        }
+      >
+        <Text
+          className={
+            selectedTeret === null
+              ? 'text-body text-fomio-muted dark:text-fomio-muted-dark'
+              : 'text-body text-fomio-foreground dark:text-fomio-foreground-dark'
+          }
+        >
+          {selectedTeret === null ? (
+            'Choose Teret'
+          ) : (
+            <>
+              In: <Text className="font-semibold">{selectedTeret.name}</Text>
+            </>
+          )}
+        </Text>
+        <CaretRight
+          size={16}
+          color={isDark ? '#A1A1AA' : '#6B6B72'}
+          weight="regular"
+        />
+      </TouchableOpacity>
+
       {/* Content Input - Large, auto-expanding, editor-first */}
       <View className="flex-1">
         <TextInput
           className="text-body text-fomio-foreground dark:text-fomio-foreground-dark rounded-fomio-card px-5 py-5"
-          placeholder="Write your Byte..."
+          placeholder="Start writing…"
           placeholderTextColor="rgba(161, 161, 170, 0.8)"
           value={content}
           onChangeText={onContentChange}

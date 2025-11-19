@@ -14,7 +14,6 @@ import * as Haptics from 'expo-haptics';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/theme';
-import { useHubs } from '../../shared/useHubs';
 import { useTerets, Teret } from '../../shared/useTerets';
 import { useAuth } from '../../shared/useAuth';
 import { useDiscourseSettings } from '../../shared/useDiscourseSettings';
@@ -22,12 +21,12 @@ import { createTopic } from '../../lib/discourse';
 import { SignIn, ImageSquare, Check, Warning } from 'phosphor-react-native';
 import { 
   ComposeEditor,
-  TeretSelector,
   MediaGrid,
   useImagePicker,
   MediaItem,
 } from '@/components/compose';
 import { AppHeader } from '@/components/ui/AppHeader';
+import { TeretPickerSheet } from '@/components/terets/TeretPickerSheet';
 
 interface ValidationErrors {
   title?: string;
@@ -38,7 +37,6 @@ interface ValidationErrors {
 
 export default function ComposeScreen(): React.ReactElement {
   const { isDark } = useTheme();
-  const { hubs } = useHubs(); // For grouping/display context only
   const { terets, isLoading: teretsLoading, errorMessage: teretsError, refreshTerets } = useTerets();
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const { minTitle, minPost, loading: settingsLoading } = useDiscourseSettings();
@@ -54,6 +52,7 @@ export default function ComposeScreen(): React.ReactElement {
   const [isCreating, setIsCreating] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [successMessage, setSuccessMessage] = useState<string>('');
+  const [isTeretSheetOpen, setIsTeretSheetOpen] = useState(false);
 
   // Clear errors when user starts typing
   useEffect(() => {
@@ -222,19 +221,12 @@ export default function ComposeScreen(): React.ReactElement {
     user,
   ]);
 
-  const handleSelectTeret = useCallback(
-    (teret: Teret) => {
-      setSelectedTeret(teret);
-      // Haptic feedback on selection
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
-        // Ignore haptic errors
-      });
-    },
-    []
-  );
-
-  const handleClearTeret = useCallback(() => {
-    setSelectedTeret(null);
+  const handleTeretPress = useCallback(() => {
+    // Haptic feedback on press
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+      // Ignore haptic errors
+    });
+    setIsTeretSheetOpen(true);
   }, []);
 
   const handleAddImages = useCallback(async () => {
@@ -385,17 +377,6 @@ export default function ComposeScreen(): React.ReactElement {
             </View>
           )}
 
-          {/* Teret Selector - First step */}
-          <TeretSelector
-            hubs={hubs}
-            terets={terets}
-            selectedTeret={selectedTeret}
-            onSelectTeret={handleSelectTeret}
-            onClearSelection={handleClearTeret}
-            isLoading={teretsLoading}
-            error={teretsError}
-          />
-
           {/* Teret Selection Error */}
           {errors.hub && (
             <View className="mx-4 mt-2 mb-2 flex-row items-center">
@@ -406,12 +387,14 @@ export default function ComposeScreen(): React.ReactElement {
             </View>
           )}
 
-          {/* Compose Editor - Title + Body with Discourse rules */}
+          {/* Compose Editor - Title → Teret Row → Body */}
           <ComposeEditor
             title={title}
             content={content}
             onTitleChange={setTitle}
             onContentChange={setContent}
+            selectedTeret={selectedTeret}
+            onTeretPress={handleTeretPress}
             titleError={errors.title}
             contentError={errors.content}
             minTitle={minTitle}
@@ -443,6 +426,17 @@ export default function ComposeScreen(): React.ReactElement {
           <View className="h-8" />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Teret Picker Bottom Sheet */}
+      <TeretPickerSheet
+        visible={isTeretSheetOpen}
+        selectedTeret={selectedTeret}
+        onClose={() => setIsTeretSheetOpen(false)}
+        onSelect={(teret) => {
+          setSelectedTeret(teret);
+          setIsTeretSheetOpen(false);
+        }}
+      />
     </ScreenContainer>
   );
 }
