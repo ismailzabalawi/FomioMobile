@@ -6,64 +6,67 @@ import {
   TouchableOpacity, 
   ScrollView, 
   TextInput,
-  FlatList,
   ActivityIndicator,
-  RefreshControl,
-  Modal,
   Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   MagnifyingGlass, 
   Fire, 
-  TrendUp, 
   Hash,
-  ArrowRight,
   Warning,
   ArrowClockwise,
-  CaretDown,
-  CaretUp,
-  Clock,
   Rocket
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { ByteCard } from '@/components/feed/ByteCard';
 import { useSearch } from '../../shared/useSearch';
-import { searchTopics } from '../../lib/discourse';
-import { useAuth } from '../../shared/useAuth';
-import { useCategories } from '../../shared/useCategories';
-import { useTerets } from '../../shared/useTerets';
-import { useRecentTopics } from '../../shared/useRecentTopics';
 import { router } from 'expo-router';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
-// UI Components
-function DiscoverSection({ title, children, isLoading, hasError, onRetry }: { 
-  title: string; 
-  children: React.ReactNode;
-  isLoading?: boolean;
-  hasError?: boolean;
-  onRetry?: () => void;
-}) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    text: isDark ? '#9ca3af' : '#6b7280',
-    error: '#ef4444',
-  };
+// Format date helper for activity timestamp
+const formatDate = (dateString: string): string => {
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) {
+      return 'Just now';
+    } else if (diffInHours < 24) {
+      return `${diffInHours}h ago`;
+    } else if (diffInHours < 168) { // 7 days
+      const days = Math.floor(diffInHours / 24);
+      return `${days}d ago`;
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      });
+    }
+  } catch (error) {
+    return 'Unknown time';
+  }
+};
 
+// Helper to render ByteCard from topic data
+function renderTopicCard(topic: any, onPress: () => void, onCategoryPress?: () => void) {
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
-        {isLoading && <ActivityIndicator size="small" color={colors.text} />}
-        {hasError && onRetry && (
-          <TouchableOpacity onPress={onRetry} style={styles.retryButton}>
-            <ArrowClockwise size={16} color={colors.error} />
-          </TouchableOpacity>
-        )}
-      </View>
-      {children}
-    </View>
+    <ByteCard
+      id={topic.id}
+      title={topic.title}
+      hub={topic.category?.name || 'Uncategorized'}
+      author={{
+        name: topic.author?.name || 'Unknown',
+        avatar: topic.author?.avatar,
+      }}
+      replies={topic.replyCount || 0}
+      activity={formatDate(topic.lastPostedAt || topic.createdAt || new Date().toISOString())}
+      onPress={onPress}
+      onCategoryPress={onCategoryPress}
+    />
   );
 }
 
@@ -120,128 +123,59 @@ function HubCard({ category, onPress }: { category: any; onPress: () => void }) 
   );
 }
 
-function TeretCard({ teret, onPress }: { teret: any; onPress: () => void }) {
+function SearchTypeChips({
+  activeType,
+  onChange,
+}: {
+  activeType: 'all' | 'bytes' | 'hubs' | 'users';
+  onChange: (type: 'all' | 'bytes' | 'hubs' | 'users') => void;
+}) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
     text: isDark ? '#f9fafb' : '#111827',
     secondary: isDark ? '#9ca3af' : '#6b7280',
     border: isDark ? '#374151' : '#e5e7eb',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
+    activeBg: isDark ? '#3b82f6' : '#0ea5e9',
+    inactiveBg: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#f3f4f6'),
   };
 
+  const types = [
+    { key: 'all' as const, label: 'All' },
+    { key: 'bytes' as const, label: 'Bytes' },
+    { key: 'hubs' as const, label: 'Hubs' },
+    { key: 'users' as const, label: 'Users' },
+  ];
+
   return (
-    <TouchableOpacity
-      style={[styles.teretCard, { 
-        backgroundColor: colors.background, 
-        borderColor: colors.border 
-      }]}
-      onPress={onPress}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${teret.name} teret`}
-    >
-      <View style={styles.teretHeader}>
-        <View style={styles.teretInfo}>
-          <Text style={[styles.teretName, { color: colors.text }]} numberOfLines={1}>
-            #{teret.name}
+    <View style={styles.chipsContainer}>
+      {types.map((t) => (
+        <TouchableOpacity
+          key={t.key}
+          onPress={() => onChange(t.key)}
+          style={[
+            styles.chip,
+            {
+              backgroundColor: activeType === t.key ? colors.activeBg : colors.inactiveBg,
+              borderColor: activeType === t.key ? colors.activeBg : colors.border,
+            }
+          ]}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={`Filter by ${t.label}`}
+        >
+          <Text style={[
+            styles.chipText,
+            { color: activeType === t.key ? '#ffffff' : colors.text }
+          ]}>
+            {t.label}
           </Text>
-          <Text style={[styles.teretHub, { color: colors.secondary }]}>
-            in {teret.parent_category.name}
-          </Text>
-        </View>
-        {teret.topic_count > 5 && (
-          <View style={styles.trendingBadge}>
-            <TrendUp size={12} color={colors.accent} weight="fill" />
-          </View>
-        )}
-      </View>
-      <Text style={[styles.teretDescription, { color: colors.secondary }]} numberOfLines={2}>
-        {teret.description || 'No description available'}
-      </Text>
-      <View style={styles.teretStats}>
-        <Text style={[styles.teretStat, { color: colors.secondary }]}>
-          {teret.topic_count} topics
-        </Text>
-        <Text style={[styles.teretStat, { color: colors.secondary }]}>
-          {teret.post_count} posts
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-// Format date helper for activity timestamp
-const formatDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) {
-      return 'Just now';
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`;
-    } else if (diffInHours < 168) { // 7 days
-      const days = Math.floor(diffInHours / 24);
-      return `${days}d ago`;
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-      });
-    }
-  } catch (error) {
-    return 'Unknown time';
-  }
-};
-
-// Helper to render ByteCard from topic data
-function renderTopicCard(topic: any, onPress: () => void, onCategoryPress?: () => void) {
-  return (
-    <ByteCard
-      id={topic.id}
-      title={topic.title}
-      hub={topic.category?.name || 'Uncategorized'}
-      author={{
-        name: topic.author?.name || 'Unknown',
-        avatar: topic.author?.avatar,
-      }}
-      replies={topic.replyCount || 0}
-      activity={formatDate(topic.lastPostedAt || topic.createdAt || new Date().toISOString())}
-      onPress={onPress}
-      onCategoryPress={onCategoryPress}
-    />
-  );
-}
-
-function ComingSoonSection({ title, description }: { title: string; description: string }) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
-  };
-
-  return (
-    <View style={[styles.comingSoonContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-      <View style={styles.comingSoonIcon}>
-        <Rocket size={48} color={colors.accent} weight="fill" />
-      </View>
-      <Text style={[styles.comingSoonTitle, { color: colors.text }]}>{title}</Text>
-      <Text style={[styles.comingSoonDescription, { color: colors.secondary }]}>{description}</Text>
-      <View style={styles.comingSoonBadge}>
-        <Clock size={16} color={colors.accent} />
-        <Text style={[styles.comingSoonBadgeText, { color: colors.accent }]}>Coming Soon</Text>
-      </View>
+        </TouchableOpacity>
+      ))}
     </View>
   );
 }
 
-function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
+function SearchResults({ results, isLoading, hasError, onRetry, searchQuery, errorMessage }: {
   results: {
     bytes: any[];
     comments: any[];
@@ -253,6 +187,7 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
   hasError: boolean;
   onRetry: () => void;
   searchQuery: string;
+  errorMessage?: string;
 }) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
@@ -264,14 +199,14 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
     accent: isDark ? '#3b82f6' : '#0ea5e9',
   };
 
-  console.log('🔍 SearchResults render:', { 
-    resultsCount: results.totalResults, 
-    isLoading, 
-    hasError, 
-    searchQuery,
-    bytesCount: results.bytes.length,
-    commentsCount: results.comments.length
-  });
+  // Normalize results to ensure all properties are arrays
+  const normalizedResults = {
+    bytes: results?.bytes || [],
+    comments: results?.comments || [],
+    users: results?.users || [],
+    hubs: results?.hubs || [],
+    totalResults: results?.totalResults || 0
+  };
 
   if (isLoading) {
     return (
@@ -288,9 +223,14 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
     return (
       <View style={styles.searchResultsContainer}>
         <Warning size={48} color={colors.error} />
-        <Text style={[styles.searchResultsText, { color: colors.error }]}>
-          Search failed
+        <Text style={[styles.searchResultsText, { color: colors.error, fontWeight: '600' }]}>
+          {errorMessage || 'Search failed'}
         </Text>
+        {errorMessage && errorMessage.length > 60 && (
+          <Text style={[styles.searchResultsText, { color: colors.secondary, fontSize: 12, marginTop: 8, fontWeight: '400' }]}>
+            {errorMessage}
+          </Text>
+        )}
         <TouchableOpacity onPress={onRetry} style={styles.retryButton}>
           <ArrowClockwise size={16} color={colors.error} />
           <Text style={[styles.retryText, { color: colors.error }]}>Retry</Text>
@@ -299,7 +239,7 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
     );
   }
 
-  if (results.totalResults === 0) {
+  if (normalizedResults.totalResults === 0) {
     return (
       <View style={styles.searchResultsContainer}>
         <MagnifyingGlass size={48} color={colors.secondary} />
@@ -314,17 +254,17 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
   }
 
   // Group results by type
-  const topics = results.bytes || [];
-  const categories = results.hubs || [];
-  const users = results.users || [];
+  const topics = normalizedResults.bytes;
+  const categories = normalizedResults.hubs;
+  const users = normalizedResults.users;
 
   return (
     <ScrollView style={styles.searchResultsList} showsVerticalScrollIndicator={false}>
-      {/* Topics */}
+      {/* Bytes */}
       {topics.length > 0 && (
         <View style={styles.searchSection}>
           <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
-            Topics ({topics.length})
+            Bytes ({topics.length})
           </Text>
           {topics.map((result) => (
             <View key={`topic-${result.id}`}>
@@ -338,11 +278,11 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
         </View>
       )}
 
-      {/* Categories */}
+      {/* Hubs */}
       {categories.length > 0 && (
         <View style={styles.searchSection}>
           <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
-            Categories ({categories.length})
+            Hubs ({categories.length})
           </Text>
           {categories.map((result) => (
             <HubCard key={`category-${result.id}`} category={result} onPress={() => {
@@ -397,26 +337,78 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery }: {
   );
 }
 
+// Placeholder cards for empty state
+function EmptyStateCards() {
+  const { isDark, isAmoled } = useTheme();
+  const colors = {
+    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
+    card: isAmoled ? '#000000' : (isDark ? '#27272a' : '#f9fafb'),
+    text: isDark ? '#f9fafb' : '#111827',
+    secondary: isDark ? '#9ca3af' : '#6b7280',
+    border: isDark ? '#374151' : '#e5e7eb',
+    accent: isDark ? '#3b82f6' : '#0ea5e9',
+  };
+
+  const cards = [
+    {
+      icon: Rocket,
+      title: "Search is just waking up 🚀",
+      text: "Start typing to search for bytes, hubs, and users. As Fomio grows, you'll find more content here.",
+    },
+    {
+      icon: Fire,
+      title: "Help us start the fire",
+      text: "Create bytes, join hubs, and engage with the community. This page will come alive with your contributions.",
+    },
+    {
+      icon: Hash,
+      title: "Explore what's here",
+      text: "Use the search bar above to find topics, categories, or people. Try searching for keywords related to your interests.",
+    },
+  ];
+
+  return (
+    <ScrollView 
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+    >
+      {cards.map((card, index) => {
+        const IconComponent = card.icon;
+        return (
+          <Animated.View
+            key={index}
+            entering={FadeInDown.delay(index * 200).duration(400).springify()}
+            style={[styles.placeholderCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <IconComponent size={32} color={colors.accent} weight="duotone" />
+            <Text style={[styles.placeholderTitle, { color: colors.text }]}>
+              {card.title}
+            </Text>
+            <Text style={[styles.placeholderText, { color: colors.secondary }]}>
+              {card.text}
+            </Text>
+          </Animated.View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 export default function SearchScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'hubs' | 'terets' | 'bytes'>('all');
   
-  // Enhanced hooks for real data
   const { 
     search, 
-    quickSearch,
     advancedSearch,
     results, 
     isLoading: isSearchLoading, 
     hasError: hasSearchError, 
+    error: searchError,
     retry: retrySearch,
     searchType,
-    filters
   } = useSearch();
-  const { categories, isLoading: isCategoriesLoading, hasError: hasCategoriesError, retry: retryCategories } = useCategories();
-  const { terets, isLoading: isTeretsLoading, hasError: hasTeretsError, retry: retryTerets } = useTerets();
-  const { topics: recentTopics, isLoading: isRecentLoading, hasError: hasRecentError, retry: retryRecent } = useRecentTopics();
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -428,79 +420,14 @@ export default function SearchScreen(): React.ReactElement {
     input: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
   };
 
-  const { isAuthenticated } = useAuth();
-  
-  // Enhanced search handling with debouncing
-  const handleSearch = useCallback(async (query: string) => {
-    console.log('🔍 Search triggered:', query);
+  // Enhanced search handling
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
-    
-    if (query.trim() && query.trim().length >= 3) {
-      try {
-        // Use the new API
-        const results = await searchTopics(query.trim());
-        console.log('🔍 Search results:', results);
-        // The useSearch hook will handle the results display
-        search(query);
-      } catch (error) {
-        console.error('Search error:', error);
-      }
-    } else if (query.trim()) {
-      quickSearch(query);
+    const trimmed = query.trim();
+    if (trimmed.length >= 3) {
+      search(trimmed);
     }
-  }, [search, quickSearch]);
-
-  // Handle search input
-  const handleSearchInput = useCallback((query: string) => {
-    console.log('🔍 Search input changed:', query);
-    setSearchQuery(query);
-    
-    if (query.trim().length >= 2) {
-      // getSuggestions(query); // Removed as per edit hint
-    }
-  }, []);
-
-  // Handle navigation
-  const handleHubPress = useCallback((category: any) => {
-    console.log('Hub pressed:', category.name);
-    // Navigate to category feed
-    router.push(`/feed?category=${category.slug}`);
-  }, []);
-
-  const handleTeretPress = useCallback((teret: any) => {
-    console.log('Teret pressed:', teret.name);
-    // Navigate to teret (subcategory) feed
-    router.push(`/feed?category=${teret.slug}`);
-  }, []);
-
-  const handleBytePress = useCallback((topic: any) => {
-    console.log('Byte pressed:', topic.id);
-    // Navigate to topic detail
-    router.push(`/feed/${topic.id}`);
-  }, []);
-
-  const renderTabButton = (tab: 'all' | 'hubs' | 'terets' | 'bytes', label: string) => (
-    <TouchableOpacity
-      style={[
-        styles.tabButton,
-        { 
-          backgroundColor: activeTab === tab ? colors.primary : 'transparent',
-          borderColor: colors.border 
-        }
-      ]}
-      onPress={() => setActiveTab(tab)}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${label} tab`}
-    >
-      <Text style={[
-        styles.tabButtonText,
-        { color: activeTab === tab ? '#ffffff' : colors.text }
-      ]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  }, [search]);
 
   // Show search results if there's a query
   if (searchQuery.trim()) {
@@ -523,133 +450,83 @@ export default function SearchScreen(): React.ReactElement {
             onChangeText={handleSearch}
             accessible
             accessibilityLabel="Search input"
+            blurOnSubmit={false}
+            returnKeyType="search"
+            autoFocus={true}
+            onSubmitEditing={() => {
+              const trimmed = searchQuery.trim();
+              if (trimmed.length >= 3) {
+                search(trimmed);
+              }
+            }}
           />
         </View>
 
-        {/* Search Suggestions */}
-        {/* Removed suggestions section as per edit hint */}
+        <SearchTypeChips
+          activeType={searchType as 'all' | 'bytes' | 'hubs' | 'users'}
+          onChange={(type) => {
+            if (searchQuery.trim().length >= 3) {
+              // Map Fomio types to Discourse API types
+              const discourseType = 
+                type === 'bytes' ? 'topic' : 
+                type === 'hubs' ? 'category' : 
+                type === 'users' ? 'user' : 
+                'all';
+              advancedSearch(searchQuery.trim(), { type: discourseType } as any);
+            }
+          }}
+        />
 
         <SearchResults 
-          results={results || { bytes: [], comments: [], users: [], hubs: [], totalResults: 0 }}
+          results={results ? {
+            bytes: results.bytes || [],
+            comments: results.comments || [],
+            users: results.users || [],
+            hubs: results.hubs || [],
+            totalResults: results.totalResults || 0
+          } : { bytes: [], comments: [], users: [], hubs: [], totalResults: 0 }}
           isLoading={isSearchLoading}
           hasError={hasSearchError}
           onRetry={retrySearch}
           searchQuery={searchQuery}
+          errorMessage={searchError || undefined}
         />
       </SafeAreaView>
     );
   }
 
+  // Empty state with placeholder cards
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader 
-        title="Discover" 
+        title="Search" 
         canGoBack={false}
         withSafeTop={false}
         tone="bg"
       />
       
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isCategoriesLoading || isTeretsLoading || isRecentLoading}
-            onRefresh={() => {
-              retryCategories();
-              retryTerets();
-              retryRecent();
-            }}
-            tintColor={colors.secondary}
-          />
-        }
-      >
-        {/* Search Bar */}
-        <View style={[styles.searchContainer, { backgroundColor: colors.input }]}>
-          <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search topics, categories, or users..."
-            placeholderTextColor={colors.secondary}
-            value={searchQuery}
-            onChangeText={handleSearch}
-            accessible
-            accessibilityLabel="Search input"
-          />
-        </View>
+      <View style={[styles.searchContainer, { backgroundColor: colors.input }]}>
+        <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
+        <TextInput
+          style={[styles.searchInput, { color: colors.text }]}
+          placeholder="Search topics, categories, or users..."
+          placeholderTextColor={colors.secondary}
+          value={searchQuery}
+          onChangeText={handleSearch}
+          accessible
+          accessibilityLabel="Search input"
+          blurOnSubmit={false}
+          returnKeyType="search"
+          onSubmitEditing={() => {
+            const trimmed = searchQuery.trim();
+            if (trimmed.length >= 3) {
+              search(trimmed);
+            }
+          }}
+        />
+      </View>
 
-        {/* Tab Navigation */}
-        <View style={styles.tabContainer}>
-          {renderTabButton('all', 'All')}
-          {renderTabButton('hubs', 'Hubs')}
-          {renderTabButton('terets', 'Terets')}
-          {renderTabButton('bytes', 'Bytes')}
-        </View>
-
-        {/* Content based on active tab */}
-        {activeTab === 'all' && (
-          <>
-            {/* Popular Hubs */}
-            <DiscoverSection 
-              title="Popular Hubs" 
-              isLoading={isCategoriesLoading}
-              hasError={hasCategoriesError}
-              onRetry={retryCategories}
-            >
-                          <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              style={styles.horizontalScroll}
-              contentContainerStyle={styles.horizontalScrollContent}
-            >
-              {categories.map((category) => (
-                <HubCard key={category.id} category={category} onPress={() => handleHubPress(category)} />
-              ))}
-            </ScrollView>
-            </DiscoverSection>
-
-            {/* Recent Bytes */}
-            <DiscoverSection 
-              title="Recent Bytes" 
-              isLoading={isRecentLoading}
-              hasError={hasRecentError}
-              onRetry={retryRecent}
-            >
-              {recentTopics.map((topic) => (
-                <View key={topic.id}>
-                  {renderTopicCard(
-                    topic,
-                    () => handleBytePress(topic),
-                    topic.category?.slug ? () => router.push(`/feed?category=${topic.category.slug}`) : undefined
-                  )}
-                </View>
-              ))}
-            </DiscoverSection>
-          </>
-        )}
-
-        {activeTab === 'hubs' && (
-          <ComingSoonSection 
-            title="Hub Navigation"
-            description="Browse and explore different hubs with their terets. Navigate through the TechRebels community structure."
-          />
-        )}
-
-        {activeTab === 'terets' && (
-          <ComingSoonSection 
-            title="Teret Discovery"
-            description="Discover trending terets and explore subcategories within each hub. Find your niche communities."
-          />
-        )}
-
-        {activeTab === 'bytes' && (
-          <ComingSoonSection 
-            title="Latest Bytes"
-            description="Browse the most recent bytes from across all terets. Stay updated with the latest discussions."
-          />
-        )}
-      </ScrollView>
+      <EmptyStateCards />
     </SafeAreaView>
   );
 }
@@ -662,6 +539,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    paddingHorizontal: 16,
     paddingBottom: 32,
   },
   searchContainer: {
@@ -680,53 +558,30 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 16,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 24,
-    gap: 8,
-  },
-  tabButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+  placeholderCard: {
+    marginBottom: 16,
+    padding: 24,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  tabButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    marginHorizontal: 16,
   },
-  sectionTitle: {
+  placeholderTitle: {
     fontSize: 18,
     fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  horizontalScroll: {
-    paddingHorizontal: 16,
-  },
-  horizontalScrollContent: {
-    paddingRight: 16,
+  placeholderText: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   hubCard: {
-    marginRight: 12,
+    marginBottom: 12,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    alignSelf: 'flex-start',
   },
   hubHeader: {
     flexDirection: 'row',
@@ -747,18 +602,18 @@ const styles = StyleSheet.create({
   },
   hubInfo: {
     flex: 1,
-    minWidth: 0, // Allows text to shrink
+    minWidth: 0,
   },
   hubName: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
-    flexShrink: 1, // Allows text to shrink if needed
+    flexShrink: 1,
   },
   hubDescription: {
     fontSize: 14,
     lineHeight: 20,
-    flexShrink: 1, // Allows text to shrink if needed
+    flexShrink: 1,
   },
   popularBadge: {
     marginLeft: 8,
@@ -770,104 +625,6 @@ const styles = StyleSheet.create({
   hubStat: {
     fontSize: 12,
     fontWeight: '500',
-  },
-  teretCard: {
-    width: 180,
-    marginRight: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  teretHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  teretInfo: {
-    flex: 1,
-  },
-  teretName: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  teretHub: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  trendingBadge: {
-    marginLeft: 8,
-  },
-  teretDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  teretStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  teretStat: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  byteCard: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  byteHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  byteAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 12,
-  },
-  byteInfo: {
-    flex: 1,
-  },
-  byteAuthor: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  byteMeta: {
-    fontSize: 12,
-  },
-  byteTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  byteContent: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  byteActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  byteAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  byteActionText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  byteAvatarFallback: {
-    fontSize: 12,
-    fontWeight: '600',
   },
   searchResultsContainer: {
     flex: 1,
@@ -888,124 +645,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     padding: 8,
+    marginTop: 16,
   },
   retryText: {
     fontSize: 14,
     fontWeight: '600',
   },
-  pinnedBadge: {
-    marginLeft: 8,
-  },
-  tagsContainer: {
+  chipsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    paddingHorizontal: 16,
     marginBottom: 12,
-    gap: 6,
-  },
-  tag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dropdownContainer: {
-    width: '80%',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    overflow: 'hidden',
-  },
-  dropdownHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  dropdownTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  dropdownLoading: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  dropdownLoadingText: {
-    marginTop: 10,
-    fontSize: 16,
-  },
-  dropdownError: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  dropdownErrorText: {
-    marginTop: 10,
-    fontSize: 16,
-  },
-  dropdownEmpty: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  dropdownEmptyText: {
-    fontSize: 16,
-  },
-  dropdownList: {
-    maxHeight: 300, // Limit height for dropdown
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  dropdownItemText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  comingSoonContainer: {
-    marginHorizontal: 16,
-    marginBottom: 24,
-    padding: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  comingSoonIcon: {
-    marginBottom: 16,
-  },
-  comingSoonTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  comingSoonDescription: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  comingSoonBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
+  },
+  chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#e0f2fe',
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  comingSoonBadgeText: {
+  chipText: {
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1055,4 +713,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-}); 
+});

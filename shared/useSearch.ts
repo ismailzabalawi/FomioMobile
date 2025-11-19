@@ -52,9 +52,10 @@ export function useSearch() {
       const response = await discourseApi.search(query.trim(), filters);
 
       if (response.success && response.data) {
+        // response.data is now properly typed as SearchResult
         setSearchState(prev => ({
           ...prev,
-          results: response.data || null,
+          results: response.data as SearchResult,
           isSearching: false,
           hasSearched: true,
           error: null
@@ -62,16 +63,22 @@ export function useSearch() {
 
         return { success: true };
       } else {
+        // Extract detailed error information from backend
+        const errorMessage = response.error || 
+          (response.errors && response.errors.length > 0 
+            ? response.errors.join(', ') 
+            : 'Search failed');
+        
         setSearchState(prev => ({
           ...prev,
           isSearching: false,
           hasSearched: true,
-          error: response.error || 'Search failed'
+          error: errorMessage
         }));
 
         return {
           success: false,
-          error: response.error || 'Search failed'
+          error: errorMessage
         };
       }
     } catch (error) {
@@ -178,6 +185,7 @@ export function useSearch() {
     retry,
     isLoading: searchState.isSearching,
     hasError: !!searchState.error,
+    error: searchState.error, // Expose error message for UI display
     quickSearch: search,
     advancedSearch: search,
     searchType: 'all',

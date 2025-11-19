@@ -1175,7 +1175,7 @@ class DiscourseApiService {
     tags?: string[];
     author?: string;
     status?: 'open' | 'closed' | 'archived' | 'visible' | 'hidden';
-  } = {}): Promise<DiscourseApiResponse<any>> {
+  } = {}): Promise<DiscourseApiResponse<SearchResult>> {
     const { 
       type = 'all', 
       limit = 30, 
@@ -1239,7 +1239,118 @@ class DiscourseApiService {
       endpoint += `&period=${period}`;
     }
     
-    return this.makeRequest<any>(endpoint);
+    const response = await this.makeRequest<any>(endpoint);
+    
+    // Log raw response for debugging
+    console.log('🔍 Raw Discourse Search Response:', {
+      success: response.success,
+      hasData: !!response.data,
+      dataKeys: response.data ? Object.keys(response.data) : [],
+      postsCount: response.data?.posts?.length || 0,
+      topicsCount: response.data?.topics?.length || 0,
+      categoriesCount: response.data?.categories?.length || 0,
+      usersCount: response.data?.users?.length || 0,
+      groupsCount: response.data?.groups?.length || 0,
+    });
+    
+    // Map the response if successful
+    if (response.success && response.data) {
+      return {
+        success: true,
+        data: this.mapSearchResults(response.data)
+      };
+    }
+    
+    return response;
+  }
+
+  // Map Discourse search response to SearchResult format
+  private mapSearchResults(discourseResponse: any): SearchResult {
+    // Discourse search API returns: { posts: [], topics: [], categories: [], users: [], groups: [] }
+    const posts = discourseResponse.posts || [];
+    const topics = discourseResponse.topics || [];
+    const categories = discourseResponse.categories || [];
+    const users = discourseResponse.users || [];
+    
+    console.log('🔍 Mapping search results:', {
+      postsCount: posts.length,
+      topicsCount: topics.length,
+      categoriesCount: categories.length,
+      usersCount: users.length
+    });
+    
+    // Map topics to bytes
+    const bytes: Byte[] = topics.map((topic: any) => {
+      try {
+        return this.mapTopicToByte(topic);
+      } catch (error) {
+        console.error('Error mapping topic to byte:', error, topic);
+        return null;
+      }
+    }).filter((byte): byte is Byte => byte !== null);
+    
+    // Map categories to hubs
+    const hubs: Hub[] = categories.map((category: any) => {
+      try {
+        return this.mapCategoryToHub(category);
+      } catch (error) {
+        console.error('Error mapping category to hub:', error, category);
+        return null;
+      }
+    }).filter((hub): hub is Hub => hub !== null);
+    
+    // Map users
+    const appUsers: AppUser[] = users.map((user: any) => {
+      try {
+        return this.mapDiscourseUserToAppUser(user);
+      } catch (error) {
+        console.error('Error mapping user:', error, user);
+        return null;
+      }
+    }).filter((user): user is AppUser => user !== null);
+    
+    // Map posts (excluding first post of each topic) to comments
+    // Note: Search API posts might not have is_first_post flag, so we'll filter by post_number === 1
+    const comments: Comment[] = posts
+      .filter((post: any) => {
+        // Exclude first posts (they're the byte content)
+        // Check if post_number exists and is not 1, or if is_first_post flag exists
+        return post.post_number !== 1 && !post.is_first_post;
+      })
+      .map((post: any) => {
+        try {
+          // For search results, we might not have full topic data
+          // Create a minimal topic object for mapping
+          const topicData = {
+            id: post.topic_id,
+            title: post.topic_title || 'Untitled',
+            slug: post.topic_slug || ''
+          };
+          return this.mapPostToComment(post, topicData);
+        } catch (error) {
+          console.error('Error mapping post to comment:', error, post);
+          return null;
+        }
+      })
+      .filter((comment): comment is Comment => comment !== null);
+    
+    const totalResults = bytes.length + hubs.length + appUsers.length + comments.length;
+    
+    console.log('✅ Mapped search results:', {
+      bytes: bytes.length,
+      hubs: hubs.length,
+      users: appUsers.length,
+      comments: comments.length,
+      total: totalResults
+    });
+    
+    return {
+      bytes,
+      comments,
+      users: appUsers,
+      hubs,
+      totalResults
+    };
   }
 
   // Advanced search with filters
