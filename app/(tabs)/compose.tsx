@@ -37,7 +37,13 @@ interface ValidationErrors {
 
 export default function ComposeScreen(): React.ReactElement {
   const { isDark } = useTheme();
-  const { terets, isLoading: teretsLoading, errorMessage: teretsError, refreshTerets } = useTerets();
+  const { 
+    terets, 
+    allCategories, // All categories (Hubs + Terets) for picker
+    isLoading: teretsLoading, 
+    errorMessage: teretsError, 
+    refreshTerets 
+  } = useTerets();
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const { minTitle, minPost, loading: settingsLoading } = useDiscourseSettings();
   const { pickImages, isPicking } = useImagePicker();
@@ -81,6 +87,17 @@ export default function ComposeScreen(): React.ReactElement {
     }
   }, [successMessage]);
 
+  // DEBUG: Log Terets state for picker
+  useEffect(() => {
+    console.log('🔍 [ComposeScreen] Terets state for picker:', {
+      teretsCount: terets.length,
+      isLoading: teretsLoading,
+      error: teretsError,
+      teretNames: terets.slice(0, 5).map((t) => t.name),
+      isTeretSheetOpen,
+    });
+  }, [terets, teretsLoading, teretsError, isTeretSheetOpen]);
+
   // Compute lengths for validation
   const titleLen = title.trim().length;
   const bodyLen = content.trim().length;
@@ -120,7 +137,8 @@ export default function ComposeScreen(): React.ReactElement {
     }
 
     // Validate teret selection (first - most important)
-    if (!selectedTeret) {
+    // Must be a Teret (subcategory), never a Hub (parent category)
+    if (!selectedTeret || !selectedTeret.parent_category_id) {
       setErrors((prev) => ({ ...prev, hub: 'Please select a Teret to post in' }));
       return;
     }
@@ -431,6 +449,9 @@ export default function ComposeScreen(): React.ReactElement {
       <TeretPickerSheet
         visible={isTeretSheetOpen}
         selectedTeret={selectedTeret}
+        allCategories={allCategories} // Pass all categories (Hubs + Terets)
+        isLoading={teretsLoading}
+        error={teretsError || null}
         onClose={() => setIsTeretSheetOpen(false)}
         onSelect={(teret) => {
           setSelectedTeret(teret);

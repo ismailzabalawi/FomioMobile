@@ -1076,8 +1076,11 @@ class DiscourseApiService {
     return this.makeRequest<any>(`/c/${categoryId}/show.json`);
   }
 
-  async getCategories(): Promise<DiscourseApiResponse<any>> {
-    return this.makeRequest<any>('/categories.json');
+  async getCategories(includeSubcategories: boolean = true): Promise<DiscourseApiResponse<any>> {
+    const endpoint = includeSubcategories 
+      ? '/categories.json?include_subcategories=true'
+      : '/categories.json';
+    return this.makeRequest<any>(endpoint);
   }
 
   // Like/Bookmark Actions
