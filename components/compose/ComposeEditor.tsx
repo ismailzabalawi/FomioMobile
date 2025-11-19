@@ -43,6 +43,10 @@ export function ComposeEditor({
   const { isDark } = useTheme();
   const [bodyHeight, setBodyHeight] = useState(120);
   const [mode, setMode] = useState<EditorMode>('write');
+  const [selection, setSelection] = useState<{ start: number; end: number }>({
+    start: body.length,
+    end: body.length,
+  });
 
   // Editor-first background: translucent, light weight
   const inputBg = isDark ? 'rgba(5, 5, 5, 0.6)' : 'rgba(255, 255, 255, 0.7)';
@@ -110,6 +114,21 @@ export function ComposeEditor({
     // No command matched, update normally
     onChangeBody(text);
   }, [onChangeBody, onSlashHelp, onSlashImage]);
+
+  // Helper for inserting text at cursor position (for future formatting features)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const insertAtCursor = useCallback(
+    (snippet: string) => {
+      const { start, end } = selection;
+      const before = body.slice(0, start);
+      const after = body.slice(end);
+      const next = before + snippet + after;
+      const newPos = before.length + snippet.length;
+      onChangeBody(next);
+      setSelection({ start: newPos, end: newPos });
+    },
+    [body, selection, onChangeBody],
+  );
 
   return (
     <View className="flex-1 px-4">
@@ -235,6 +254,10 @@ export function ComposeEditor({
             onContentSizeChange={(e) => {
               const h = e.nativeEvent.contentSize.height;
               setBodyHeight(Math.min(Math.max(h, 120), 600));
+            }}
+            selection={selection}
+            onSelectionChange={(e) => {
+              setSelection(e.nativeEvent.selection);
             }}
             style={{
               fontSize: 17,
