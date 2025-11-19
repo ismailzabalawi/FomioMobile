@@ -13,6 +13,8 @@ import { ThemeProvider, useTheme } from '@/components/theme';
 import { attachIntentReplay } from '@/shared/intent-replay';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
+import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -64,6 +66,59 @@ export default function RootLayout(): React.ReactElement | null {
 
 function RootLayoutNav(): React.ReactElement {
   const { navigationTheme } = useTheme();
+
+  // Set up deep link listener for Android auth redirects
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      // Handle deep links while app is running
+      const subscription = Linking.addEventListener('url', ({ url }) => {
+        logger.info('Deep link received via Linking listener', { url, platform: Platform.OS });
+        
+        // Check if this is an auth callback deep link
+        if (url.includes('fomio://auth/callback') || url.includes('fomio:///auth/callback')) {
+          logger.info('Auth callback deep link detected, extracting payload and navigating');
+          
+          // Extract payload directly from the URL
+          const urlParams = new URLSearchParams(url.split('?')[1] || '');
+          const payload = urlParams.get('payload');
+          
+          if (payload) {
+            // Navigate with payload as direct param
+            logger.info('Payload extracted from deep link, navigating to callback screen');
+            router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}` as any);
+          } else {
+            // Fallback: pass full URL
+            logger.warn('No payload found in deep link, passing full URL');
+            router.replace(`/auth/callback?url=${encodeURIComponent(url)}` as any);
+          }
+        }
+      });
+
+      // Handle initial URL (cold start)
+      Linking.getInitialURL().then((url) => {
+        if (url) {
+          logger.info('Initial deep link URL detected', { url, platform: Platform.OS });
+          if (url.includes('fomio://auth/callback') || url.includes('fomio:///auth/callback')) {
+            logger.info('Initial auth callback deep link detected');
+            
+            // Extract payload directly from the URL
+            const urlParams = new URLSearchParams(url.split('?')[1] || '');
+            const payload = urlParams.get('payload');
+            
+            if (payload) {
+              router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}` as any);
+            } else {
+              router.replace(`/auth/callback?url=${encodeURIComponent(url)}` as any);
+            }
+          }
+        }
+      });
+
+      return () => {
+        subscription.remove();
+      };
+    }
+  }, []);
 
   // Set up intent replay for anonymous user actions
   useEffect(() => {

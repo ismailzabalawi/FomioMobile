@@ -4,6 +4,7 @@ import type { WebBrowserRedirectResult } from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { makeRedirectUri } from 'expo-auth-session';
+import { Platform } from 'react-native';
 import { UserApiKeyManager } from '../shared/userApiKeyManager';
 import { emitAuthEvent } from '../shared/auth-events';
 import { logger } from '../shared/logger';
@@ -150,100 +151,123 @@ export async function signIn(): Promise<boolean> {
     logger.info('Opening authorization URL', {
       url: authUrl.replace(publicKey, '[PUBLIC_KEY]'),
       redirectUri,
+      platform: Platform.OS,
     });
     
-    // Use WebBrowser to open the auth flow
-    // This uses ASWebAuthenticationSession on iOS and Chrome Custom Tabs on Android
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-    
-    if (result.type !== 'success') {
-      if (result.type === 'cancel') {
-        logger.info('User cancelled authorization');
-        throw new Error('Authorization cancelled');
+    // Platform-specific handling
+    if (Platform.OS === 'ios') {
+      // iOS: Use existing working flow (100% UNCHANGED - exact same code)
+      // This uses ASWebAuthenticationSession which properly intercepts redirects
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+      
+      if (result.type !== 'success') {
+        if (result.type === 'cancel') {
+          logger.info('User cancelled authorization');
+          throw new Error('Authorization cancelled');
+        }
+        logger.error('Authorization failed', { type: result.type });
+        throw new Error('Authorization failed. Please try again.');
       }
-      logger.error('Authorization failed', { type: result.type });
-      throw new Error('Authorization failed. Please try again.');
-    }
-    
-    // Extract payload from the redirect URL
-    // Parse the URL using utility function
-    const redirectResult = result as WebBrowserRedirectResult;
-    const urlString = redirectResult.url ?? '';
-    const urlParams = parseURLParameters(urlString);
-    const payload = urlParams.payload || null;
-    
-    if (!payload) {
-      logger.error('No payload in redirect URL', { url: urlString });
-      throw new Error('Invalid authorization response. Please try again.');
-    }
-    logger.info('Received authorization payload, decrypting...');
-    
-    // Decrypt payload
-    const { key, one_time_password, nonce: decryptedNonce } = await decryptPayload(payload, privateKey);
-    
-    if (!key) {
-      throw new Error('Invalid authorization response: API key not found');
-    }
-    
-    // Verify nonce matches stored nonce (security check to prevent replay attacks)
-    const storedNonce = await UserApiKeyManager.getNonce();
-    if (decryptedNonce && storedNonce) {
-      if (decryptedNonce !== storedNonce) {
-        logger.error('Nonce mismatch - possible replay attack', {
-          storedNonce: storedNonce.substring(0, 10) + '...',
-          decryptedNonce: decryptedNonce.substring(0, 10) + '...',
+      
+      // Extract payload from the redirect URL
+      // Parse the URL using utility function
+      const redirectResult = result as WebBrowserRedirectResult;
+      const urlString = redirectResult.url ?? '';
+      const urlParams = parseURLParameters(urlString);
+      const payload = urlParams.payload || null;
+      
+      if (!payload) {
+        logger.error('No payload in redirect URL', { url: urlString });
+        throw new Error('Invalid authorization response. Please try again.');
+      }
+      logger.info('Received authorization payload, decrypting...');
+      
+      // Decrypt payload
+      const { key, one_time_password, nonce: decryptedNonce } = await decryptPayload(payload, privateKey);
+      
+      if (!key) {
+        throw new Error('Invalid authorization response: API key not found');
+      }
+      
+      // Verify nonce matches stored nonce (security check to prevent replay attacks)
+      const storedNonce = await UserApiKeyManager.getNonce();
+      if (decryptedNonce && storedNonce) {
+        if (decryptedNonce !== storedNonce) {
+          logger.error('Nonce mismatch - possible replay attack', {
+            storedNonce: storedNonce.substring(0, 10) + '...',
+            decryptedNonce: decryptedNonce.substring(0, 10) + '...',
+          });
+          throw new Error('Security verification failed. Please try again.');
+        }
+        logger.info('Nonce verification successful');
+      } else if (decryptedNonce || storedNonce) {
+        // If only one is present, log warning but don't fail (for backward compatibility)
+        logger.warn('Partial nonce data - one missing', {
+          hasDecryptedNonce: !!decryptedNonce,
+          hasStoredNonce: !!storedNonce,
         });
-        throw new Error('Security verification failed. Please try again.');
       }
-      logger.info('Nonce verification successful');
-    } else if (decryptedNonce || storedNonce) {
-      // If only one is present, log warning but don't fail (for backward compatibility)
-      logger.warn('Partial nonce data - one missing', {
-        hasDecryptedNonce: !!decryptedNonce,
-        hasStoredNonce: !!storedNonce,
+      
+      // Clear nonce after successful verification (prevents reuse)
+      await UserApiKeyManager.clearNonce();
+      
+      // Store API key securely
+      await SecureStore.setItemAsync(STORAGE_KEY, key);
+      await SecureStore.setItemAsync(CLIENT_ID_KEY, clientId);
+
+      await UserApiKeyManager.storeApiKey({
+        key,
+        clientId,
+        oneTimePassword: one_time_password,
+        createdAt: Date.now(),
       });
-    }
-    
-    // Clear nonce after successful verification (prevents reuse)
-    await UserApiKeyManager.clearNonce();
-    
-    // Store API key securely
-    await SecureStore.setItemAsync(STORAGE_KEY, key);
-    await SecureStore.setItemAsync(CLIENT_ID_KEY, clientId);
 
-    await UserApiKeyManager.storeApiKey({
-      key,
-      clientId,
-      oneTimePassword: one_time_password,
-      createdAt: Date.now(),
-    });
-
-    if (one_time_password) {
-      await UserApiKeyManager.storeOneTimePassword(one_time_password);
-    }
-    
-    logger.info('API key stored successfully');
-    
-    // Warm browser cookies with OTP if provided (recommended)
-    if (one_time_password) {
-      try {
-        logger.info('Warming browser cookies with OTP...');
-        const otpUrl = `${SITE}/session/otp/${one_time_password}`;
-        
-        // Open OTP URL in system browser to set logged-in cookie
-        // Using openBrowserAsync ensures cookies are set in the user's default browser
-        await WebBrowser.openBrowserAsync(otpUrl);
-        
-        logger.info('OTP cookie warming completed');
-      } catch (otpError) {
-        // OTP warming is optional, log but don't fail
-        logger.warn('OTP cookie warming failed (non-critical)', otpError);
+      if (one_time_password) {
+        await UserApiKeyManager.storeOneTimePassword(one_time_password);
       }
+      
+      logger.info('API key stored successfully');
+      
+      // Warm browser cookies with OTP if provided (recommended)
+      if (one_time_password) {
+        try {
+          logger.info('Warming browser cookies with OTP...');
+          const otpUrl = `${SITE}/session/otp/${one_time_password}`;
+          
+          // Open OTP URL in system browser to set logged-in cookie
+          // Using openBrowserAsync ensures cookies are set in the user's default browser
+          await WebBrowser.openBrowserAsync(otpUrl);
+          
+          logger.info('OTP cookie warming completed');
+        } catch (otpError) {
+          // OTP warming is optional, log but don't fail
+          logger.warn('OTP cookie warming failed (non-critical)', otpError);
+        }
+      }
+
+      emitAuthEvent('auth:signed-in');
+
+      return true;
+    } else {
+      // Android: Use Linking.openURL() which works reliably with any browser
+      // The deep link redirect will be handled by app/auth/callback.tsx via Expo Router
+      // This approach works with Chrome, Firefox, Samsung Internet, Edge, etc.
+      logger.info('Android: Opening auth URL, redirect will be handled via deep link');
+      
+      const canOpen = await Linking.canOpenURL(authUrl);
+      if (!canOpen) {
+        logger.error('Cannot open authorization URL', { authUrl });
+        throw new Error('Cannot open authorization URL. Please check your browser settings.');
+      }
+      
+      await Linking.openURL(authUrl);
+      
+      // Return true immediately - the callback screen will complete the auth flow
+      // When Discourse redirects to fomio://auth/callback?payload=..., Android's intent system
+      // will open the app and route to app/auth/callback.tsx, which handles the full flow
+      logger.info('Android: Auth URL opened, waiting for deep link redirect...');
+      return true;
     }
-
-    emitAuthEvent('auth:signed-in');
-
-    return true;
   } catch (error: any) {
     logger.error('Sign in failed', error);
     throw error;

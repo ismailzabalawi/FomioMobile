@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { PaperPlaneRight } from 'phosphor-react-native';
+import { useAuth } from '@/shared/useAuth';
+import { router } from 'expo-router';
 
 // UI Spec: NewCommentInput — Input for adding a new comment or reply, with send button, theming, and accessibility.
 interface NewCommentInputProps {
@@ -10,26 +12,140 @@ interface NewCommentInputProps {
     postNumber: number;
     username: string;
   };
+  onFocus?: () => void;
 }
 
-export function NewCommentInput({ onSend, replyTo }: NewCommentInputProps) {
+export function NewCommentInput({ onSend, replyTo, onFocus }: NewCommentInputProps) {
   const { isDark, isAmoled } = useTheme();
+  const { isAuthenticated } = useAuth();
   const [text, setText] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<TextInput>(null);
+  const wasFocusedRef = useRef<boolean>(false); // Track if input was focused
+  
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#23232b' : '#f8fafc'),
     text: isDark ? '#f4f4f5' : '#17131B',
     placeholder: isDark ? '#a1a1aa' : '#5C5D67',
     accent: isDark ? '#38bdf8' : '#0ea5e9',
     border: isDark ? '#374151' : '#e2e8f0',
+    error: isDark ? '#ef4444' : '#dc2626',
   };
-  function handleSend() {
-    if (text.trim().length > 0) {
-      onSend?.(text.trim(), replyTo?.postNumber);
+
+  // Auto-focus when replyTo changes
+  useEffect(() => {
+    if (replyTo && isAuthenticated) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [replyTo, isAuthenticated]);
+
+  // FIXED: Maintain focus when keyboard appears to prevent it from disappearing
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      // If input was focused but lost focus due to layout shift, restore it
+      if (inputRef.current && wasFocusedRef.current && !inputRef.current.isFocused()) {
+        // Small delay to ensure layout is stable
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 50);
+      }
+    });
+
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      wasFocusedRef.current = false;
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  // Helper to detect if error is about comment being too short
+  const isCommentTooShortError = (error: string | Error | undefined): boolean => {
+    if (!error) return false;
+    const errorStr = error instanceof Error ? error.message : String(error);
+    const lowerError = errorStr.toLowerCase();
+    return lowerError.includes('too short') || 
+           lowerError.includes('minimum') || 
+           lowerError.includes('at least') ||
+           lowerError.includes('body is too short') ||
+           lowerError.includes('post is too short') ||
+           lowerError.includes('raw is too short');
+  };
+
+  async function handleSend() {
+    if (!isAuthenticated) {
+      router.push('/(auth)/signin');
+      return;
+    }
+
+    if (text.trim().length === 0 || isSending) return;
+
+    // Frontend validation for minimum length
+    if (text.trim().length < 2) {
+      setError('Your comment is too short. Please write at least 2 characters.');
+      return;
+    }
+
+    setIsSending(true);
+    setError(null);
+
+    try {
+      // ✅ FIXED: Validate replyToPostNumber is a valid number if provided
+      const replyToPostNumber = replyTo?.postNumber;
+      if (replyTo && (!replyToPostNumber || typeof replyToPostNumber !== 'number' || replyToPostNumber <= 0)) {
+        console.error('❌ Invalid replyToPostNumber:', replyTo);
+        setError('Invalid reply target. Please try again.');
+        setIsSending(false);
+        return;
+      }
+      
+      await onSend?.(text.trim(), replyToPostNumber);
       setText('');
+      setError(null);
+    } catch (err) {
+      console.error('❌ NewCommentInput send error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to send comment';
+      
+      // Show user-friendly message for "too short" errors
+      if (isCommentTooShortError(errorMessage)) {
+        setError('Your comment is too short. Please write a bit more before sending.');
+      } else {
+        setError(`Failed to send: ${errorMessage}. Tap to retry.`);
+      }
+    } finally {
+      setIsSending(false);
     }
   }
+
+  // Show sign-in prompt if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <TouchableOpacity
+        onPress={() => router.push('/(auth)/signin')}
+        style={[styles.inputRow, { backgroundColor: colors.background, borderColor: colors.border }]}
+      >
+        <Text style={[styles.input, { color: colors.placeholder }]}>
+          Sign in to add a comment...
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <View style={[styles.inputRow, { backgroundColor: colors.background, borderColor: colors.border }]}> 
+      {error && (
+        <TouchableOpacity
+          onPress={handleSend}
+          style={styles.errorContainer}
+        >
+          <Text style={[styles.errorText, { color: colors.error }]}>
+            {error}
+          </Text>
+        </TouchableOpacity>
+      )}
       {replyTo && (
         <View style={styles.replyIndicator}>
           <Text style={[styles.replyText, { color: colors.accent }]}>
@@ -38,24 +154,43 @@ export function NewCommentInput({ onSend, replyTo }: NewCommentInputProps) {
         </View>
       )}
       <TextInput
+        ref={inputRef}
         style={[styles.input, { color: colors.text }]}
         placeholder={replyTo ? `Reply to @${replyTo.username}...` : "Add a comment..."}
         placeholderTextColor={colors.placeholder}
         value={text}
         onChangeText={setText}
         multiline
+        editable={!isSending}
+        onFocus={() => {
+          wasFocusedRef.current = true; // Mark as focused
+          onFocus?.();
+        }}
+        onBlur={() => {
+          // Don't reset wasFocusedRef immediately on blur
+          // Wait a bit in case it's a temporary blur due to layout shift
+          setTimeout(() => {
+            if (!inputRef.current?.isFocused()) {
+              wasFocusedRef.current = false;
+            }
+          }, 100);
+        }}
         accessibilityLabel={replyTo ? `Reply to ${replyTo.username}` : "Add a comment"}
         accessible
       />
       <TouchableOpacity
-        style={styles.sendBtn}
+        style={[styles.sendBtn, isSending && styles.sendBtnDisabled]}
         onPress={handleSend}
-        disabled={text.trim().length === 0}
+        disabled={text.trim().length === 0 || isSending}
         accessibilityRole="button"
         accessibilityLabel="Send comment"
         accessible
       >
-        <PaperPlaneRight size={22} weight="fill" color={colors.accent} />
+        {isSending ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : (
+          <PaperPlaneRight size={22} weight="fill" color={colors.accent} />
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -91,5 +226,17 @@ const styles = StyleSheet.create({
   replyText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  errorContainer: {
+    width: '100%',
+    paddingBottom: 4,
+    paddingHorizontal: 8,
+  },
+  errorText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  sendBtnDisabled: {
+    opacity: 0.5,
   },
 }); 

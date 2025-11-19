@@ -28,6 +28,24 @@ export interface TopicData {
   views: number;
   slug: string;
   url: string;
+  bookmarked: boolean;
+  notificationLevel: number; // 0=muted, 1=normal, 2=tracking, 3=watching, 4=watching-first-post
+  lastReadPostNumber: number;
+  highestPostNumber: number;
+  unreadCount: number; // Calculated: highestPostNumber - lastReadPostNumber
+  canEdit: boolean;
+  canDelete: boolean;
+  canFlag: boolean;
+  canClose: boolean;
+  canPin: boolean;
+  canArchive: boolean;
+  authorBadges?: Array<{
+    id: number;
+    name: string;
+    icon?: string;
+  }>;
+  hasMedia: boolean;
+  coverImage?: string; // First image URL from first post
   posts: Array<{
     id: number;
     number: number;
@@ -142,6 +160,45 @@ export function useTopic(topicId: number | null) {
         return action?.acted === true;
       };
 
+      // Helper function to extract first image URL from HTML
+      const extractFirstImage = (html: string): string | undefined => {
+        if (!html) return undefined;
+        const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+        return imgMatch ? imgMatch[1] : undefined;
+      };
+
+      // Extract topic-level fields
+      const bookmarked = topic.details?.bookmarked || false;
+      const notificationLevel = topic.details?.notification_level ?? 1;
+      const lastReadPostNumber = topic.details?.last_read_post_number || 0;
+      const highestPostNumber = topic.highest_post_number || topic.posts_count || 0;
+      const unreadCount = Math.max(0, highestPostNumber - lastReadPostNumber);
+
+      // Extract permission flags
+      const canEdit = topic.details?.can_edit || false;
+      const canDelete = topic.details?.can_delete || false;
+      const canFlag = topic.details?.can_flag || false;
+      const canClose = topic.details?.can_close_topic || false;
+      const canPin = topic.details?.can_pin || false;
+      const canArchive = topic.details?.can_archive_topic || false;
+
+      // Extract author badges
+      const authorBadges: Array<{ id: number; name: string; icon?: string }> = [];
+      if (firstPost?.user_badge_count > 0 && firstPost.badges) {
+        firstPost.badges.forEach((badge: any) => {
+          authorBadges.push({
+            id: badge.id,
+            name: badge.name,
+            icon: badge.icon,
+          });
+        });
+      }
+
+      // Detect media and extract cover image
+      const firstPostContent = firstPost?.cooked || '';
+      const hasMedia = /<img|<video|<iframe/i.test(firstPostContent);
+      const coverImage = extractFirstImage(firstPostContent);
+
       // Transform topic data
       const topicData: TopicData = {
         id: topic.id,
@@ -160,6 +217,20 @@ export function useTopic(topicId: number | null) {
         views: topic.views,
         slug: topic.slug,
         url: `${discourseApi.getBaseUrl()}/t/${topic.slug}/${topic.id}`,
+        bookmarked,
+        notificationLevel,
+        lastReadPostNumber,
+        highestPostNumber,
+        unreadCount,
+        canEdit,
+        canDelete,
+        canFlag,
+        canClose,
+        canPin,
+        canArchive,
+        authorBadges: authorBadges.length > 0 ? authorBadges : undefined,
+        hasMedia,
+        coverImage,
         posts: posts.map((post: any) => ({
           id: post.id,
           number: post.post_number,
@@ -200,6 +271,13 @@ export function useTopic(topicId: number | null) {
     }
   }, [topicId, state.hasError, loadTopic]);
 
+  // Add refetch function that always reloads (regardless of error state)
+  const refetch = useCallback(() => {
+    if (topicId) {
+      loadTopic(topicId);
+    }
+  }, [topicId, loadTopic]);
+
   useEffect(() => {
     if (topicId) {
       loadTopic(topicId);
@@ -209,5 +287,6 @@ export function useTopic(topicId: number | null) {
   return {
     ...state,
     retry,
+    refetch,
   };
 } 

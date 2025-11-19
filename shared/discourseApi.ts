@@ -1596,6 +1596,12 @@ class DiscourseApiService {
     replyToPostNumber?: number;
   }): Promise<DiscourseApiResponse<Comment>> {
     try {
+      console.log('📤 Creating comment:', {
+        byteId: data.byteId,
+        replyToPostNumber: data.replyToPostNumber,
+        contentLength: data.content.length
+      });
+
       const response = await this.makeRequest<any>('/posts.json', {
         method: 'POST',
         body: JSON.stringify({
@@ -1605,6 +1611,28 @@ class DiscourseApiService {
         })
       });
 
+      console.log('📥 createComment response:', {
+        success: response.success,
+        hasData: !!response.data,
+        error: response.error,
+        errors: response.errors,
+        status: response.status
+      });
+
+      if (!response.success) {
+        // Extract detailed error message
+        const errorMessage = response.error || 
+                            (response.errors && Array.isArray(response.errors) ? response.errors.join(', ') : 'Unknown error') ||
+                            'Failed to create comment';
+        console.error('❌ createComment failed:', errorMessage);
+        return { 
+          success: false, 
+          error: errorMessage,
+          errors: response.errors,
+          status: response.status
+        };
+      }
+
       if (response.success && response.data?.id) {
         // Fetch the topic to get the new post
         const topicResponse = await this.makeRequest<any>(`/t/${data.byteId}.json`);
@@ -1612,6 +1640,7 @@ class DiscourseApiService {
           const newPost = topicResponse.data.post_stream.posts.find((p: any) => p.id === response.data.id);
           if (newPost) {
             const comment = this.mapPostToComment(newPost, topicResponse.data);
+            console.log('✅ Comment created successfully:', comment.id);
             return {
               success: true,
               data: comment
@@ -1619,9 +1648,20 @@ class DiscourseApiService {
           }
         }
       }
-      return { success: false, error: 'Failed to create comment' };
+      
+      return { 
+        success: false, 
+        error: response.error || 'Failed to create comment - no post ID returned'
+      };
     } catch (error) {
-      return { success: false, error: 'Network error creating comment' };
+      console.error('❌ createComment exception:', error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Network error creating comment';
+      return { 
+        success: false, 
+        error: errorMessage 
+      };
     }
   }
 
@@ -1737,6 +1777,130 @@ class DiscourseApiService {
       };
     } catch (error) {
       return { success: false, error: 'Network error liking post' };
+    }
+  }
+
+  // Topic management methods
+  async setNotificationLevel(topicId: number, level: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      const response = await this.makeRequest<void>(`/t/${topicId}/notifications.json`, {
+        method: 'POST',
+        body: JSON.stringify({
+          notification_level: level,
+        }),
+      });
+      return response;
+    } catch (error) {
+      return { success: false, error: 'Network error setting notification level' };
+    }
+  }
+
+  async getTopicBookmarkStatus(topicId: number): Promise<DiscourseApiResponse<boolean>> {
+    try {
+      // Get topic and extract bookmark status from details
+      const response = await this.getTopic(topicId);
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: response.data.details?.bookmarked || false,
+        };
+      }
+      return { success: false, error: 'Failed to get bookmark status' };
+    } catch (error) {
+      return { success: false, error: 'Network error getting bookmark status' };
+    }
+  }
+
+  async toggleTopicBookmark(topicId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      // Get current status
+      const statusResponse = await this.getTopicBookmarkStatus(topicId);
+      if (!statusResponse.success) {
+        return { success: false, error: statusResponse.error || 'Failed to get bookmark status' };
+      }
+
+      const isBookmarked = statusResponse.data || false;
+
+      if (isBookmarked) {
+        // Unbookmark
+        const response = await this.makeRequest<void>(`/t/${topicId}/bookmark.json`, {
+          method: 'DELETE',
+        });
+        return response;
+      } else {
+        // Bookmark
+        const response = await this.makeRequest<void>(`/t/${topicId}/bookmark.json`, {
+          method: 'PUT',
+        });
+        return response;
+      }
+    } catch (error) {
+      return { success: false, error: 'Network error toggling bookmark' };
+    }
+  }
+
+  async getReadPosition(topicId: number): Promise<DiscourseApiResponse<{ lastRead: number; highest: number }>> {
+    try {
+      const response = await this.getTopic(topicId);
+      if (response.success && response.data) {
+        return {
+          success: true,
+          data: {
+            lastRead: response.data.details?.last_read_post_number || 0,
+            highest: response.data.highest_post_number || response.data.posts_count || 0,
+          },
+        };
+      }
+      return { success: false, error: 'Failed to get read position' };
+    } catch (error) {
+      return { success: false, error: 'Network error getting read position' };
+    }
+  }
+
+  async pinTopic(topicId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      const response = await this.makeRequest<void>(`/t/${topicId}/pin.json`, {
+        method: 'PUT',
+      });
+      return response;
+    } catch (error) {
+      return { success: false, error: 'Network error pinning topic' };
+    }
+  }
+
+  async unpinTopic(topicId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      const response = await this.makeRequest<void>(`/t/${topicId}/pin.json`, {
+        method: 'PUT',
+        body: JSON.stringify({ pinned: false }),
+      });
+      return response;
+    } catch (error) {
+      return { success: false, error: 'Network error unpinning topic' };
+    }
+  }
+
+  async closeTopic(topicId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      const response = await this.makeRequest<void>(`/t/${topicId}/status.json`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'closed', enabled: true }),
+      });
+      return response;
+    } catch (error) {
+      return { success: false, error: 'Network error closing topic' };
+    }
+  }
+
+  async openTopic(topicId: number): Promise<DiscourseApiResponse<void>> {
+    try {
+      const response = await this.makeRequest<void>(`/t/${topicId}/status.json`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'closed', enabled: false }),
+      });
+      return response;
+    } catch (error) {
+      return { success: false, error: 'Network error opening topic' };
     }
   }
 }

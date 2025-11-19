@@ -21,6 +21,10 @@
               "scheme": "fomio",
               "host": "auth",
               "pathPrefix": "/callback"
+            },
+            {
+              "scheme": "fomio",
+              "pathPattern": ".*auth.*callback.*"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

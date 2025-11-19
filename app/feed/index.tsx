@@ -72,6 +72,10 @@ interface Topic {
   views: number;
   slug: string;
   url: string;
+  unreadCount?: number;
+  isBookmarked?: boolean;
+  hasMedia?: boolean;
+  coverImage?: string;
 }
 
 function TeretCard({ teret, onPress }: { teret: Teret; onPress: () => void }) {
@@ -166,6 +170,11 @@ function renderTopicCard(topic: Topic, onPress: () => void, onCategoryPress?: ()
       activity={formatDate(topic.lastPostedAt || topic.createdAt)}
       onPress={onPress}
       onCategoryPress={onCategoryPress}
+      unreadCount={topic.unreadCount}
+      isBookmarked={topic.isBookmarked}
+      likeCount={topic.likeCount}
+      hasMedia={topic.hasMedia}
+      coverImage={topic.coverImage}
     />
   );
 }
@@ -275,10 +284,17 @@ export default function FeedScreen(): React.ReactElement {
             throw new Error('Failed to load topics');
           }
 
-          const transformedTopics = topicsResponse.data.topic_list.topics.map((topic: any) => ({
+          const transformedTopics = topicsResponse.data.topic_list.topics.map((topic: any) => {
+            // Extract first image from excerpt if available
+            const excerpt = topic.excerpt || '';
+            const hasMedia = /<img|<video|<iframe/i.test(excerpt);
+            const coverImageMatch = excerpt.match(/<img[^>]+src=["']([^"']+)["']/i);
+            const coverImage = coverImageMatch ? coverImageMatch[1] : undefined;
+
+            return {
             id: topic.id,
             title: topic.title,
-            excerpt: topic.excerpt || '',
+              excerpt: excerpt,
             author: {
               username: topic.last_poster_username || 'Unknown',
               name: topic.last_poster_username || 'Unknown',
@@ -305,7 +321,12 @@ export default function FeedScreen(): React.ReactElement {
             views: topic.views || 0,
             slug: topic.slug,
             url: `https://meta.techrebels.info/t/${topic.slug}/${topic.id}`,
-          }));
+              unreadCount: topic.unread_count || 0,
+              isBookmarked: topic.bookmarked || false,
+              hasMedia,
+              coverImage,
+            };
+          });
 
           setTopics(transformedTopics);
           setTerets([]);
@@ -330,10 +351,17 @@ export default function FeedScreen(): React.ReactElement {
           43: 'Announcements',
         };
 
-        const transformedTopics = topicsResponse.data.topic_list.topics.slice(0, 20).map((topic: any) => ({
+        const transformedTopics = topicsResponse.data.topic_list.topics.slice(0, 20).map((topic: any) => {
+            // Extract first image from excerpt if available
+            const excerpt = topic.excerpt || '';
+            const hasMedia = /<img|<video|<iframe/i.test(excerpt);
+            const coverImageMatch = excerpt.match(/<img[^>]+src=["']([^"']+)["']/i);
+            const coverImage = coverImageMatch ? coverImageMatch[1] : undefined;
+
+            return {
           id: topic.id,
           title: topic.title,
-          excerpt: topic.excerpt || '',
+              excerpt: excerpt,
           author: {
             username: topic.last_poster_username || 'Unknown',
             name: topic.last_poster_username || 'Unknown',
@@ -360,7 +388,12 @@ export default function FeedScreen(): React.ReactElement {
           views: topic.views || 0,
           slug: topic.slug,
           url: `https://meta.techrebels.info/t/${topic.slug}/${topic.id}`,
-        }));
+              unreadCount: topic.unread_count || 0,
+              isBookmarked: topic.bookmarked || false,
+              hasMedia,
+              coverImage,
+            };
+          });
 
         setTopics(transformedTopics);
         setTerets([]);

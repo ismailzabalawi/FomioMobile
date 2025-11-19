@@ -1,39 +1,33 @@
 import React from 'react';
-import { View, FlatList, StyleSheet } from 'react-native';
+import { View, FlatList } from 'react-native';
 import { useTheme } from '@/components/theme';
-import { CommentItem } from './CommentItem';
+import { CommentItem, type Comment } from './CommentItem';
 import { NewCommentInput } from './NewCommentInput';
 
 // UI Spec: CommentSection — Renders a list of comments and one-level replies, styled per Figma, with theming and accessibility.
-export interface Comment {
-  id: string;
-  author: {
-    name: string;
-    avatar: string;
-  };
-  content: string;
-  createdAt: string;
-  likes: number;
-  parentId?: string;
-}
+// Uses the Comment interface from CommentItem to ensure type consistency across components
 
 interface CommentSectionProps {
   comments: Comment[];
   onLike?: (id: string) => void;
   onReply?: (id: string) => void;
-  onSend?: (text: string, parentId?: string) => void;
+  onSend?: (text: string, replyToPostNumber?: number) => void; // ✅ FIXED: Use replyToPostNumber (number), not parentId (string)
 }
 
 export function CommentSection({ comments, onLike, onReply, onSend }: CommentSectionProps) {
-  const { isDark } = useTheme();
+  const { isDark, isAmoled } = useTheme();
+  
   // Group comments: parents and their direct replies
-  const parents = comments.filter(c => !c.parentId);
-  const replies = comments.filter(c => c.parentId);
+  // ✅ FIXED: Check both parentId and replyToPostNumber to identify replies
+  const parents = comments.filter(c => !c.parentId && !c.replyToPostNumber);
+  const replies = comments.filter(c => c.parentId || c.replyToPostNumber);
+  
   function getReplies(parentId: string) {
     return replies.filter(r => r.parentId === parentId);
   }
+  
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? '#18181b' : '#fff' }]}> 
+    <View className={`bg-fomio-bg dark:bg-fomio-bg-dark pt-2 px-0`}>
       <FlatList
         data={parents}
         keyExtractor={item => item.id}
@@ -52,10 +46,3 @@ export function CommentSection({ comments, onLike, onReply, onSend }: CommentSec
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    paddingTop: 8,
-    paddingHorizontal: 0,
-  },
-}); 

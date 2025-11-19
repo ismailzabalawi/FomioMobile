@@ -1,9 +1,14 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { ChatCircle } from 'phosphor-react-native';
+import { View, Text, Pressable, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, ImageStyle } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { ChatCircle, BookmarkSimple, Heart } from 'phosphor-react-native';
+import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
 import { Avatar } from '../ui/avatar';
 import { getThemeColors, spacing, borderRadius, createTextStyle } from '@/shared/design-system';
+import { useBookmarkStore } from '@/shared/useBookmarkSync';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export interface ByteCardProps {
   id: string | number;
@@ -19,6 +24,11 @@ export interface ByteCardProps {
   onPress: () => void;
   onCategoryPress?: () => void;
   style?: ViewStyle;
+  unreadCount?: number;
+  isBookmarked?: boolean;
+  likeCount?: number;
+  hasMedia?: boolean;
+  coverImage?: string;
 }
 
 /**
@@ -42,9 +52,18 @@ export function ByteCard({
   onPress,
   onCategoryPress,
   style,
+  unreadCount,
+  isBookmarked: isBookmarkedProp,
+  likeCount,
+  hasMedia,
+  coverImage,
 }: ByteCardProps) {
   const { isDark, isAmoled } = useTheme();
   const colors = getThemeColors(isDark);
+  
+  // Read bookmark state from store, fallback to prop
+  const isBookmarkedFromStore = useBookmarkStore(state => state.isBookmarked(Number(id)));
+  const isBookmarked = isBookmarkedFromStore || isBookmarkedProp || false;
   
   // Handle avatar source
   const avatarSource = author.avatar && author.avatar.trim() !== '' 
@@ -58,18 +77,35 @@ export function ByteCard({
   const cardBackground = isAmoled ? '#000000' : colors.surface;
   const cardBorder = isAmoled ? '#1a1a1a' : colors.border;
 
+  // Press feedback animation
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
   return (
-    <TouchableOpacity
+    <AnimatedPressable
       style={[
         styles.card,
         {
           backgroundColor: cardBackground,
           borderColor: cardBorder,
         },
+        animatedStyle,
         style,
       ]}
+      onPressIn={() => {
+        scale.value = withSpring(0.98);
+        opacity.value = withSpring(0.8);
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1);
+        opacity.value = withSpring(1);
+      }}
       onPress={onPress}
-      activeOpacity={0.9}
       accessible
       accessibilityRole="button"
       accessibilityLabel={`${title} by ${author.name || 'Unknown'}`}
@@ -84,12 +120,25 @@ export function ByteCard({
 
         {/* Content */}
         <View style={styles.content}>
-          {/* Title - always visible, wraps to next line */}
-          <Text style={[styles.title, { color: colors.text }]}>
-            {title}
-          </Text>
+          {/* Title row with unread indicator and bookmark */}
+          <View style={styles.titleRow}>
+            <Text 
+              style={[styles.title, { color: colors.text }]}
+              numberOfLines={2}
+            >
+              {title}
+            </Text>
+            {isBookmarked && (
+              <BookmarkSimple 
+                size={16} 
+                weight="fill" 
+                color={isDark ? '#fbbf24' : '#f59e0b'} 
+                style={{ marginLeft: 8 }}
+              />
+            )}
+          </View>
 
-          {/* Meta row: Category path + Activity + Replies */}
+          {/* Meta row: Category path + Activity + Replies + Like count */}
           <View style={styles.metaRow}>
             {/* Category path */}
             <TouchableOpacity
@@ -113,8 +162,41 @@ export function ByteCard({
               {activity}
             </Text>
 
+            {/* Unread indicator */}
+            {unreadCount && unreadCount > 0 && (
+              <>
+                <Text style={[styles.separator, { color: colors.textSecondary }]}>•</Text>
+                <View style={styles.unreadBadge}>
+                  <View 
+                    style={[
+                      styles.unreadDot, 
+                      { backgroundColor: isDark ? '#3b82f6' : '#2563eb' }
+                    ]} 
+                  />
+                  <Text 
+                    style={[
+                      styles.unreadText, 
+                      { color: isDark ? '#3b82f6' : '#2563eb' }
+                    ]}
+                  >
+                    {unreadCount} new
+                  </Text>
+                </View>
+              </>
+            )}
+
             {/* Spacer */}
             <View style={styles.spacer} />
+
+            {/* Like count */}
+            {likeCount !== undefined && likeCount > 0 && (
+              <View style={styles.likes}>
+                <Heart size={16} weight="regular" color={colors.textSecondary} />
+                <Text style={[styles.likesText, { color: colors.textSecondary }]}>
+                  {likeCount}
+                </Text>
+              </View>
+            )}
 
             {/* Replies count */}
             <View style={styles.replies}>
@@ -124,9 +206,20 @@ export function ByteCard({
               </Text>
             </View>
           </View>
+
+          {/* Media thumbnail hint */}
+          {hasMedia && coverImage && (
+            <View style={styles.mediaThumbnail}>
+              <Image
+                source={{ uri: coverImage }}
+                style={styles.thumbnailImage}
+                contentFit="cover"
+              />
+            </View>
+          )}
         </View>
       </View>
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 }
 
@@ -150,11 +243,17 @@ const styles = StyleSheet.create({
     minWidth: 0, // Allows text to wrap properly
   } as ViewStyle,
   
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.xs,
+  } as ViewStyle,
+  
   title: {
     ...createTextStyle('bodyMedium', undefined, {
       fontWeight: '700',
     }),
-    marginBottom: spacing.xs,
+    flex: 1,
   } as TextStyle,
   
   metaRow: {
@@ -162,6 +261,51 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
   } as ViewStyle,
+  
+  unreadBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.xs,
+  } as ViewStyle,
+  
+  unreadDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: spacing.xs,
+  } as ViewStyle,
+  
+  unreadText: {
+    ...createTextStyle('caption', undefined, {
+      fontWeight: '600',
+    }),
+  } as TextStyle,
+  
+  likes: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.sm,
+  } as ViewStyle,
+  
+  likesText: {
+    ...createTextStyle('caption', undefined, {
+      fontWeight: '600',
+      marginLeft: spacing.xs,
+    }),
+  } as TextStyle,
+  
+  mediaThumbnail: {
+    marginTop: spacing.sm,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    alignSelf: 'flex-end',
+  } as ViewStyle,
+  
+  thumbnailImage: {
+    width: 80,
+    height: 60,
+    borderRadius: borderRadius.md,
+  } as ImageStyle,
   
   category: {
     ...createTextStyle('caption'),

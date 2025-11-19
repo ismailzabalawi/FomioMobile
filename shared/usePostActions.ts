@@ -91,10 +91,24 @@ export function usePostActions(
     setState(prev => ({ ...prev, isLoading: true, error: undefined }));
 
     try {
+      console.log('📝 usePostActions.createComment:', {
+        topicId,
+        replyToPostNumber,
+        contentLength: content.length,
+        hasReply: !!replyToPostNumber
+      });
+
       const response = await discourseApi.createComment({
         content,
         byteId: topicId, // Use topicId, not postId
         replyToPostNumber
+      });
+
+      console.log('📥 usePostActions.createComment response:', {
+        success: response.success,
+        error: response.error,
+        errors: response.errors,
+        status: response.status
       });
 
       if (response.success) {
@@ -102,14 +116,23 @@ export function usePostActions(
         logger.info(`Comment created successfully for topic ${topicId}`);
         return true;
       } else {
-        throw new Error(response.error || 'Failed to create comment');
+        // Extract detailed error message
+        const errorMessage = response.error || 
+                            (response.errors && Array.isArray(response.errors) ? response.errors.join(', ') : 'Unknown error') ||
+                            'Failed to create comment';
+        console.error('❌ usePostActions.createComment failed:', errorMessage);
+        
+        // Preserve the original error message so it can be detected by the UI layer
+        // The UI will detect "too short" errors and show user-friendly messages
+        throw new Error(errorMessage);
       }
     } catch (error) {
       logger.error('Failed to create comment', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create comment';
       setState(prev => ({
         ...prev,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to create comment',
+        error: errorMessage,
       }));
       return false;
     }

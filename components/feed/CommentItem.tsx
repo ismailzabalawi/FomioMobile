@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, Animated } from 'react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
 import { Heart, ChatCircle } from 'phosphor-react-native';
+import { MarkdownContent } from './MarkdownContent';
 
 // UI Spec: CommentItem — Renders a comment or reply with avatar, name, time, text, like/reply actions, and theming.
 export interface Comment {
@@ -27,6 +28,24 @@ interface CommentItemProps {
 
 export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemProps) {
   const { isDark, isAmoled } = useTheme();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-10)).current;
+  
+  // Animate on mount
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
   
   // Handle empty avatar URLs
   const avatarSource = comment.author.avatar && comment.author.avatar.trim() !== '' 
@@ -34,7 +53,13 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
     : undefined;
 
   return (
-    <View className={`flex-row items-start py-3 pr-2 border-b ${isReply ? 'ml-11' : ''} border-fomio-border-soft dark:border-fomio-border-soft-dark`}> 
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        transform: [{ translateY }],
+      }}
+      className={`flex-row items-start py-3 pr-2 border-b ${isReply ? 'ml-11' : ''} border-fomio-border-soft dark:border-fomio-border-soft-dark`}
+    > 
       {avatarSource ? (
         <Image 
           source={avatarSource} 
@@ -57,9 +82,12 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
             {comment.createdAt}
           </Text>
         </View>
-        <Text className="text-[15px] font-normal mb-1.5 text-fomio-foreground dark:text-fomio-foreground-dark">
-          {comment.content}
-        </Text>
+        <View className="mb-1.5">
+          <MarkdownContent 
+            content={comment.content} 
+            isRawMarkdown={false} 
+          />
+        </View>
         <View className="flex-row items-center gap-3">
           <TouchableOpacity
             className="flex-row items-center p-1 rounded-md"
@@ -91,6 +119,6 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }

@@ -27,6 +27,13 @@ export default function AuthCallbackScreen() {
   const params = useLocalSearchParams();
 
   useEffect(() => {
+    logger.info('AuthCallbackScreen: Component mounted', {
+      platform: Platform.OS,
+      params: params,
+      paramsKeys: Object.keys(params),
+      hasUrl: !!params.url,
+      hasPayload: !!params.payload,
+    });
     // Prevent multiple callback processing using ref (more reliable than state)
     if (hasProcessedRef.current) {
       return;
@@ -99,6 +106,28 @@ export default function AuthCallbackScreen() {
             if (!decrypted.key) {
               throw new Error('Invalid payload: API key not found after decryption');
             }
+
+            // Verify nonce matches stored nonce (security check to prevent replay attacks)
+            const storedNonce = await UserApiKeyManager.getNonce();
+            if (decrypted.nonce && storedNonce) {
+              if (decrypted.nonce !== storedNonce) {
+                logger.error('AuthCallbackScreen: Nonce mismatch - possible replay attack', {
+                  storedNonce: storedNonce.substring(0, 10) + '...',
+                  decryptedNonce: decrypted.nonce.substring(0, 10) + '...',
+                });
+                throw new Error('Security verification failed. Please try again.');
+              }
+              logger.info('AuthCallbackScreen: Nonce verification successful');
+            } else if (decrypted.nonce || storedNonce) {
+              // If only one is present, log warning but don't fail (for backward compatibility)
+              logger.warn('AuthCallbackScreen: Partial nonce data - one missing', {
+                hasDecryptedNonce: !!decrypted.nonce,
+                hasStoredNonce: !!storedNonce,
+              });
+            }
+
+            // Clear nonce after successful verification (prevents reuse)
+            await UserApiKeyManager.clearNonce();
 
             // Get or generate client ID
             const clientId = await UserApiKeyManager.getOrGenerateClientId();
