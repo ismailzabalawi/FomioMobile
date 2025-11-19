@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, Platform, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, Linking } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
-import { getThemeColors } from '@/shared/theme-constants';
+import { getMarkdownStyles } from '@/shared/markdown-styles';
 import * as WebBrowser from 'expo-web-browser';
 
 export interface MarkdownContentProps {
@@ -189,7 +189,6 @@ function htmlToMarkdown(html: string): string {
 // - Proper typography: line-height, margins, no edge-to-edge text
 export function MarkdownContent({ content, isRawMarkdown = false }: MarkdownContentProps) {
   const { isDark, isAmoled } = useTheme();
-  const colors = getThemeColors(isDark);
 
   // Convert HTML to markdown if needed
   const markdown = useMemo(() => {
@@ -204,209 +203,8 @@ export function MarkdownContent({ content, isRawMarkdown = false }: MarkdownCont
     }
   }, [content, isRawMarkdown]);
 
-  // Custom markdown styles matching Fomio design system
-  const markdownStyles = {
-    // Root container
-    body: {
-      margin: 0,
-      padding: 0,
-    },
-    
-    // Headings
-    heading1: {
-      fontSize: 24,
-      fontWeight: '700' as const,
-      color: colors.foreground,
-      marginTop: 24,
-      marginBottom: 12,
-      lineHeight: 32,
-    },
-    heading2: {
-      fontSize: 20,
-      fontWeight: '700' as const,
-      color: colors.foreground,
-      marginTop: 20,
-      marginBottom: 10,
-      lineHeight: 28,
-    },
-    heading3: {
-      fontSize: 18,
-      fontWeight: '600' as const,
-      color: colors.foreground,
-      marginTop: 16,
-      marginBottom: 8,
-      lineHeight: 24,
-    },
-    heading4: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      color: colors.foreground,
-      marginTop: 14,
-      marginBottom: 6,
-      lineHeight: 22,
-    },
-    heading5: {
-      fontSize: 15,
-      fontWeight: '600' as const,
-      color: colors.foreground,
-      marginTop: 12,
-      marginBottom: 6,
-      lineHeight: 20,
-    },
-    heading6: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-      color: colors.foreground,
-      marginTop: 10,
-      marginBottom: 4,
-      lineHeight: 18,
-    },
-    
-    // Paragraphs
-    paragraph: {
-      fontSize: 16,
-      lineHeight: 26,
-      color: colors.foreground,
-      marginTop: 0,
-      marginBottom: 16,
-      paddingHorizontal: 0,
-    },
-    
-    // Lists
-    listUnordered: {
-      marginTop: 8,
-      marginBottom: 16,
-      paddingLeft: 20,
-    },
-    listOrdered: {
-      marginTop: 8,
-      marginBottom: 16,
-      paddingLeft: 20,
-    },
-    listItem: {
-      fontSize: 16,
-      lineHeight: 26,
-      color: colors.foreground,
-      marginBottom: 8,
-    },
-    bullet_list_icon: {
-      marginLeft: 0,
-    },
-    
-    // Code
-    code_inline: {
-      fontSize: 14,
-      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-      color: isDark ? '#60a5fa' : '#2563eb',
-      paddingHorizontal: 4,
-      paddingVertical: 2,
-      borderRadius: 4,
-    },
-    code_block: {
-      fontSize: 14,
-      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-      color: colors.foreground,
-      padding: 12,
-      borderRadius: 8,
-      marginTop: 12,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    fence: {
-      fontSize: 14,
-      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-      color: colors.foreground,
-      padding: 12,
-      borderRadius: 8,
-      marginTop: 12,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    
-    // Blockquotes
-    blockquote: {
-      backgroundColor: isDark ? 'rgba(96,165,250,0.1)' : 'rgba(37,99,235,0.05)',
-      borderLeftWidth: 4,
-      borderLeftColor: isDark ? '#60a5fa' : '#2563eb',
-      paddingLeft: 16,
-      paddingRight: 16,
-      paddingTop: 12,
-      paddingBottom: 12,
-      marginTop: 12,
-      marginBottom: 16,
-      borderRadius: 4,
-    },
-    blockquote_text: {
-      fontSize: 16,
-      lineHeight: 24,
-      color: colors.foreground,
-      fontStyle: 'italic' as const,
-    },
-    
-    // Links
-    link: {
-      color: isDark ? '#60a5fa' : '#2563eb',
-      textDecorationLine: 'underline' as const,
-    },
-    
-    // Images
-    image: {
-      marginTop: 16,
-      marginBottom: 16,
-      borderRadius: 8,
-      overflow: 'hidden' as const,
-    },
-    
-    // Strong/Emphasis
-    strong: {
-      fontWeight: '700' as const,
-      color: colors.foreground,
-    },
-    em: {
-      fontStyle: 'italic' as const,
-      color: colors.foreground,
-    },
-    
-    // Horizontal rule
-    hr: {
-      backgroundColor: colors.border,
-      height: 1,
-      marginTop: 24,
-      marginBottom: 24,
-    },
-    
-    // Tables (if Discourse uses them)
-    table: {
-      marginTop: 16,
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-    },
-    thead: {
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-    },
-    tbody: {},
-    th: {
-      padding: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      fontWeight: '600' as const,
-      color: colors.foreground,
-    },
-    td: {
-      padding: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      color: colors.foreground,
-    },
-    tr: {},
-  };
+  // Use shared markdown styles (matches preview in ComposeEditor)
+  const markdownStyles = useMemo(() => getMarkdownStyles(isDark), [isDark]);
 
   // Custom renderers for interactive elements
   const renderers = {
