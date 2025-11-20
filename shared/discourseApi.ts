@@ -195,6 +195,22 @@ export interface UserSettings {
   like_notification_frequency: number;
 }
 
+// Notification Preferences Frequency Mapping
+// Maps between Fomio local format and Discourse API format
+export const LOCAL_TO_DISCOURSE_FREQUENCY = {
+  always: 0,
+  daily: 1,
+  weekly: 2,
+  never: 3,
+} as const;
+
+export const DISCOURSE_TO_LOCAL_FREQUENCY: Record<number, 'always' | 'daily' | 'weekly' | 'never'> = {
+  0: 'always',
+  1: 'daily',
+  2: 'weekly',
+  3: 'never',
+};
+
 // API Response Types
 export interface DiscourseApiResponse<T> {
   success: boolean;
@@ -772,6 +788,74 @@ class DiscourseApiService {
       method: 'PUT',
       body: JSON.stringify(sanitizedSettings),
     });
+  }
+
+  // Notification Preferences API
+  // Get user preferences (like_notification_frequency) from Discourse
+  async getUserPreferences(username: string): Promise<DiscourseApiResponse<{ likeFrequency: 'always' | 'daily' | 'weekly' | 'never' }>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    try {
+      const response = await this.makeRequest<any>(`/u/${encodeURIComponent(username)}.json`);
+      
+      if (response.success && response.data) {
+        const userData = response.data.user || response.data;
+        const likeNotificationFrequency = userData?.user_option?.like_notification_frequency;
+        
+        if (typeof likeNotificationFrequency === 'number' && likeNotificationFrequency >= 0 && likeNotificationFrequency <= 3) {
+          return {
+            success: true,
+            data: {
+              likeFrequency: DISCOURSE_TO_LOCAL_FREQUENCY[likeNotificationFrequency] || 'always',
+            },
+          };
+        }
+        
+        // Default to 'always' if not found or invalid
+        return {
+          success: true,
+          data: {
+            likeFrequency: 'always',
+          },
+        };
+      }
+      
+      return { success: false, error: response.error || 'Failed to load user preferences' };
+    } catch (error) {
+      console.error('Error loading user preferences from Discourse:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  // Update user preferences (like_notification_frequency) in Discourse
+  async updateUserPreferences(
+    username: string,
+    preferences: { likeFrequency: 'always' | 'daily' | 'weekly' | 'never' }
+  ): Promise<DiscourseApiResponse<void>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    const discourseFrequency = LOCAL_TO_DISCOURSE_FREQUENCY[preferences.likeFrequency];
+    if (discourseFrequency === undefined) {
+      return { success: false, error: 'Invalid like frequency value' };
+    }
+
+    try {
+      return await this.makeRequest<void>(`/u/${encodeURIComponent(username)}.json`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          user: {
+            like_notification_frequency: discourseFrequency,
+          },
+        }),
+      });
+    } catch (error) {
+      console.error('Error updating user preferences in Discourse:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   }
 
   // Password Management with enhanced security

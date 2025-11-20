@@ -40,7 +40,7 @@ import { useDiscourseUser } from '../../shared/useDiscourseUser';
 import { useAuth } from '../../shared/useAuth';
 import { getSession } from '../../lib/discourse';
 import { discourseApi } from '../../shared/discourseApi';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 interface ProfileStats {
   posts: number;
@@ -212,7 +212,11 @@ function AuthPromptCard({ onSignIn, onSignUp }: {
 
 export default function ProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
-  const { user: discourseUser, loading, error, refreshUser } = useDiscourseUser();
+  const params = useLocalSearchParams<{ userId?: string; username?: string }>();
+  // If username is provided, view that user's profile; otherwise view current user
+  // Note: userId lookup would require an API call, so we prioritize username
+  const targetUsername = params.username;
+  const { user: discourseUser, loading, error, refreshUser } = useDiscourseUser(targetUsername);
   const { isAuthenticated, isLoading, user: authUser, signOut } = useAuth();
   const [sessionUser, setSessionUser] = useState<any>(null);
   

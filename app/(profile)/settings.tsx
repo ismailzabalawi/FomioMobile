@@ -347,7 +347,7 @@ export default function SettingsScreen(): React.ReactElement {
             title="Notification Preferences"
             subtitle="Customize what you're notified about"
             icon={<Notification size={24} color={colors.primary} weight="regular" />}
-            onPress={() => console.log('Open notification preferences')}
+            onPress={() => router.push('/(profile)/notification-settings')}
           />
         </SettingSection>
 

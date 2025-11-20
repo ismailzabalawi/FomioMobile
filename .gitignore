@@ -29,7 +29,7 @@ yarn-error.*
 *.pem
 
 # local env files
-u.env*.local
+.env*.local
 
 # typescript
 *.tsbuildinfo
@@ -40,4 +40,4 @@ u.env*.local
 expo-env.d.ts
 # @end expo-cli
 # Environment files with sensitive data
-u.env
+.env

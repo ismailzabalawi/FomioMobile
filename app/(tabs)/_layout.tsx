@@ -1,14 +1,31 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Tabs } from 'expo-router';
 import { House, MagnifyingGlass, Plus, Bell, User } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
 import { View, StyleSheet } from 'react-native';
+import { useNotifications } from '../../shared/useNotifications';
+import { useNotificationPreferences } from '../../shared/useNotificationPreferences';
+import { filterNotificationsByPreferences } from '../../lib/utils/notifications';
 
 export default function TabLayout(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { isDark, isAmoled } = useTheme();
-  
+  const { notifications } = useNotifications();
+  const { preferences } = useNotificationPreferences();
+
+  // Filter notifications by preferences, then count unread
+  // Both hooks called at UI level - no nesting
+  const preferenceFiltered = useMemo(
+    () => filterNotificationsByPreferences(notifications, preferences),
+    [notifications, preferences]
+  );
+
+  const unreadCount = useMemo(
+    () => preferenceFiltered.filter(n => !n.isRead).length,
+    [preferenceFiltered]
+  );
+
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
     border: isAmoled ? '#000000' : (isDark ? '#374151' : '#e2e8f0'),
@@ -16,7 +33,7 @@ export default function TabLayout(): React.ReactElement {
     primaryGradient: isDark ? '#0ea5e9' : '#0284c7',
     shadow: isAmoled ? 'rgba(14, 165, 233, 0.15)' : (isDark ? 'rgba(14, 165, 233, 0.25)' : 'rgba(14, 165, 233, 0.2)'),
   };
-  
+
   return (
     <Tabs
       screenOptions={{
@@ -37,10 +54,10 @@ export default function TabLayout(): React.ReactElement {
           shadowRadius: 8,
           elevation: 8,
         },
-        tabBarLabelStyle: { 
-          fontSize: 12, 
-          fontWeight: '600', 
-          marginBottom: 2 
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+          marginBottom: 2
         },
         headerShown: false,
       }}
@@ -50,10 +67,10 @@ export default function TabLayout(): React.ReactElement {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size, focused }) => (
-            <House 
-              color={color} 
-              size={focused ? size + 2 : size} 
-              weight={focused ? 'fill' : 'regular'} 
+            <House
+              color={color}
+              size={focused ? size + 2 : size}
+              weight={focused ? 'fill' : 'regular'}
             />
           ),
         }}
@@ -63,10 +80,10 @@ export default function TabLayout(): React.ReactElement {
         options={{
           title: 'Search',
           tabBarIcon: ({ color, size, focused }) => (
-            <MagnifyingGlass 
-              color={color} 
-              size={focused ? size + 2 : size} 
-              weight="bold" 
+            <MagnifyingGlass
+              color={color}
+              size={focused ? size + 2 : size}
+              weight="bold"
             />
           ),
         }}
@@ -100,12 +117,13 @@ export default function TabLayout(): React.ReactElement {
         options={{
           title: 'Notifications',
           tabBarIcon: ({ color, size, focused }) => (
-            <Bell 
-              color={color} 
-              size={focused ? size + 2 : size} 
-              weight={focused ? 'fill' : 'regular'} 
+            <Bell
+              color={color}
+              size={focused ? size + 2 : size}
+              weight={focused ? 'fill' : 'regular'}
             />
           ),
+          tabBarBadge: unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined,
         }}
       />
       <Tabs.Screen
@@ -113,10 +131,10 @@ export default function TabLayout(): React.ReactElement {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size, focused }) => (
-            <User 
-              color={color} 
-              size={focused ? size + 2 : size} 
-              weight={focused ? 'fill' : 'regular'} 
+            <User
+              color={color}
+              size={focused ? size + 2 : size}
+              weight={focused ? 'fill' : 'regular'}
             />
           ),
         }}
@@ -138,3 +156,4 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 });
+
