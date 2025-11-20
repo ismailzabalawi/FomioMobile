@@ -1,7 +1,7 @@
-// MyProfile Screen - X/Twitter-style profile design
-// Long scroll layout with dynamic blurred header
+// MyProfile Screen - Redesigned to match Settings page style
+// Clean, organized sections with consistent spacing
 
-import React, { useRef } from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,45 +9,35 @@ import {
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
-import Animated, {
-  useAnimatedStyle,
-  useAnimatedScrollHandler,
-  useSharedValue,
-  interpolate,
-  Extrapolate,
-} from 'react-native-reanimated';
-import { DotsThreeVertical, Gear } from 'phosphor-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Gear, PencilSimple } from 'phosphor-react-native';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
-import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppHeader } from '@/components/ui/AppHeader';
+import { SettingItem, SettingSection } from '@/components/settings';
 import { useDiscourseUser } from '@/shared/useDiscourseUser';
 import { useAuth } from '@/shared/useAuth';
 import { useUserPosts } from '@/shared/useUserPosts';
 import { useUserReplies } from '@/shared/useUserReplies';
 import { useUserMedia } from '@/shared/useUserMedia';
-import { useScrollHeader } from '@/shared/useScrollHeader';
 import {
   ProfileHeader,
   ProfileBio,
   ProfileStats,
-  ProfileActions,
   ProfileBadgeStrip,
-  ProfileSectionTitle,
   ProfilePostList,
   ProfileMediaGrid,
 } from '@/components/profile';
 import { router } from 'expo-router';
-
-const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
+import { getThemeColors } from '@/shared/theme-constants';
 
 export default function ProfileScreen(): React.ReactElement {
-  const { isDark, isAmoled } = useTheme();
+  const { themeMode, isDark } = useTheme();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { user, loading: userLoading, error: userError, refreshUser } =
     useDiscourseUser();
-  const scrollY = useSharedValue(0);
 
   // Get current user's username for data fetching
   const username = user?.username;
@@ -65,7 +55,10 @@ export default function ProfileScreen(): React.ReactElement {
 
   const [refreshing, setRefreshing] = React.useState(false);
 
-  const handleRefresh = async () => {
+  // Memoize theme colors - dark mode always uses AMOLED
+  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
+
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.all([
@@ -78,163 +71,17 @@ export default function ProfileScreen(): React.ReactElement {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [refreshUser, refreshPosts, refreshReplies]);
 
-  const handleSettings = () => {
-      router.push('/(profile)/settings' as any);
-  };
+  const handleSettings = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    router.push('/(profile)/settings' as any);
+  }, []);
 
-  // Scroll handler
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
-  });
-
-  // Animated header style
-  const headerAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      scrollY.value,
-      [80, 120],
-      [0, 1],
-      Extrapolate.CLAMP
-    );
-
-    return {
-      opacity,
-      pointerEvents: opacity > 0.5 ? 'auto' : 'none',
-    };
-  });
-
-  // Show loading state
-  if (authLoading || (isAuthenticated && userLoading && !user)) {
-    return (
-      <ScreenContainer variant="bg">
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator
-            size="large"
-            color={isDark ? '#3b82f6' : '#2563eb'}
-          />
-            </View>
-      </ScreenContainer>
-    );
-  }
-
-  // Show error state
-  if (userError && isAuthenticated) {
-    return (
-      <ScreenContainer variant="bg">
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
-        <View className="flex-1 items-center justify-center px-4">
-          <View className="items-center">
-            <View
-              className="p-4 rounded-xl mb-4"
-              style={{
-                backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-              }}
-            >
-              <ActivityIndicator
-                size="large"
-                color={isDark ? '#ef4444' : '#dc2626'}
-              />
-            </View>
-            <TouchableOpacity
-              onPress={refreshUser}
-              className="px-6 py-3 rounded-xl border"
-              style={{
-                backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-                borderColor: isDark ? '#374151' : '#e5e7eb',
-              }}
-            >
-              <View className="flex-row items-center gap-2">
-                <ActivityIndicator
-                  size="small"
-                  color={isDark ? '#3b82f6' : '#2563eb'}
-                />
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  // Show auth prompt if not authenticated
-  if (!isAuthenticated) {
-    return (
-      <ScreenContainer variant="bg">
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
-        <View className="flex-1 items-center justify-center px-4">
-          <View className="items-center">
-            <View
-              className="p-6 rounded-xl mb-4 max-w-sm"
-              style={{
-                backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-              }}
-            >
-              <View className="items-center">
-                <View
-                  className="w-16 h-16 rounded-full items-center justify-center mb-4"
-                  style={{
-                    backgroundColor: isDark ? '#374151' : '#e5e7eb',
-                  }}
-                >
-                  <Gear size={32} color={isDark ? '#9ca3af' : '#6b7280'} />
-                </View>
-                <View className="items-center">
-                  <TouchableOpacity
-                    onPress={() => router.push('/(auth)/signin' as any)}
-                    className="px-6 py-3 rounded-xl mb-2"
-                    style={{
-                      backgroundColor: isDark ? '#3b82f6' : '#2563eb',
-                    }}
-                  >
-                    <View className="flex-row items-center gap-2">
-                      <ActivityIndicator
-                        size="small"
-                        color="#ffffff"
-                      />
-                    </View>
-          </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  if (!user) {
-    return (
-      <ScreenContainer variant="bg">
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator
-            size="large"
-            color={isDark ? '#3b82f6' : '#2563eb'}
-          />
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  const displayName = user.name || user.username || 'Unknown User';
+  const handleEditProfile = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    router.push('/(profile)/edit-profile' as any);
+  }, []);
 
   // Settings menu button
   const settingsButton = (
@@ -246,46 +93,138 @@ export default function ProfileScreen(): React.ReactElement {
       accessibilityRole="button"
       accessibilityLabel="Open settings"
     >
-      <Gear size={24} color={isDark ? '#f9fafb' : '#111827'} weight="regular" />
+      <Gear size={24} color={colors.foreground} weight="regular" />
     </TouchableOpacity>
   );
 
-  return (
-    <ScreenContainer variant="bg">
-      {/* Dynamic Blurred Header */}
-      <AnimatedBlurView
-        intensity={isDark ? 80 : 100}
-        tint={isDark ? 'dark' : 'light'}
-        style={[
-          {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 100,
-            paddingTop: 44, // Status bar height
-            paddingBottom: 12,
-            paddingHorizontal: 16,
-            borderBottomWidth: 1,
-            borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-          },
-          headerAnimatedStyle,
-        ]}
-      >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text
-              className="text-lg font-semibold"
-              style={{ color: isDark ? '#f9fafb' : '#111827' }}
-            >
-              {displayName}
-            </Text>
-          </View>
-          {settingsButton}
+  // Show loading state
+  if (authLoading || (isAuthenticated && userLoading && !user)) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <AppHeader 
+          title="Profile" 
+          canGoBack={false}
+          tone="bg"
+          withSafeTop={false}
+        />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator
+            size="large"
+            color={colors.accent}
+          />
         </View>
-      </AnimatedBlurView>
+      </SafeAreaView>
+    );
+  }
 
-      {/* Static Header (always visible, blurred header overlays when scrolled) */}
+  // Show error state
+  if (userError && isAuthenticated) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <AppHeader 
+          title="Profile" 
+          canGoBack={false}
+          tone="bg"
+          withSafeTop={false}
+        />
+        <View className="flex-1 items-center justify-center px-4">
+          <View className="items-center">
+            <View
+              className="p-4 rounded-xl mb-4"
+              style={{ backgroundColor: colors.card }}
+            >
+              <ActivityIndicator
+                size="large"
+                color={colors.destructive}
+              />
+            </View>
+            <TouchableOpacity
+              onPress={refreshUser}
+              className="px-6 py-3 rounded-xl border"
+              style={{
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              }}
+            >
+              <View className="flex-row items-center gap-2">
+                <ActivityIndicator
+                  size="small"
+                  color={colors.accent}
+                />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show auth prompt if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <AppHeader 
+          title="Profile" 
+          canGoBack={false}
+          tone="bg"
+          withSafeTop={false}
+        />
+        <View className="flex-1 items-center justify-center px-4">
+          <View className="items-center">
+            <View
+              className="p-6 rounded-xl mb-4 max-w-sm"
+              style={{ backgroundColor: colors.card }}
+            >
+              <View className="items-center">
+                <View
+                  className="w-16 h-16 rounded-full items-center justify-center mb-4"
+                  style={{ backgroundColor: colors.muted }}
+                >
+                  <Gear size={32} color={colors.secondary} />
+                </View>
+                <View className="items-center">
+                  <TouchableOpacity
+                    onPress={() => router.push('/(auth)/signin' as any)}
+                    className="px-6 py-3 rounded-xl mb-2"
+                    style={{ backgroundColor: colors.accent }}
+                  >
+                    <View className="flex-row items-center gap-2">
+                      <ActivityIndicator
+                        size="small"
+                        color={colors.accentForeground}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <AppHeader 
+          title="Profile" 
+          canGoBack={false}
+          tone="bg"
+          withSafeTop={false}
+        />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator
+            size="large"
+            color={colors.accent}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader 
         title="Profile" 
         canGoBack={false}
@@ -294,61 +233,96 @@ export default function ProfileScreen(): React.ReactElement {
         rightActions={[settingsButton]}
       />
 
-      {/* Scrollable Content */}
-      <Animated.ScrollView
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={isDark ? '#3b82f6' : '#2563eb'}
+            tintColor={colors.accent}
           />
         }
       >
-        {/* Profile Header */}
-        <ProfileHeader user={user} isPublic={false} />
+        {/* Profile Header Section */}
+        <SettingSection title="Profile">
+          <ProfileHeader user={user} isPublic={false} />
+          
+          {/* Bio */}
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <ProfileBio bio={user.bio_raw} />
+          </View>
 
-        {/* Bio */}
-        <ProfileBio bio={user.bio_raw} />
+          {/* Stats */}
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <ProfileStats user={user} />
+          </View>
 
-        {/* Stats */}
-        <ProfileStats user={user} />
-
-        {/* Actions */}
-        <ProfileActions mode="myProfile" />
+          {/* Edit Profile Action */}
+          <SettingItem
+            title="Edit Profile"
+            subtitle="Update your profile information"
+            icon={<PencilSimple size={24} color={colors.accent} weight="regular" />}
+            onPress={handleEditProfile}
+          />
+        </SettingSection>
 
         {/* Badge Strip */}
-        <ProfileBadgeStrip />
+        <SettingSection title="Badges">
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <ProfileBadgeStrip />
+          </View>
+        </SettingSection>
 
         {/* Bytes Section */}
-        <ProfileSectionTitle title="Bytes" />
-        <ProfilePostList
-          posts={posts}
-          isLoading={postsLoading}
-          hasMore={hasMorePosts}
-          onLoadMore={loadMorePosts}
-          filter="posts"
-        />
+        <SettingSection title="Bytes">
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <ProfilePostList
+              posts={posts}
+              isLoading={postsLoading}
+              hasMore={hasMorePosts}
+              onLoadMore={loadMorePosts}
+              filter="posts"
+            />
+          </View>
+        </SettingSection>
 
         {/* Media Section */}
-        <ProfileSectionTitle title="Media" />
-        <ProfileMediaGrid media={media} isLoading={mediaLoading} />
+        <SettingSection title="Media">
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <ProfileMediaGrid media={media} isLoading={mediaLoading} />
+          </View>
+        </SettingSection>
 
         {/* Replies Section */}
-        <ProfileSectionTitle title="Replies" />
-        <ProfilePostList
-          posts={replies}
-          isLoading={repliesLoading}
-          hasMore={hasMoreReplies}
-          onLoadMore={loadMoreReplies}
-          filter="replies"
-        />
+        <SettingSection title="Replies">
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <ProfilePostList
+              posts={replies}
+              isLoading={repliesLoading}
+              hasMore={hasMoreReplies}
+              onLoadMore={loadMoreReplies}
+              filter="replies"
+            />
+          </View>
+        </SettingSection>
 
         {/* Bottom padding */}
-        <View className="h-8" />
-      </Animated.ScrollView>
-    </ScreenContainer>
+        <View style={{ height: 32 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 32,
+  },
+});

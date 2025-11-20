@@ -140,7 +140,7 @@ export default function SignInScreen() {
 
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.disabledButton, { backgroundColor: colors.primary }]}
-            onPress={handleConnect}
+            onPress={() => handleConnect()}
             disabled={loading}
             accessible
             accessibilityRole="button"

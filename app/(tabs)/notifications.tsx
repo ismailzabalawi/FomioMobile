@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
 import { AppHeader } from '@/components/ui/AppHeader';
+import { SettingSection } from '@/components/settings';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { useAuth } from '../../shared/useAuth';
 import { useNotificationPreferences } from '../../shared/useNotificationPreferences';
@@ -50,6 +51,7 @@ import {
 } from '../../lib/utils/notifications';
 import { Skeleton } from '@/components/shared/loading';
 import { cn } from '@/lib/utils/cn';
+import { getThemeColors } from '@/shared/theme-constants';
 
 // Notification type filter
 type TypeFilter = 'all' | 'replies' | 'mentions' | 'system';
@@ -70,19 +72,8 @@ function NotificationItem({
   onPress: () => void;
   onMarkRead: () => void;
 }) {
-  const { isDark, isAmoled } = useTheme();
-
-  const colors = {
-    background: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-    unreadBackground: isAmoled ? '#0a0a0a' : isDark ? '#374151' : '#f8fafc',
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
-    error: isDark ? '#ef4444' : '#dc2626',
-    warning: isDark ? '#f59e0b' : '#d97706',
-    success: isDark ? '#10b981' : '#059669',
-  };
+  const { themeMode, isDark } = useTheme();
+  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
 
   const getNotificationIcon = () => {
     const iconSize = 20;
@@ -127,7 +118,7 @@ function NotificationItem({
     switch (notification.type) {
       case 'liked':
       case 'liked_consolidated':
-        return colors.error;
+        return colors.destructive;
       case 'replied':
       case 'quoted':
       case 'edited':
@@ -169,35 +160,51 @@ function NotificationItem({
     onPress();
   };
 
+  const unreadBackground = isDark ? 'rgba(59, 130, 246, 0.1)' : 'rgba(14, 165, 233, 0.08)';
+
   return (
     <Pressable
       onPress={handlePress}
-      className={cn('flex-row items-start px-4 py-3 border-b')}
       style={{
-        backgroundColor: notification.isRead
-          ? colors.background
-          : colors.unreadBackground,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        minHeight: 60,
+        backgroundColor: notification.isRead ? colors.card : unreadBackground,
         borderBottomColor: colors.border,
       }}
       android_ripple={{
-        color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+        color: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+        borderless: true,
+        radius: 20,
       }}
     >
       {/* Icon */}
       <View
-        className="w-10 h-10 rounded-full items-center justify-center mr-3"
-        style={{ backgroundColor: getIconBackgroundColor() }}
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 12,
+          backgroundColor: getIconBackgroundColor(),
+        }}
       >
         {getNotificationIcon()}
       </View>
 
       {/* Content */}
-      <View className="flex-1 mr-2">
+      <View style={{ flex: 1, marginRight: 8 }}>
         <Text
-          className="text-base mb-1"
           style={{
-            color: colors.text,
+            fontSize: 16,
             fontWeight: notification.isRead ? '500' : '600',
+            color: colors.foreground,
+            marginBottom: 2,
           }}
           numberOfLines={1}
         >
@@ -205,14 +212,24 @@ function NotificationItem({
         </Text>
         {snippet ? (
           <Text
-            className="text-sm mb-1"
-            style={{ color: colors.secondary }}
+            style={{
+              fontSize: 14,
+              fontWeight: '400',
+              color: colors.secondary,
+              marginBottom: 2,
+            }}
             numberOfLines={2}
           >
             {snippet}
           </Text>
         ) : null}
-        <Text className="text-xs" style={{ color: colors.secondary }}>
+        <Text
+          style={{
+            fontSize: 14,
+            fontWeight: '400',
+            color: colors.secondary,
+          }}
+        >
           {relativeTime}
         </Text>
       </View>
@@ -220,8 +237,13 @@ function NotificationItem({
       {/* Unread indicator */}
       {!notification.isRead && (
         <View
-          className="w-2 h-2 rounded-full mt-2"
-          style={{ backgroundColor: colors.accent }}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: colors.accent,
+            marginLeft: 8,
+          }}
         />
       )}
     </Pressable>
@@ -230,16 +252,13 @@ function NotificationItem({
 
 // UI Spec: NotificationSkeleton — Loading placeholder
 function NotificationSkeleton() {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    background: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-    border: isDark ? '#374151' : '#e5e7eb',
-  };
+  const { themeMode, isDark } = useTheme();
+  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
 
   return (
     <View
       className="flex-row items-start px-4 py-3 border-b"
-      style={{ backgroundColor: colors.background, borderBottomColor: colors.border }}
+      style={{ backgroundColor: colors.card, borderBottomColor: colors.border }}
     >
       <Skeleton width={40} height={40} borderRadius={20} />
       <View className="flex-1 ml-3">
@@ -259,13 +278,8 @@ function EmptyState({
   type: 'empty' | 'logged-out' | 'filtered';
   onSignIn?: () => void;
 }) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    background: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    primary: isDark ? '#3b82f6' : '#0ea5e9',
-  };
+  const { themeMode, isDark } = useTheme();
+  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
 
   if (type === 'logged-out') {
     return (
@@ -273,7 +287,7 @@ function EmptyState({
         <BellSlash size={64} color={colors.secondary} weight="regular" />
         <Text
           className="text-xl font-semibold mt-6 mb-2 text-center"
-          style={{ color: colors.text }}
+          style={{ color: colors.foreground }}
         >
           Sign in to see notifications
         </Text>
@@ -288,7 +302,7 @@ function EmptyState({
           <TouchableOpacity
             onPress={onSignIn}
             className="px-6 py-3 rounded-lg"
-            style={{ backgroundColor: colors.primary }}
+            style={{ backgroundColor: colors.accent }}
           >
             <Text className="text-white font-semibold">Sign In</Text>
           </TouchableOpacity>
@@ -303,7 +317,7 @@ function EmptyState({
         <BellSlash size={64} color={colors.secondary} weight="regular" />
         <Text
           className="text-xl font-semibold mt-6 mb-2 text-center"
-          style={{ color: colors.text }}
+          style={{ color: colors.foreground }}
         >
           No notifications match this filter
         </Text>
@@ -322,7 +336,7 @@ function EmptyState({
       <BellSlash size={64} color={colors.secondary} weight="regular" />
       <Text
         className="text-xl font-semibold mt-6 mb-2 text-center"
-        style={{ color: colors.text }}
+        style={{ color: colors.foreground }}
       >
         You're all caught up ✨
       </Text>
@@ -338,7 +352,7 @@ function EmptyState({
 }
 
 export default function NotificationsScreen(): React.ReactElement {
-  const { isDark, isAmoled } = useTheme();
+  const { themeMode, isDark } = useTheme();
   const router = useRouter();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const {
@@ -356,14 +370,8 @@ export default function NotificationsScreen(): React.ReactElement {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const { preferences } = useNotificationPreferences();
 
-  const colors = {
-    background: isAmoled ? '#000000' : isDark ? '#18181b' : '#ffffff',
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    primary: isDark ? '#3b82f6' : '#0ea5e9',
-    error: isDark ? '#ef4444' : '#dc2626',
-  };
+  // Memoize theme colors - dark mode always uses AMOLED
+  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
 
   // Step 1: Filter by preferences ONCE (reused for counts and display)
   const preferenceFiltered = useMemo(
@@ -390,16 +398,16 @@ export default function NotificationsScreen(): React.ReactElement {
     }
   }, [isAuthenticated, isAuthLoading, fetchNotifications]);
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await fetchNotifications();
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [fetchNotifications]);
 
-  const handleNotificationPress = (notification: Notification) => {
+  const handleNotificationPress = useCallback((notification: Notification) => {
     const navigationTarget = getNotificationNavigationTarget(notification);
 
     if (!navigationTarget) {
@@ -417,18 +425,18 @@ export default function NotificationsScreen(): React.ReactElement {
     }
 
     router.push(url as any);
-  };
+  }, [router]);
 
-  const handleMarkRead = async (notificationId: number) => {
+  const handleMarkRead = useCallback(async (notificationId: number) => {
     try {
       await markAsRead(notificationId);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
     }
-  };
+  }, [markAsRead]);
 
-  const handleMarkAllRead = () => {
+  const handleMarkAllRead = useCallback(() => {
     Alert.alert('Mark All as Read', 'Mark all notifications as read?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -439,14 +447,15 @@ export default function NotificationsScreen(): React.ReactElement {
         },
       },
     ]);
-  };
+  }, [markAllAsRead]);
 
-  const handleSettingsPress = () => {
+  const handleSettingsPress = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
     router.push('/(profile)/notification-settings' as any);
-  };
+  }, [router]);
 
   // Render filter chip
-  const renderFilterChip = (
+  const renderFilterChip = useCallback((
     filter: TypeFilter,
     label: string,
     count?: number
@@ -463,14 +472,14 @@ export default function NotificationsScreen(): React.ReactElement {
           isActive && 'bg-opacity-20'
         )}
         style={{
-          backgroundColor: isActive ? `${colors.primary}20` : 'transparent',
-          borderColor: isActive ? colors.primary : colors.border,
+          backgroundColor: isActive ? `${colors.accent}20` : 'transparent',
+          borderColor: isActive ? colors.accent : colors.border,
           marginRight: 8,
         }}
       >
         <Text
           className="text-sm font-semibold"
-          style={{ color: isActive ? colors.primary : colors.text }}
+          style={{ color: isActive ? colors.accent : colors.foreground }}
         >
           {label}
           {count !== undefined && count > 0 && (
@@ -479,10 +488,10 @@ export default function NotificationsScreen(): React.ReactElement {
         </Text>
       </TouchableOpacity>
     );
-  };
+  }, [typeFilter, colors]);
 
   // Render section header
-  const renderSectionHeader = ({ section }: { section: NotificationSection }) => (
+  const renderSectionHeader = useCallback(({ section }: { section: NotificationSection }) => (
     <View className="px-4 py-2" style={{ backgroundColor: colors.background }}>
       <Text
         className="text-sm font-semibold uppercase tracking-wide"
@@ -491,16 +500,16 @@ export default function NotificationsScreen(): React.ReactElement {
         {section.title}
       </Text>
     </View>
-  );
+  ), [colors]);
 
   // Render notification item
-  const renderItem = ({ item }: { item: Notification }) => (
+  const renderItem = useCallback(({ item }: { item: Notification }) => (
     <NotificationItem
       notification={item}
       onPress={() => handleNotificationPress(item)}
       onMarkRead={() => handleMarkRead(item.id)}
     />
-  );
+  ), [handleNotificationPress, handleMarkRead]);
 
   // Count notifications by type for filter chips (use preferenceFiltered)
   const repliesCount = preferenceFiltered.filter(
@@ -517,8 +526,7 @@ export default function NotificationsScreen(): React.ReactElement {
   if (isNotificationsLoading && notifications.length === 0) {
     return (
       <SafeAreaView
-        className="flex-1"
-        style={{ backgroundColor: colors.background }}
+        style={[styles.container, { backgroundColor: colors.background }]}
       >
         <AppHeader
           title="Notifications"
@@ -539,8 +547,7 @@ export default function NotificationsScreen(): React.ReactElement {
   if (hasError && notifications.length === 0) {
     return (
       <SafeAreaView
-        className="flex-1"
-        style={{ backgroundColor: colors.background }}
+        style={[styles.container, { backgroundColor: colors.background }]}
       >
         <AppHeader
           title="Notifications"
@@ -551,7 +558,7 @@ export default function NotificationsScreen(): React.ReactElement {
         <View className="flex-1 justify-center items-center px-8">
           <Text
             className="text-lg font-semibold mb-2 text-center"
-            style={{ color: colors.error }}
+            style={{ color: colors.destructive }}
           >
             Error loading notifications
           </Text>
@@ -564,7 +571,7 @@ export default function NotificationsScreen(): React.ReactElement {
           <TouchableOpacity
             onPress={fetchNotifications}
             className="px-6 py-3 rounded-lg"
-            style={{ backgroundColor: colors.primary }}
+            style={{ backgroundColor: colors.accent }}
           >
             <Text className="text-white font-semibold">Retry</Text>
           </TouchableOpacity>
@@ -577,8 +584,7 @@ export default function NotificationsScreen(): React.ReactElement {
   if (!isAuthenticated && !isAuthLoading) {
     return (
       <SafeAreaView
-        className="flex-1"
-        style={{ backgroundColor: colors.background }}
+        style={[styles.container, { backgroundColor: colors.background }]}
       >
         <AppHeader
           title="Notifications"
@@ -596,8 +602,7 @@ export default function NotificationsScreen(): React.ReactElement {
 
   return (
     <SafeAreaView
-      className="flex-1"
-      style={{ backgroundColor: colors.background }}
+      style={[styles.container, { backgroundColor: colors.background }]}
     >
       <AppHeader
         title="Notifications"
@@ -610,7 +615,7 @@ export default function NotificationsScreen(): React.ReactElement {
               onPress={handleMarkAllRead}
               className="p-2 rounded-full"
               style={{
-                backgroundColor: `${colors.primary}20`,
+                backgroundColor: `${colors.accent}20`,
               }}
               android_ripple={{
                 color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
@@ -618,7 +623,7 @@ export default function NotificationsScreen(): React.ReactElement {
                 radius: 20,
               }}
             >
-              <Check size={20} color={colors.primary} weight="bold" />
+              <Check size={20} color={colors.accent} weight="bold" />
             </Pressable>
           ) : null,
           <Pressable
@@ -643,7 +648,7 @@ export default function NotificationsScreen(): React.ReactElement {
         <View className="px-4 py-2 border-b" style={{ borderBottomColor: colors.border }}>
           <Text
             className="text-xs"
-            style={{ color: colors.error }}
+            style={{ color: colors.destructive }}
           >
             Couldn't refresh notifications. Pull to refresh to try again.
           </Text>
@@ -675,8 +680,8 @@ export default function NotificationsScreen(): React.ReactElement {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
             />
           }
         />
@@ -684,3 +689,9 @@ export default function NotificationsScreen(): React.ReactElement {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+});

@@ -413,6 +413,37 @@ export default function ComposeScreen(): React.ReactElement {
     );
   }
 
+  // Show auth prompt if not authenticated (after loading check)
+  if (!isAuthLoading && !isAuthenticated) {
+    return (
+      <ScreenContainer variant="card">
+        <AppHeader 
+          title="Create Byte" 
+          canGoBack 
+          onBackPress={handleCancel} 
+          withSafeTop={false}
+          tone="card"
+        />
+        <View className="flex-1 justify-center items-center px-8">
+          <SignIn size={64} color={isDark ? '#3b82f6' : '#0ea5e9'} weight="regular" />
+          <Text className="text-title font-semibold text-fomio-primary dark:text-fomio-primary-dark mt-6 mb-2 text-center">
+            Sign in to create Bytes
+          </Text>
+          <Text className="text-body text-fomio-muted dark:text-fomio-muted-dark mb-8 text-center">
+            You need to be logged in to create and share posts with the community.
+          </Text>
+          <Button
+            onPress={() => router.push('/(auth)/signin' as any)}
+            variant="default"
+            size="lg"
+          >
+            Sign In
+          </Button>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
   return (
     <ScreenContainer variant="card">
       <AppHeader 

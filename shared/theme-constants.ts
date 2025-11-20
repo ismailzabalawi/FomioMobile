@@ -42,6 +42,42 @@ export const COLORS = {
   },
   dark: {
     // Primary colors
+    background: '#18181b', // Standard dark gray
+    foreground: '#f4f4f5',
+    card: '#1f2937', // Standard dark card
+    cardForeground: '#f4f4f5',
+    
+    // Secondary colors
+    secondary: '#a1a1aa',
+    secondaryForeground: '#18181b',
+    muted: '#27272a',
+    mutedForeground: '#a1a1aa',
+    
+    // Accent colors
+    accent: '#60a5fa',
+    accentForeground: '#18181b',
+    
+    // Destructive colors
+    destructive: '#f87171',
+    destructiveForeground: '#18181b',
+    
+    // Border and input colors
+    border: '#3f3f46',
+    input: '#3f3f46',
+    ring: '#60a5fa',
+    
+    // Status colors
+    success: '#4ade80',
+    warning: '#fbbf24',
+    info: '#60a5fa',
+    
+    // Social colors
+    like: '#f87171',
+    bookmark: '#fbbf24',
+    comment: '#a1a1aa',
+  },
+  darkAmoled: {
+    // Primary colors
     background: '#000000', // AMOLED true black
     foreground: '#f4f4f5',
     card: '#000000', // AMOLED true black
@@ -170,18 +206,36 @@ export const COMPONENT_TOKENS = {
   },
 } as const;
 
+import type { ThemeMode } from '@/components/theme';
+
 /**
  * Get theme colors based on current theme mode
+ * Dark mode always uses AMOLED (true black)
  */
-export const getThemeColors = (isDark: boolean) => {
-  return isDark ? COLORS.dark : COLORS.light;
+export const getThemeColors = (themeMode: ThemeMode, isAmoled?: boolean) => {
+  if (themeMode === 'light') {
+    return COLORS.light;
+  }
+  // Dark mode always uses AMOLED
+  if (themeMode === 'dark') {
+    return COLORS.darkAmoled;
+  }
+  // For system mode, check if resolved to dark (isAmoled indicates dark)
+  // This maintains backward compatibility with the signature
+  if (isAmoled) {
+    return COLORS.darkAmoled;
+  }
+  return COLORS.light;
 };
 
 /**
  * Common style utilities
+ * @deprecated Use getThemeColors(themeMode, isAmoled) directly instead
  */
 export const createThemedStyles = (isDark: boolean) => {
-  const colors = getThemeColors(isDark);
+  // Backward compatibility: derive themeMode from isDark
+  const themeMode: ThemeMode = isDark ? 'dark' : 'light';
+  const colors = getThemeColors(themeMode, false); // Default to non-AMOLED for backward compat
   
   return {
     container: {

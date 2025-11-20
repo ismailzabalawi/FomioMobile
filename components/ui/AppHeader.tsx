@@ -11,7 +11,7 @@
 // - Android ripple support
 // - Status bar coordination
 
-import React, { ReactNode, memo } from 'react';
+import React, { ReactNode, memo, useMemo } from 'react';
 import { Platform, Pressable, View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -95,8 +95,8 @@ export const AppHeader = memo(function AppHeader({
 }: AppHeaderProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { isDark } = useTheme();
-  const colors = getThemeColors(isDark);
+  const { themeMode, isDark } = useTheme();
+  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
 
   const paddingTop = withSafeTop ? insets.top : 0;
 
@@ -166,7 +166,7 @@ export const AppHeader = memo(function AppHeader({
         <View
           className="h-0.5"
           style={{
-            backgroundColor: isDark ? colors.accent : colors.info,
+            backgroundColor: colors.accent,
             width: `${Math.max(0, Math.min(100, progress * 100))}%`,
           }}
         />

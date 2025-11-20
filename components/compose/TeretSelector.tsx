@@ -9,7 +9,7 @@
 import 'react-native-reanimated';
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, TextInput, useWindowDimensions } from 'react-native';
-import { BottomSheetModal, BottomSheetFlatList, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+import { ThemedBottomSheet, BottomSheetFlatList, BottomSheetModalRef } from '@/components/ui';
 import { Hub } from '@/shared/discourseApi';
 import { Teret } from '@/shared/useTerets';
 import { Hash, Users, TrendUp, Star, MagnifyingGlass, X } from 'phosphor-react-native';
@@ -38,7 +38,7 @@ export function TeretSelector({
   const { isDark } = useTheme();
   const { height } = useWindowDimensions();
   const [searchQuery, setSearchQuery] = useState('');
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const bottomSheetRef = useRef<BottomSheetModalRef>(null);
   const snapPoints = useMemo(() => [height * 0.5, height * 0.9], [height]);
 
   // Filter terets based on search query
@@ -230,32 +230,11 @@ export function TeretSelector({
       </TouchableOpacity>
 
       {/* Bottom Sheet Modal */}
-      <BottomSheetModal
+      <ThemedBottomSheet
         ref={bottomSheetRef}
         index={0}
         snapPoints={snapPoints}
         enablePanDownToClose
-        backgroundStyle={{
-          backgroundColor: 'transparent',
-        }}
-        handleIndicatorStyle={{
-          backgroundColor: isDark ? '#1C1C1E' : '#E3E3E6',
-        }}
-        style={{
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 8,
-          elevation: 8,
-        }}
-        backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            disappearsOnIndex={-1}
-            appearsOnIndex={0}
-            opacity={0.5}
-          />
-        )}
       >
         <View className="flex-1 bg-fomio-bg dark:bg-fomio-bg-dark rounded-t-3xl">
           {/* Header */}
@@ -298,7 +277,7 @@ export function TeretSelector({
             showsVerticalScrollIndicator={false}
           />
         </View>
-      </BottomSheetModal>
+      </ThemedBottomSheet>
     </>
   );
 }

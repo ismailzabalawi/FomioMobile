@@ -1,7 +1,7 @@
 import 'react-native-reanimated';
 import React, { useRef, useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, Alert } from 'react-native';
-import { BottomSheetModal, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+import { ThemedBottomSheet, BottomSheetModalRef } from '@/components/ui';
 import { DotsThreeVertical, Bell, BellSlash, Pin, Lock, Archive, Flag, Link, Share as ShareIcon } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
@@ -51,9 +51,9 @@ export function OverflowMenu({
   onShare,
   onRefresh,
 }: OverflowMenuProps) {
-  const { isDark, isAmoled } = useTheme();
+  const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const bottomSheetRef = useRef<BottomSheetModalRef>(null);
   const snapPoints = useMemo(() => ['50%'], []);
 
   const handleOpen = useCallback(() => {
@@ -161,18 +161,6 @@ export function OverflowMenu({
     }
   }, [topic, handleClose, onShare]);
 
-  const renderBackdrop = useCallback(
-    (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-      />
-    ),
-    []
-  );
-
   const notificationLevel = topic?.notificationLevel ?? 1;
   const isWatching = notificationLevel === 3 || notificationLevel === 4;
   const isMuted = notificationLevel === 0;
@@ -189,24 +177,14 @@ export function OverflowMenu({
         <DotsThreeVertical size={20} color={colors.foreground} weight="bold" />
       </Pressable>
 
-      <BottomSheetModal
+      <ThemedBottomSheet
         ref={bottomSheetRef}
         index={0}
         snapPoints={snapPoints}
         enablePanDownToClose
-        backdropComponent={renderBackdrop}
-        backgroundStyle={{
-          backgroundColor: isAmoled ? '#000000' : (isDark ? colors.card : '#ffffff'),
-        }}
-        handleIndicatorStyle={{
-          backgroundColor: colors.border,
-        }}
       >
         <View className="px-4 pb-6">
-          <Text
-            className="text-lg font-bold mb-4"
-            style={{ color: colors.foreground }}
-          >
+          <Text className="text-lg font-bold mb-4 text-fomio-foreground dark:text-fomio-foreground-dark">
             Topic Options
           </Text>
 
@@ -224,10 +202,7 @@ export function OverflowMenu({
               ) : (
                 <Bell size={20} color={colors.foreground} weight="regular" />
               )}
-              <Text
-                className="ml-3 text-base font-medium"
-                style={{ color: colors.foreground }}
-              >
+              <Text className="ml-3 text-base font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
                 {notificationLabels[topic?.notificationLevel || 1]} notifications
               </Text>
             </TouchableOpacity>
@@ -243,10 +218,7 @@ export function OverflowMenu({
               }}
             >
               <Pin size={20} color={colors.foreground} weight="regular" />
-              <Text
-                className="ml-3 text-base font-medium"
-                style={{ color: colors.foreground }}
-              >
+              <Text className="ml-3 text-base font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
                 {topic.isPinned ? 'Unpin' : 'Pin'}
               </Text>
             </TouchableOpacity>
@@ -261,10 +233,7 @@ export function OverflowMenu({
               }}
             >
               <Lock size={20} color={colors.foreground} weight="regular" />
-              <Text
-                className="ml-3 text-base font-medium"
-                style={{ color: colors.foreground }}
-              >
+              <Text className="ml-3 text-base font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
                 {topic.isClosed ? 'Open' : 'Close'}
               </Text>
             </TouchableOpacity>
@@ -279,10 +248,7 @@ export function OverflowMenu({
               }}
             >
               <Archive size={20} color={colors.foreground} weight="regular" />
-              <Text
-                className="ml-3 text-base font-medium"
-                style={{ color: colors.foreground }}
-              >
+              <Text className="ml-3 text-base font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
                 Archive
               </Text>
             </TouchableOpacity>
@@ -297,17 +263,14 @@ export function OverflowMenu({
               }}
             >
               <Flag size={20} color={colors.foreground} weight="regular" />
-              <Text
-                className="ml-3 text-base font-medium"
-                style={{ color: colors.foreground }}
-              >
+              <Text className="ml-3 text-base font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
                 Flag
               </Text>
             </TouchableOpacity>
           )}
 
           {/* Share options */}
-          <View className="border-t mt-4 pt-4" style={{ borderTopColor: colors.border }}>
+          <View className="border-t mt-4 pt-4 border-fomio-border-soft dark:border-fomio-border-soft-dark">
             <TouchableOpacity
               onPress={handleCopyLink}
               className="flex-row items-center py-3 px-2 rounded-lg active:opacity-70 mb-2"
@@ -316,10 +279,7 @@ export function OverflowMenu({
               }}
             >
               <Link size={20} color={colors.foreground} weight="regular" />
-              <Text
-                className="ml-3 text-base font-medium"
-                style={{ color: colors.foreground }}
-              >
+              <Text className="ml-3 text-base font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
                 Copy Link
               </Text>
             </TouchableOpacity>
@@ -332,16 +292,13 @@ export function OverflowMenu({
               }}
             >
               <ShareIcon size={20} color={colors.foreground} weight="regular" />
-              <Text
-                className="ml-3 text-base font-medium"
-                style={{ color: colors.foreground }}
-              >
+              <Text className="ml-3 text-base font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
                 Share
               </Text>
             </TouchableOpacity>
           </View>
         </View>
-      </BottomSheetModal>
+      </ThemedBottomSheet>
     </>
   );
 }

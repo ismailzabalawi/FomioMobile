@@ -4,6 +4,7 @@
 import React from 'react';
 import {
   View,
+  Text,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
