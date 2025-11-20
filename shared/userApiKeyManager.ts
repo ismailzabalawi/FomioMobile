@@ -112,6 +112,7 @@ export interface UserApiKeyData {
   clientId: string;
   oneTimePassword?: string;
   createdAt: number;
+  username?: string; // Store username for Api-Username header
 }
 
 export interface KeyPair {

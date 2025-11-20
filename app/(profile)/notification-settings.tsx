@@ -72,9 +72,11 @@ function SettingItem({
     >
       <View style={styles.settingLeft}>
         <View style={styles.iconContainer}>
-          {React.cloneElement(icon as React.ReactElement, {
-            color: comingSoon ? colors.disabledIcon : (icon as React.ReactElement).props.color,
-          })}
+          {comingSoon
+            ? React.cloneElement(icon as React.ReactElement<any>, {
+                color: colors.disabledIcon,
+              })
+            : icon}
         </View>
         <View style={styles.settingText}>
           <Text

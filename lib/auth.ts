@@ -215,11 +215,27 @@ export async function signIn(): Promise<boolean> {
       await SecureStore.setItemAsync(STORAGE_KEY, key);
       await SecureStore.setItemAsync(CLIENT_ID_KEY, clientId);
 
+      // Get username from API after storing the key
+      // This is needed for the Api-Username header required by Discourse API
+      let username: string | undefined;
+      try {
+        const discourseApi = require('../shared/discourseApi').discourseApi;
+        const userResponse = await discourseApi.getCurrentUser();
+        if (userResponse.success && userResponse.data?.username) {
+          username = userResponse.data.username;
+          logger.info('Username retrieved during sign in', { username });
+        }
+      } catch (error) {
+        logger.warn('Failed to get username during sign in (non-critical)', error);
+        // Don't fail sign in if username fetch fails - we can get it later
+      }
+
       await UserApiKeyManager.storeApiKey({
         key,
         clientId,
         oneTimePassword: one_time_password,
         createdAt: Date.now(),
+        username, // Store username for Api-Username header
       });
 
       if (one_time_password) {
@@ -276,17 +292,20 @@ export async function signIn(): Promise<boolean> {
 
 /**
  * Get authentication headers for API requests
- * Returns headers with User-Api-Key if available
+ * Returns headers with User-Api-Key and Api-Username if available
+ * Api-Username is required by Discourse API for write operations
  */
 export async function authHeaders(): Promise<Record<string, string>> {
   try {
     let key: string | null = null;
     let clientId: string | null = null;
+    let username: string | null = null;
 
     const apiKeyData = await UserApiKeyManager.getApiKey();
     if (apiKeyData?.key) {
       key = apiKeyData.key;
       clientId = apiKeyData.clientId;
+      username = apiKeyData.username || null;
     }
 
     if (!key) {
@@ -295,6 +314,19 @@ export async function authHeaders(): Promise<Record<string, string>> {
 
     if (!clientId) {
       clientId = await SecureStore.getItemAsync(CLIENT_ID_KEY);
+    }
+    
+    // Try to get username from stored auth data if not in API key data
+    if (!username) {
+      try {
+        const storedAuth = await SecureStore.getItemAsync('auth-token-v1');
+        if (storedAuth) {
+          const parsed = JSON.parse(storedAuth);
+          username = parsed.username || null;
+        }
+      } catch {
+        // Ignore errors reading stored auth
+      }
     }
     
     if (!key) {
@@ -307,6 +339,12 @@ export async function authHeaders(): Promise<Record<string, string>> {
     
     if (clientId) {
       headers['User-Api-Client-Id'] = clientId;
+    }
+    
+    // CRITICAL: Discourse API requires Api-Username header for write operations
+    // This header identifies which user is making the request
+    if (username) {
+      headers['Api-Username'] = username;
     }
     
     return headers;

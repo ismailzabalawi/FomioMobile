@@ -355,12 +355,18 @@ class DiscourseApiService {
       console.log(`🌐 Making request to: ${url} (attempt ${4 - retries}/3)`);
       
       // Security headers
+      // Don't set Content-Type for FormData - let the browser/React Native set it with boundary
+      const isFormData = options.body instanceof FormData;
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
         'User-Agent': 'FomioMobile/1.0',
         ...(options.headers as Record<string, string> | undefined),
       };
+      
+      // Only set Content-Type for non-FormData requests
+      if (!isFormData && !headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+      }
 
       // Authentication: Use User API Keys (delegated auth with RSA)
       try {
@@ -369,7 +375,25 @@ class DiscourseApiService {
         
         if (authHeaders['User-Api-Key']) {
           Object.assign(headers, authHeaders);
-          console.log('🔑 Using User API Key for authentication');
+          
+          // Log authentication status for debugging
+          const hasApiKey = !!authHeaders['User-Api-Key'];
+          const hasUsername = !!authHeaders['Api-Username'];
+          const isWriteOperation = method !== 'GET' && method !== 'HEAD';
+          
+          if (isWriteOperation && !hasUsername) {
+            console.warn('⚠️ Write operation without Api-Username header - request may fail', {
+              method,
+              endpoint,
+            });
+          }
+          
+          console.log('🔑 Using User API Key for authentication', {
+            hasApiKey,
+            hasUsername,
+            username: authHeaders['Api-Username'] || 'not set',
+            method,
+          });
         } else {
           console.log('⚠️ User API Key not found, request may fail');
         }
@@ -463,7 +487,29 @@ class DiscourseApiService {
           };
         }
 
-        const data = await response.json();
+        // Check if response has content before parsing JSON
+        // Read response as text first (can only be read once)
+        const text = await response.text();
+        const contentType = response.headers.get('content-type') || '';
+        const isJson = contentType.includes('application/json');
+        
+        let data: any;
+        if (text.trim().length === 0) {
+          // Empty response - return empty object for successful requests
+          console.log('⚠️ Empty response body, returning empty object');
+          data = {};
+        } else if (isJson) {
+          try {
+            data = JSON.parse(text);
+          } catch (parseError) {
+            console.error('❌ JSON parse error:', parseError, 'Response text:', text.substring(0, 200));
+            throw new Error(`Invalid JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+          }
+        } else {
+          // Non-JSON response - return as text wrapped in object
+          console.log('⚠️ Non-JSON response, Content-Type:', contentType);
+          data = { raw: text };
+        }
         console.log('✅ Request successful');
 
         // Cache successful GET requests
@@ -608,18 +654,85 @@ class DiscourseApiService {
   async getCurrentUser(): Promise<DiscourseApiResponse<DiscourseUser>> {
     const response = await this.makeRequest<any>('/session/current.json');
     
-    // Discourse API returns { current_user: {...} } not the user directly
+    // Discourse API can return user data in different structures:
+    // - { current_user: {...} }
+    // - { user: {...} }
+    // - Direct user object
     if (response.success && response.data) {
-      const userData = response.data.current_user || response.data;
+      // Log the raw response structure for debugging
+      console.log('🔍 getCurrentUser raw response structure:', {
+        responseKeys: Object.keys(response.data),
+        hasCurrentUser: !!response.data.current_user,
+        hasUser: !!response.data.user,
+        currentUserKeys: response.data.current_user ? Object.keys(response.data.current_user) : [],
+        userKeys: response.data.user ? Object.keys(response.data.user) : [],
+      });
+      
+      // Try multiple possible locations for user data
+      // Priority: current_user (standard) > user (your API) > direct
+      let userData = response.data.current_user 
+        || response.data.user 
+        || response.data;
+      
+      // If we got the full response object (has badges/badge_types), extract the user
+      // This happens when cached data returns the full response structure
+      if (userData && (userData.user_badges || userData.badges || userData.badge_types || userData.users)) {
+        // This is the full response object, not the user - extract the user
+        // Check user key first (your API structure), then current_user (standard)
+        userData = userData.user || userData.current_user || null;
+        
+        if (userData && (userData.id || userData.username)) {
+          console.log('⚠️ getCurrentUser: Detected full response object, extracted user from nested structure', {
+            extractedFrom: response.data.user ? 'user' : 'current_user',
+            hasUsername: !!userData.username,
+            username: userData.username,
+            userId: userData.id,
+          });
+        } else {
+          // Clear cache if we detect wrong structure to force fresh fetch next time
+          try {
+            const cacheKey = await this.getCacheKey('/session/current.json', {});
+            this.cache.delete(cacheKey);
+            console.log('🗑️ getCurrentUser: Cleared invalid cache entry, will fetch fresh data next time');
+          } catch (e) {
+            // Ignore cache clear errors
+          }
+          
+          console.error('❌ getCurrentUser: Full response object detected but no valid user found', {
+            responseKeys: Object.keys(response.data),
+            userDataKeys: userData ? Object.keys(userData) : [],
+            hasUser: !!response.data.user,
+            hasCurrentUser: !!response.data.current_user,
+          });
+          userData = null;
+        }
+      }
+      
+      // Validate that we actually got user data (should have id and username)
+      if (!userData || (!userData.id && !userData.username)) {
+        console.error('❌ getCurrentUser: Invalid user data structure', {
+          hasCurrentUser: !!response.data.current_user,
+          hasUser: !!response.data.user,
+          responseKeys: Object.keys(response.data),
+          userDataKeys: userData ? Object.keys(userData) : [],
+          userData: userData,
+        });
+        return {
+          success: false,
+          error: 'Invalid user data structure in API response',
+        };
+      }
       
       // Debug logging to understand the response structure
-      console.log('🔍 getCurrentUser response:', {
+      console.log('🔍 getCurrentUser extracted user:', {
         hasId: !!userData.id,
         id: userData.id,
         username: userData.username,
         name: userData.name,
         email: userData.email,
-        avatar_template: userData.avatar_template
+        avatar_template: userData.avatar_template,
+        extractedFrom: response.data.current_user ? 'current_user' : (response.data.user ? 'user' : 'direct'),
+        userDataKeys: Object.keys(userData),
       });
       
       // Return the extracted user data
@@ -638,7 +751,88 @@ class DiscourseApiService {
     if (!SecurityValidator.validateUsername(username)) {
       return { success: false, error: 'Invalid username format' };
     }
-    return this.makeRequest<DiscourseUser>(`/users/${encodeURIComponent(username)}.json`);
+    
+    const response = await this.makeRequest<any>(`/users/${encodeURIComponent(username)}.json`);
+    
+    // Discourse API can return user data in different structures
+    if (response.success && response.data) {
+      // Log the raw response structure for debugging
+      console.log('🔍 getUserProfile raw response structure:', {
+        responseKeys: Object.keys(response.data),
+        hasUser: !!response.data.user,
+        hasCurrentUser: !!response.data.current_user,
+        userKeys: response.data.user ? Object.keys(response.data.user) : [],
+      });
+      
+      // Try multiple possible locations for user data
+      let userData = response.data.user 
+        || response.data.current_user 
+        || response.data;
+      
+      // If we got the full response object, try to find the user within it
+      if (userData && (userData.user_badges || userData.badges || userData.badge_types || userData.users)) {
+        // This is the full response object, not the user - extract the user
+        const fullResponse = userData;
+        const extractedUser = fullResponse.user || fullResponse.current_user || null;
+        
+        if (extractedUser && (extractedUser.id || extractedUser.username)) {
+          userData = extractedUser;
+          console.log('⚠️ getUserProfile: Detected full response object, extracted user from nested structure', {
+            extractedFrom: fullResponse.user ? 'user' : 'current_user',
+            hasUsername: !!userData.username,
+            username: userData.username,
+            userId: userData.id,
+          });
+        } else {
+          // Clear cache if we detect wrong structure
+          try {
+            const cacheKey = await this.getCacheKey(`/users/${encodeURIComponent(username)}.json`, {});
+            this.cache.delete(cacheKey);
+            console.log('🗑️ getUserProfile: Cleared invalid cache entry');
+          } catch (e) {
+            // Ignore cache clear errors
+          }
+          
+          console.error('❌ getUserProfile: Full response object detected but no valid user found', {
+            responseKeys: Object.keys(response.data),
+            fullResponseKeys: fullResponse ? Object.keys(fullResponse) : [],
+            hasUser: !!fullResponse?.user,
+            hasCurrentUser: !!fullResponse?.current_user,
+          });
+          userData = null;
+        }
+      }
+      
+      // Validate that we actually got user data
+      if (!userData || (!userData.id && !userData.username)) {
+        console.error('❌ getUserProfile: Invalid user data structure', {
+          hasUser: !!response.data.user,
+          hasCurrentUser: !!response.data.current_user,
+          responseKeys: Object.keys(response.data),
+          userDataKeys: userData ? Object.keys(userData) : [],
+        });
+        return {
+          success: false,
+          error: 'Invalid user data structure in API response',
+        };
+      }
+      
+      // Debug logging
+      console.log('🔍 getUserProfile extracted user:', {
+        hasId: !!userData.id,
+        id: userData.id,
+        username: userData.username,
+        name: userData.name,
+        extractedFrom: response.data.user ? 'user' : (response.data.current_user ? 'current_user' : 'direct'),
+      });
+      
+      return {
+        success: true,
+        data: userData as DiscourseUser,
+      };
+    }
+    
+    return response;
   }
 
   async updateUserProfile(
@@ -652,7 +846,9 @@ class DiscourseApiService {
     // Sanitize updates
     const sanitizedUpdates = this.sanitizeObject(updates);
     
-    return this.makeRequest<DiscourseUser>(`/users/${encodeURIComponent(username)}`, {
+    // Discourse API requires .json suffix for user profile updates
+    // Endpoint: PUT /users/{username}.json
+    return this.makeRequest<DiscourseUser>(`/users/${encodeURIComponent(username)}.json`, {
       method: 'PUT',
       body: JSON.stringify(sanitizedUpdates),
     });
@@ -688,29 +884,105 @@ class DiscourseApiService {
       return { success: false, error: 'File too large. Maximum size is 5MB.' };
     }
 
-    const formData = new FormData();
-    
-    if ('uri' in imageFile) {
-      // React Native: append as object with uri, type, name
-      formData.append('upload', {
-        uri: imageFile.uri,
-        type: fileType,
-        name: imageFile.name || 'avatar.jpg',
-      } as any);
-    } else {
-      // Browser: append File object directly
-      formData.append('upload', imageFile);
-    }
-    
-    formData.append('type', 'avatar');
+    try {
+      // Step 1: Upload the image to /uploads.json
+      const uploadFormData = new FormData();
+      
+      if ('uri' in imageFile) {
+        // React Native: append as object with uri, type, name
+        uploadFormData.append('file', {
+          uri: imageFile.uri,
+          type: fileType,
+          name: imageFile.name || 'avatar.jpg',
+        } as any);
+      } else {
+        // Browser: append File object directly
+        uploadFormData.append('file', imageFile);
+      }
+      
+      uploadFormData.append('type', 'avatar');
+      
+      // Get user ID for the upload
+      const userResponse = await this.getUserProfile(username);
+      if (!userResponse.success || !userResponse.data) {
+        console.error('❌ uploadAvatar: Failed to get user information', {
+          success: userResponse.success,
+          error: userResponse.error,
+          hasData: !!userResponse.data,
+        });
+        return { success: false, error: 'Failed to get user information' };
+      }
+      
+      const userId = userResponse.data.id;
+      if (!userId) {
+        console.error('❌ uploadAvatar: User ID is missing', {
+          hasData: !!userResponse.data,
+          dataKeys: userResponse.data ? Object.keys(userResponse.data) : [],
+          username: userResponse.data.username,
+        });
+        return { success: false, error: 'User ID is missing from user data' };
+      }
+      
+      uploadFormData.append('user_id', userId.toString());
 
-    return this.makeRequest<any>(`/users/${encodeURIComponent(username)}/preferences/avatar/pick`, {
-      method: 'PUT',
-      body: formData,
-      headers: {
-        // Don't set Content-Type for FormData, let React Native/browser set it
-      },
-    });
+      console.log('📤 Step 1: Uploading avatar image to /uploads.json');
+      const uploadResponse = await this.makeRequest<any>('/uploads.json', {
+        method: 'POST',
+        body: uploadFormData,
+        headers: {
+          // Don't set Content-Type for FormData, let React Native/browser set it
+        },
+      });
+
+      if (!uploadResponse.success || !uploadResponse.data) {
+        console.error('❌ Avatar upload failed:', uploadResponse.error);
+        return { 
+          success: false, 
+          error: uploadResponse.error || 'Failed to upload avatar image' 
+        };
+      }
+
+      const uploadId = uploadResponse.data.id || uploadResponse.data.upload_id;
+      if (!uploadId) {
+        console.error('❌ No upload_id returned from upload:', uploadResponse.data);
+        return { 
+          success: false, 
+          error: 'Upload succeeded but no upload ID returned' 
+        };
+      }
+
+      console.log('✅ Step 1 complete, upload_id:', uploadId);
+
+      // Step 2: Set the uploaded image as the avatar
+      console.log('📤 Step 2: Setting uploaded image as avatar');
+      const pickResponse = await this.makeRequest<any>(`/u/${encodeURIComponent(username)}/preferences/avatar/pick.json`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          upload_id: uploadId,
+          type: 'uploaded',
+        }),
+      });
+
+      if (!pickResponse.success) {
+        console.error('❌ Failed to set avatar:', pickResponse.error);
+        return { 
+          success: false, 
+          error: pickResponse.error || 'Failed to set uploaded image as avatar' 
+        };
+      }
+
+      console.log('✅ Avatar upload and set complete');
+      return {
+        success: true,
+        data: pickResponse.data,
+      };
+    } catch (error) {
+      console.error('❌ Avatar upload exception:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error during avatar upload',
+      };
+    }
   }
 
   // Upload image for composer/post content
@@ -1427,7 +1699,7 @@ class DiscourseApiService {
         console.error('Error mapping topic to byte:', error, topic);
         return null;
       }
-    }).filter((byte): byte is Byte => byte !== null);
+    }).filter((byte: Byte | null): byte is Byte => byte !== null);
     
     // Map categories to hubs
     const hubs: Hub[] = categories.map((category: any) => {
@@ -1437,7 +1709,7 @@ class DiscourseApiService {
         console.error('Error mapping category to hub:', error, category);
         return null;
       }
-    }).filter((hub): hub is Hub => hub !== null);
+    }).filter((hub: Hub | null): hub is Hub => hub !== null);
     
     // Map users
     const appUsers: AppUser[] = users.map((user: any) => {
@@ -1447,7 +1719,7 @@ class DiscourseApiService {
         console.error('Error mapping user:', error, user);
         return null;
       }
-    }).filter((user): user is AppUser => user !== null);
+    }).filter((user: AppUser | null): user is AppUser => user !== null);
     
     // Map posts (excluding first post of each topic) to comments
     // Note: Search API posts might not have is_first_post flag, so we'll filter by post_number === 1
@@ -1472,7 +1744,7 @@ class DiscourseApiService {
           return null;
         }
       })
-      .filter((comment): comment is Comment => comment !== null);
+      .filter((comment: Comment | null): comment is Comment => comment !== null);
     
     const totalResults = bytes.length + hubs.length + appUsers.length + comments.length;
     
@@ -2153,6 +2425,88 @@ class DiscourseApiService {
     } catch (error) {
       return { success: false, error: 'Network error opening topic' };
     }
+  }
+
+  // User Activity Methods
+  async searchUserTopics(username: string, page: number = 0): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+    
+    const searchQuery = `author:${username}`;
+    return this.search(searchQuery, {
+      type: 'topic',
+      limit: 20,
+      order: 'created',
+      period: 'all',
+    });
+  }
+
+  async searchUserReplies(username: string, page: number = 0): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+    
+    const searchQuery = `author:${username}`;
+    return this.search(searchQuery, {
+      type: 'all',
+      limit: 20,
+      order: 'created',
+      period: 'all',
+    });
+  }
+
+  // Moderation Actions
+  async reportUser(username: string, reason: string): Promise<DiscourseApiResponse<void>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+    
+    // Discourse uses flag endpoint for reporting users
+    // This is a simplified implementation - actual Discourse API may vary
+    return this.makeRequest<void>(`/u/${encodeURIComponent(username)}/flag`, {
+      method: 'POST',
+      body: JSON.stringify({
+        flag_type_id: 4, // User flag type
+        message: SecurityValidator.sanitizeInput(reason),
+      }),
+    });
+  }
+
+  async blockUser(username: string): Promise<DiscourseApiResponse<void>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+    
+    // Discourse may use different endpoints for blocking
+    // This is a placeholder implementation
+    return this.makeRequest<void>(`/u/${encodeURIComponent(username)}/block`, {
+      method: 'POST',
+    });
+  }
+
+  async muteUser(username: string): Promise<DiscourseApiResponse<void>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+    
+    // Discourse may use different endpoints for muting
+    // This is a placeholder implementation
+    return this.makeRequest<void>(`/u/${encodeURIComponent(username)}/mute`, {
+      method: 'POST',
+    });
+  }
+
+  async ignoreUser(username: string): Promise<DiscourseApiResponse<void>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+    
+    // Discourse may use different endpoints for ignoring
+    // This is a placeholder implementation
+    return this.makeRequest<void>(`/u/${encodeURIComponent(username)}/ignore`, {
+      method: 'POST',
+    });
   }
 }
 

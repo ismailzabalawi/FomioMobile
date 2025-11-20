@@ -1,14 +1,14 @@
-// MyProfile Screen - X/Twitter-style profile design
-// Long scroll layout with dynamic blurred header
+// PublicProfile Screen - Viewing other users' profiles
+// Similar structure to MyProfile but with public profile actions
 
-import React, { useRef } from 'react';
+import React from 'react';
 import {
   View,
-  Text,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import Animated, {
@@ -18,7 +18,7 @@ import Animated, {
   interpolate,
   Extrapolate,
 } from 'react-native-reanimated';
-import { DotsThreeVertical, Gear } from 'phosphor-react-native';
+import { DotsThreeVertical, Flag, Prohibit } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppHeader } from '@/components/ui/AppHeader';
@@ -27,7 +27,7 @@ import { useAuth } from '@/shared/useAuth';
 import { useUserPosts } from '@/shared/useUserPosts';
 import { useUserReplies } from '@/shared/useUserReplies';
 import { useUserMedia } from '@/shared/useUserMedia';
-import { useScrollHeader } from '@/shared/useScrollHeader';
+import { discourseApi } from '@/shared/discourseApi';
 import {
   ProfileHeader,
   ProfileBio,
@@ -37,31 +37,34 @@ import {
   ProfileSectionTitle,
   ProfilePostList,
   ProfileMediaGrid,
+  ProfileDangerActions,
 } from '@/components/profile';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
 
-export default function ProfileScreen(): React.ReactElement {
+export default function PublicProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { username: targetUsername } = useLocalSearchParams<{ username: string }>();
+  const { isAuthenticated } = useAuth();
   const { user, loading: userLoading, error: userError, refreshUser } =
-    useDiscourseUser();
+    useDiscourseUser(targetUsername);
+
   const scrollY = useSharedValue(0);
 
-  // Get current user's username for data fetching
-  const username = user?.username;
+  // Get user's username for data fetching
+  const username = user?.username || targetUsername;
 
   const { posts, isLoading: postsLoading, hasMore: hasMorePosts, loadMore: loadMorePosts, refresh: refreshPosts } =
-    useUserPosts(username || '');
+    useUserPosts(username);
   const {
     replies,
     isLoading: repliesLoading,
     hasMore: hasMoreReplies,
     loadMore: loadMoreReplies,
     refresh: refreshReplies,
-  } = useUserReplies(username || '');
-  const { media, isLoading: mediaLoading } = useUserMedia(username || '');
+  } = useUserReplies(username);
+  const { media, isLoading: mediaLoading } = useUserMedia(username);
 
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -80,8 +83,94 @@ export default function ProfileScreen(): React.ReactElement {
     }
   };
 
-  const handleSettings = () => {
-      router.push('/(profile)/settings' as any);
+  const handleReport = async () => {
+    if (!user?.username) return;
+
+    Alert.alert(
+      'Report User',
+      `Report ${user.username}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Report',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await discourseApi.reportUser(
+                user.username,
+                'User reported from mobile app'
+              );
+              if (response.success) {
+                Alert.alert('Reported', 'Thank you for your report.');
+              } else {
+                Alert.alert('Error', response.error || 'Failed to report user');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'Failed to report user');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBlock = async () => {
+    if (!user?.username) return;
+
+    Alert.alert(
+      'Block User',
+      `Block ${user.username}? You won't see their posts or replies.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await discourseApi.blockUser(user.username);
+              if (response.success) {
+                Alert.alert('Blocked', `${user.username} has been blocked.`);
+                router.back();
+              } else {
+                Alert.alert('Error', response.error || 'Failed to block user');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'Failed to block user');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleMute = async () => {
+    if (!user?.username) return;
+
+    try {
+      const response = await discourseApi.muteUser(user.username);
+      if (response.success) {
+        Alert.alert('Muted', `${user.username} has been muted.`);
+      } else {
+        Alert.alert('Error', response.error || 'Failed to mute user');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to mute user');
+    }
+  };
+
+  const handleIgnore = async () => {
+    if (!user?.username) return;
+
+    try {
+      const response = await discourseApi.ignoreUser(user.username);
+      if (response.success) {
+        Alert.alert('Ignored', `${user.username} has been ignored.`);
+      } else {
+        Alert.alert('Error', response.error || 'Failed to ignore user');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to ignore user');
+    }
   };
 
   // Scroll handler
@@ -106,71 +195,65 @@ export default function ProfileScreen(): React.ReactElement {
     };
   });
 
+  // Menu button for header
+  const menuButton = (
+    <TouchableOpacity
+      onPress={() => {
+        Alert.alert(
+          'Options',
+          `Options for ${user?.username || 'user'}`,
+          [
+            {
+              text: 'Report',
+              style: 'destructive',
+              onPress: handleReport,
+            },
+            {
+              text: 'Block',
+              style: 'destructive',
+              onPress: handleBlock,
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+      }}
+      hitSlop={12}
+      className="p-2 rounded-full"
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel="Open menu"
+    >
+      <DotsThreeVertical size={24} color={isDark ? '#f9fafb' : '#111827'} weight="regular" />
+    </TouchableOpacity>
+  );
+
   // Show loading state
-  if (authLoading || (isAuthenticated && userLoading && !user)) {
+  if (userLoading && !user) {
     return (
       <ScreenContainer variant="bg">
+        <AppHeader
+          title="Profile"
+          canGoBack
+          tone="bg"
+          withSafeTop={false}
+        />
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator
             size="large"
             color={isDark ? '#3b82f6' : '#2563eb'}
           />
-            </View>
-      </ScreenContainer>
-    );
-  }
-
-  // Show error state
-  if (userError && isAuthenticated) {
-    return (
-      <ScreenContainer variant="bg">
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
-        <View className="flex-1 items-center justify-center px-4">
-          <View className="items-center">
-            <View
-              className="p-4 rounded-xl mb-4"
-              style={{
-                backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-              }}
-            >
-              <ActivityIndicator
-                size="large"
-                color={isDark ? '#ef4444' : '#dc2626'}
-              />
-            </View>
-            <TouchableOpacity
-              onPress={refreshUser}
-              className="px-6 py-3 rounded-xl border"
-              style={{
-                backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-                borderColor: isDark ? '#374151' : '#e5e7eb',
-              }}
-            >
-              <View className="flex-row items-center gap-2">
-                <ActivityIndicator
-                  size="small"
-                  color={isDark ? '#3b82f6' : '#2563eb'}
-                />
-              </View>
-            </TouchableOpacity>
-          </View>
         </View>
       </ScreenContainer>
     );
   }
 
-  // Show auth prompt if not authenticated
-  if (!isAuthenticated) {
+  // Show error state
+  if (userError || !user) {
     return (
       <ScreenContainer variant="bg">
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
+        <AppHeader
+          title="Profile"
+          canGoBack
           tone="bg"
           withSafeTop={false}
         />
@@ -189,24 +272,26 @@ export default function ProfileScreen(): React.ReactElement {
                     backgroundColor: isDark ? '#374151' : '#e5e7eb',
                   }}
                 >
-                  <Gear size={32} color={isDark ? '#9ca3af' : '#6b7280'} />
+                  <ActivityIndicator
+                    size="large"
+                    color={isDark ? '#ef4444' : '#dc2626'}
+                  />
                 </View>
-                <View className="items-center">
-                  <TouchableOpacity
-                    onPress={() => router.push('/(auth)/signin' as any)}
-                    className="px-6 py-3 rounded-xl mb-2"
-                    style={{
-                      backgroundColor: isDark ? '#3b82f6' : '#2563eb',
-                    }}
-                  >
-                    <View className="flex-row items-center gap-2">
-                      <ActivityIndicator
-                        size="small"
-                        color="#ffffff"
-                      />
-                    </View>
-          </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  onPress={refreshUser}
+                  className="px-6 py-3 rounded-xl border"
+                  style={{
+                    backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
+                    borderColor: isDark ? '#374151' : '#e5e7eb',
+                  }}
+                >
+                  <View className="flex-row items-center gap-2">
+                    <ActivityIndicator
+                      size="small"
+                      color={isDark ? '#3b82f6' : '#2563eb'}
+                    />
+                  </View>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -215,40 +300,7 @@ export default function ProfileScreen(): React.ReactElement {
     );
   }
 
-  if (!user) {
-    return (
-      <ScreenContainer variant="bg">
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator
-            size="large"
-            color={isDark ? '#3b82f6' : '#2563eb'}
-          />
-        </View>
-      </ScreenContainer>
-    );
-  }
-
   const displayName = user.name || user.username || 'Unknown User';
-
-  // Settings menu button
-  const settingsButton = (
-    <TouchableOpacity
-      onPress={handleSettings}
-      hitSlop={12}
-      className="p-2 rounded-full"
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel="Open settings"
-    >
-      <Gear size={24} color={isDark ? '#f9fafb' : '#111827'} weight="regular" />
-    </TouchableOpacity>
-  );
 
   return (
     <ScreenContainer variant="bg">
@@ -281,17 +333,17 @@ export default function ProfileScreen(): React.ReactElement {
               {displayName}
             </Text>
           </View>
-          {settingsButton}
+          {menuButton}
         </View>
       </AnimatedBlurView>
 
-      {/* Static Header (always visible, blurred header overlays when scrolled) */}
-      <AppHeader 
-        title="Profile" 
-        canGoBack={false}
+      {/* Static Header (hidden when scrolled) */}
+      <AppHeader
+        title="Profile"
+        canGoBack
         tone="bg"
         withSafeTop={false}
-        rightActions={[settingsButton]}
+        rightActions={[menuButton]}
       />
 
       {/* Scrollable Content */}
@@ -308,7 +360,7 @@ export default function ProfileScreen(): React.ReactElement {
         }
       >
         {/* Profile Header */}
-        <ProfileHeader user={user} isPublic={false} />
+        <ProfileHeader user={user} isPublic={true} />
 
         {/* Bio */}
         <ProfileBio bio={user.bio_raw} />
@@ -317,7 +369,12 @@ export default function ProfileScreen(): React.ReactElement {
         <ProfileStats user={user} />
 
         {/* Actions */}
-        <ProfileActions mode="myProfile" />
+        <ProfileActions
+          mode="publicProfile"
+          username={user.username}
+          onReport={handleReport}
+          onBlock={handleBlock}
+        />
 
         {/* Badge Strip */}
         <ProfileBadgeStrip />
@@ -346,9 +403,20 @@ export default function ProfileScreen(): React.ReactElement {
           filter="replies"
         />
 
+        {/* Danger Zone */}
+        {isAuthenticated && (
+          <ProfileDangerActions
+            username={user.username}
+            onReport={handleReport}
+            onMute={handleMute}
+            onIgnore={handleIgnore}
+          />
+        )}
+
         {/* Bottom padding */}
         <View className="h-8" />
       </Animated.ScrollView>
     </ScreenContainer>
   );
 }
+

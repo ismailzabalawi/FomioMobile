@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Platform
+  Platform,
+  KeyboardAvoidingView
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
@@ -37,6 +38,9 @@ export default function EditProfileScreen(): React.ReactElement {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Compute current avatar URL from user data or local state
+  const currentAvatarUrl = avatarUrl || (user?.avatar_template ? discourseApi.getAvatarUrl(user.avatar_template, 120) : null);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -101,7 +105,9 @@ export default function EditProfileScreen(): React.ReactElement {
           await refreshUser();
           setHasChanges(true);
         } else {
-          Alert.alert('Error', 'Failed to upload avatar. Please try again.');
+          // Get error message from useDiscourseUser hook
+          const errorMessage = error || 'Failed to upload avatar. Please try again.';
+          Alert.alert('Error', errorMessage);
           // Revert to original avatar
           if (user?.avatar_template) {
             setAvatarUrl(discourseApi.getAvatarUrl(user.avatar_template, 120));
@@ -125,7 +131,50 @@ export default function EditProfileScreen(): React.ReactElement {
   }, [uploadAvatar, refreshUser, user]);
 
   const handleSave = useCallback(async () => {
-    if (!user?.username) return;
+    // Validate user data is available with more detailed checks
+    if (!user) {
+      console.error('❌ Cannot save: user object is null', {
+        hasUser: false,
+        hasAuthUser: !!authUser,
+        authUsername: authUser?.username,
+        loading,
+        error,
+        timestamp: new Date().toISOString(),
+      });
+      Alert.alert(
+        'Error', 
+        'User data not available. Please refresh and try again.',
+        [
+          { text: 'Refresh', onPress: () => refreshUser() },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+      return;
+    }
+
+    // Check if username exists - it's required for API calls
+    if (!user.username || user.username.trim() === '') {
+      console.error('❌ Cannot save: user.username is missing or empty', {
+        hasUser: !!user,
+        userKeys: Object.keys(user || {}),
+        username: user?.username,
+        usernameType: typeof user?.username,
+        usernameValue: JSON.stringify(user?.username),
+        authUsername: authUser?.username,
+        loading,
+        error,
+        timestamp: new Date().toISOString(),
+      });
+      Alert.alert(
+        'Error', 
+        'User username is missing. Please refresh and try again.',
+        [
+          { text: 'Refresh', onPress: () => refreshUser() },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+      return;
+    }
 
     try {
       const updates: any = {};
@@ -148,19 +197,46 @@ export default function EditProfileScreen(): React.ReactElement {
         return;
       }
 
+      console.log('📤 Attempting profile update:', {
+        username: user.username,
+        updates: Object.keys(updates),
+        updateValues: updates,
+        timestamp: new Date().toISOString(),
+      });
+
       const success = await updateProfile(updates);
       
       if (success) {
+        console.log('✅ Profile updated successfully:', {
+          username: user.username,
+          updates: Object.keys(updates),
+          timestamp: new Date().toISOString(),
+        });
         Alert.alert('Success', 'Profile updated successfully!');
         setHasChanges(false);
         router.back();
       } else {
-        Alert.alert('Error', error || 'Failed to update profile. Please try again.');
+        const errorMessage = error || 'Failed to update profile. Please try again.';
+        console.error('❌ Profile update failed:', {
+          error: errorMessage,
+          username: user.username,
+          updates: Object.keys(updates),
+          timestamp: new Date().toISOString(),
+        });
+        Alert.alert('Error', errorMessage);
       }
     } catch (err) {
+      const errorDetails = {
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined,
+        username: user?.username,
+        timestamp: new Date().toISOString(),
+        context: 'profile_update',
+      };
+      console.error('❌ Profile update exception:', errorDetails);
       Alert.alert('Error', 'An error occurred while updating your profile.');
     }
-  }, [user, displayName, bio, location, website, updateProfile, error]);
+  }, [user, displayName, bio, location, website, updateProfile, error, loading, authUser, refreshUser]);
 
   const handleCancel = useCallback(() => {
     if (hasChanges) {
@@ -194,7 +270,18 @@ export default function EditProfileScreen(): React.ReactElement {
     );
   }
 
-  if (!user) {
+  // Only show error if loading is complete and user is still null
+  // This prevents false error logs during initial load
+  // Only show error if we have an authenticated user but failed to load their data
+  if (!loading && !user && authUser) {
+    console.error('❌ Edit profile: User data not available', {
+      authUsername: authUser?.username,
+      timestamp: new Date().toISOString(),
+      context: 'edit_profile_screen',
+      loadingState: loading,
+      hasAuthUser: !!authUser,
+      error: error,
+    });
     return (
       <ScreenContainer variant="bg">
         <AppHeader 
@@ -205,6 +292,25 @@ export default function EditProfileScreen(): React.ReactElement {
         />
         <View style={styles.centered}>
           <Text style={[styles.errorText, { color: colors.error }]}>Failed to load profile</Text>
+          {error ? (
+            <Text style={[styles.errorText, { color: colors.secondary, marginTop: 8, fontSize: 14 }]}>
+              {error}
+            </Text>
+          ) : (
+            <Text style={[styles.errorText, { color: colors.secondary, marginTop: 8, fontSize: 14 }]}>
+              Unable to load your profile data. Please check your connection and try again.
+            </Text>
+          )}
+          <Button
+            variant="default"
+            onPress={async () => {
+              console.log('🔄 Retrying user data load...');
+              await refreshUser();
+            }}
+            style={{ marginTop: 16 }}
+          >
+            Retry
+          </Button>
         </View>
       </ScreenContainer>
     );
@@ -226,17 +332,29 @@ export default function EditProfileScreen(): React.ReactElement {
           />
         }
       >
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoidingView}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
           {/* Avatar Section */}
           <View style={[styles.avatarSection, { backgroundColor: colors.card }]}>
             <View style={styles.avatarContainer}>
               <Avatar
-                source={avatarUrl ? { uri: avatarUrl } : undefined}
-                fallback={user.username.charAt(0).toUpperCase()}
+                source={
+                  currentAvatarUrl 
+                    ? { uri: currentAvatarUrl } 
+                    : user?.avatar_template 
+                      ? { uri: discourseApi.getAvatarUrl(user.avatar_template, 120) }
+                      : undefined
+                }
+                fallback={(user?.username || user?.name || authUser?.username || 'U').charAt(0).toUpperCase()}
                 size="xl"
               />
               <TouchableOpacity 
@@ -265,7 +383,7 @@ export default function EditProfileScreen(): React.ReactElement {
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Username</Text>
               <Input
-                value={user.username}
+                value={user?.username || authUser?.username || ''}
                 disabled={true}
                 style={{ ...styles.input, opacity: 0.6 }}
               />
@@ -294,7 +412,9 @@ export default function EditProfileScreen(): React.ReactElement {
               <Input
                 value={bio}
                 onChangeText={(text) => {
-                  setBio(text);
+                  // Enforce 500 character limit
+                  const limitedText = text.length > 500 ? text.substring(0, 500) : text;
+                  setBio(limitedText);
                   setHasChanges(true);
                 }}
                 placeholder="Tell us about yourself"
@@ -302,6 +422,9 @@ export default function EditProfileScreen(): React.ReactElement {
                 numberOfLines={4}
                 style={StyleSheet.flatten([styles.input, styles.textArea])}
               />
+              <Text style={[styles.fieldHint, { color: colors.secondary }]}>
+                {bio.length}/500 characters
+              </Text>
             </View>
 
             {/* Location */}
@@ -332,6 +455,11 @@ export default function EditProfileScreen(): React.ReactElement {
                 autoCapitalize="none"
                 style={styles.input}
               />
+              {website && !website.match(/^https?:\/\/.+\..+/) && (
+                <Text style={[styles.fieldHint, { color: colors.error }]}>
+                  Please enter a valid URL (e.g., https://example.com)
+                </Text>
+              )}
             </View>
           </View>
 
@@ -355,6 +483,7 @@ export default function EditProfileScreen(): React.ReactElement {
             </Button>
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </AuthGate>
     </ScreenContainer>
   );
@@ -377,6 +506,9 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     textAlign: 'center',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   scrollView: {
     flex: 1,
