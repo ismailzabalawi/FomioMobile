@@ -21,15 +21,33 @@ const DEFAULT_SETTINGS: UserSettings = {
  */
 async function loadSettings(): Promise<UserSettings> {
   try {
-    const stored = await AsyncStorage.getItem(STORAGE_KEY);
+    let stored: string | null = null;
+    try {
+      stored = await AsyncStorage.getItem(STORAGE_KEY);
+    } catch (storageError: any) {
+      // Handle AsyncStorage errors gracefully (e.g., file system corruption in simulator)
+      console.warn('useSettingsStorage: AsyncStorage error, using default settings:', storageError?.message || storageError);
+      // Return defaults on storage error
+      return DEFAULT_SETTINGS;
+    }
+
     if (stored) {
-      const parsed = JSON.parse(stored);
-      // Merge with defaults to handle missing keys
-      return { ...DEFAULT_SETTINGS, ...parsed };
+      try {
+        const parsed = JSON.parse(stored);
+        // Merge with defaults to handle missing keys
+        return { ...DEFAULT_SETTINGS, ...parsed };
+      } catch (parseError) {
+        // Invalid JSON, use defaults
+        console.warn('useSettingsStorage: Invalid stored settings JSON, using defaults:', parseError);
+        return DEFAULT_SETTINGS;
+      }
     }
     return DEFAULT_SETTINGS;
-  } catch (error) {
-    logger.error('Failed to load settings from storage', error);
+  } catch (error: any) {
+    // Final fallback - only log if there's an actual error message
+    if (error && error?.message) {
+      console.warn('useSettingsStorage: Error loading settings:', error.message);
+    }
     return DEFAULT_SETTINGS;
   }
 }
@@ -41,10 +59,20 @@ async function saveSettings(settings: Partial<UserSettings>): Promise<void> {
   try {
     const current = await loadSettings();
     const updated = { ...current, ...settings };
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  } catch (error) {
-    logger.error('Failed to save settings to storage', error);
-    throw error;
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (storageError: any) {
+      // Handle AsyncStorage errors gracefully (e.g., file system corruption)
+      console.warn('useSettingsStorage: Failed to save settings to storage:', storageError?.message || storageError);
+      // Settings are still in memory, so app continues to function
+      // Don't throw - allow app to continue with in-memory settings
+    }
+  } catch (error: any) {
+    // Only log if there's an actual error message (not null/undefined)
+    if (error && error?.message) {
+      console.warn('useSettingsStorage: Error saving settings:', error.message);
+    }
+    // Don't throw - allow app to continue
   }
 }
 
@@ -66,8 +94,11 @@ export function useSettingsStorage() {
           setLoading(false);
         }
       })
-      .catch((error) => {
-        logger.error('Failed to load settings in hook', error);
+      .catch((error: any) => {
+        // Handle errors gracefully - only log if there's an actual error message
+        if (error && error?.message) {
+          console.warn('useSettingsStorage: Error loading settings in hook:', error.message);
+        }
         if (mounted) {
           setLoading(false);
         }
@@ -86,9 +117,12 @@ export function useSettingsStorage() {
       const newSettings = { ...settings, ...updates };
       await saveSettings(updates);
       setSettings(newSettings);
-    } catch (error) {
-      logger.error('Failed to update settings', error);
-      throw error;
+    } catch (error: any) {
+      // Only log if there's an actual error message
+      if (error && error?.message) {
+        console.warn('useSettingsStorage: Failed to update settings:', error.message);
+      }
+      // Don't throw - settings are updated in memory
     }
   }, [settings]);
 

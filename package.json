@@ -73,7 +73,10 @@
     "typescript": "~5.9.2"
   },
   "engines": {
-    "node": ">=18.0.0 <=22.x"
+    "node": ">=18.0.0 <=24.x"
+  },
+  "overrides": {
+    "markdown-it": ">=12.3.2"
   },
   "expo": {
     "install": {

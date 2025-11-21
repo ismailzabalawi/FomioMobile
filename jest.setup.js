@@ -90,11 +90,25 @@ jest.mock('react-native/Libraries/TurboModule/TurboModuleRegistry', () => ({
   })),
 }));
 
+// Mock NativeAppearance before react-native is loaded
+jest.mock('react-native/Libraries/Utilities/Appearance', () => ({
+  getColorScheme: jest.fn(() => 'light'),
+  setColorScheme: jest.fn(),
+  addChangeListener: jest.fn(() => ({ remove: jest.fn() })),
+  removeChangeListener: jest.fn(),
+}));
+
 // Mock react-native with all necessary mocks
 jest.mock('react-native', () => {
   const RN = jest.requireActual('react-native');
   return {
     ...RN,
+    Appearance: {
+      getColorScheme: jest.fn(() => 'light'),
+      setColorScheme: jest.fn(),
+      addChangeListener: jest.fn(() => ({ remove: jest.fn() })),
+      removeChangeListener: jest.fn(),
+    },
     StyleSheet: {
       ...RN.StyleSheet,
       create: jest.fn((styles) => styles),

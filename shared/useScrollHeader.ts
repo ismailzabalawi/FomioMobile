@@ -1,10 +1,11 @@
 // Hook to track scroll position for dynamic blurred header
 // Returns scroll offset and whether header should be visible
+// Optionally integrates with HeaderProvider context for unified scroll behavior
 
 import { useState, useCallback } from 'react';
 import { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 
-const HEADER_VISIBILITY_THRESHOLD = 100; // Show header after scrolling past this point
+export const HEADER_VISIBILITY_THRESHOLD = 100; // Show header after scrolling past this point
 
 export interface UseScrollHeaderReturn {
   scrollY: number;

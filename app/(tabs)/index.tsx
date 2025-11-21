@@ -1,18 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
 import { ByteCard } from '../../components/feed/ByteCard';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { useFeed, FeedItem } from '../../shared/useFeed';
 import { useAuth } from '../../shared/useAuth';
 import { getSession, getLatest } from '../../lib/discourse';
-import { useEffect, useState } from 'react';
 
 export default function HomeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
+  const { setHeader, resetHeader } = useHeader();
   const { 
     items, 
     isLoading: isFeedLoading, 
@@ -26,6 +26,17 @@ export default function HomeScreen(): React.ReactElement {
   } = useFeed();
   
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Configure header
+  useEffect(() => {
+    setHeader({
+      title: "Fomio",
+      canGoBack: false,
+      withSafeTop: false,
+      tone: "bg",
+    });
+    return () => resetHeader();
+  }, [setHeader, resetHeader]);
   
   // Load user session if authenticated
   useEffect(() => {
@@ -34,11 +45,15 @@ export default function HomeScreen(): React.ReactElement {
         .then((session) => {
           setCurrentUser(session.user || user);
         })
-        .catch((err) => {
-          console.error('Failed to load session:', err);
+        .catch((err: any) => {
+          // Only log if it's not an expected "not authenticated" error
+          if (err?.message && !err.message.includes('Not authenticated') && !err.message.includes('Please sign in')) {
+            console.warn('Failed to load session:', err.message);
+          }
+          // If not authenticated, that's expected - don't log as error
         });
     }
-  }, [isAuthenticated, isAuthLoading]);
+  }, [isAuthenticated, isAuthLoading, user]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -176,13 +191,6 @@ export default function HomeScreen(): React.ReactElement {
   if (!isAuthenticated && !isAuthLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Fomio" 
-          subtitle="Latest Bytes"
-          canGoBack={false}
-          withSafeTop={false}
-          tone="bg"
-        />
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: colors.text, marginBottom: 16 }]}>
             Connect to Forum
@@ -206,13 +214,6 @@ export default function HomeScreen(): React.ReactElement {
   if (isFeedLoading && items.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Fomio" 
-          subtitle="Latest Bytes"
-          canGoBack={false}
-          withSafeTop={false}
-          tone="bg"
-        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.text} />
           <Text style={[styles.loadingText, { color: colors.text }]}>
@@ -225,13 +226,6 @@ export default function HomeScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader 
-        title="Fomio" 
-        subtitle="Latest Bytes"
-        canGoBack={false}
-        withSafeTop={false}
-      />
-      
       <FlatList
         data={items}
         renderItem={renderFeedItem}

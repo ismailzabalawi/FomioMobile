@@ -33,6 +33,8 @@ export default function AuthCallbackScreen() {
       paramsKeys: Object.keys(params),
       hasUrl: !!params.url,
       hasPayload: !!params.payload,
+      urlValue: typeof params.url === 'string' ? params.url.substring(0, 200) : params.url,
+      payloadValue: typeof params.payload === 'string' ? params.payload.substring(0, 100) : params.payload,
     });
     // Prevent multiple callback processing using ref (more reliable than state)
     if (hasProcessedRef.current) {

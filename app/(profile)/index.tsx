@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gear, PencilSimple } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { SettingItem, SettingSection } from '@/components/settings';
 import { useDiscourseUser } from '@/shared/useDiscourseUser';
 import { useAuth } from '@/shared/useAuth';
@@ -54,6 +54,7 @@ export default function ProfileScreen(): React.ReactElement {
   const { media, isLoading: mediaLoading } = useUserMedia(username || '');
 
   const [refreshing, setRefreshing] = React.useState(false);
+  const { setHeader, resetHeader, setActions } = useHeader();
 
   // Memoize theme colors - dark mode always uses AMOLED
   const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
@@ -83,8 +84,8 @@ export default function ProfileScreen(): React.ReactElement {
     router.push('/(profile)/edit-profile' as any);
   }, []);
 
-  // Settings menu button
-  const settingsButton = (
+  // Settings menu button - MUST be memoized to prevent infinite loops
+  const settingsButton = useMemo(() => (
     <TouchableOpacity
       onPress={handleSettings}
       hitSlop={12}
@@ -95,18 +96,24 @@ export default function ProfileScreen(): React.ReactElement {
     >
       <Gear size={24} color={colors.foreground} weight="regular" />
     </TouchableOpacity>
-  );
+  ), [handleSettings, colors.foreground]);
+
+  // Configure header
+  React.useEffect(() => {
+    setHeader({
+      title: "Profile",
+      canGoBack: false,
+      withSafeTop: false,
+      tone: "bg",
+    });
+    setActions([settingsButton]);
+    return () => resetHeader();
+  }, [setHeader, resetHeader, setActions, settingsButton]);
 
   // Show loading state
   if (authLoading || (isAuthenticated && userLoading && !user)) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator
             size="large"
@@ -121,12 +128,6 @@ export default function ProfileScreen(): React.ReactElement {
   if (userError && isAuthenticated) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
         <View className="flex-1 items-center justify-center px-4">
           <View className="items-center">
             <View
@@ -163,12 +164,6 @@ export default function ProfileScreen(): React.ReactElement {
   if (!isAuthenticated) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
         <View className="flex-1 items-center justify-center px-4">
           <View className="items-center">
             <View
@@ -207,12 +202,6 @@ export default function ProfileScreen(): React.ReactElement {
   if (!user) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Profile" 
-          canGoBack={false}
-          tone="bg"
-          withSafeTop={false}
-        />
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator
             size="large"
@@ -225,14 +214,6 @@ export default function ProfileScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader 
-        title="Profile" 
-        canGoBack={false}
-        tone="bg"
-        withSafeTop={false}
-        rightActions={[settingsButton]}
-      />
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

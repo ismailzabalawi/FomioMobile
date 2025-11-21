@@ -19,7 +19,7 @@ import {
   Rocket
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { ByteCard } from '@/components/feed/ByteCard';
 import { useSearch } from '../../shared/useSearch';
 import { router } from 'expo-router';
@@ -397,6 +397,7 @@ function EmptyStateCards() {
 
 export default function SearchScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
+  const { setHeader, resetHeader } = useHeader();
   const [searchQuery, setSearchQuery] = useState('');
   
   const { 
@@ -409,6 +410,26 @@ export default function SearchScreen(): React.ReactElement {
     retry: retrySearch,
     searchType,
   } = useSearch();
+
+  // Configure header
+  React.useEffect(() => {
+    if (searchQuery.trim()) {
+      setHeader({
+        title: "Search Results",
+        canGoBack: true,
+        withSafeTop: false,
+        tone: "bg",
+      });
+    } else {
+      setHeader({
+        title: "Search",
+        canGoBack: false,
+        withSafeTop: false,
+        tone: "bg",
+      });
+    }
+    return () => resetHeader();
+  }, [searchQuery, setHeader, resetHeader]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -433,13 +454,6 @@ export default function SearchScreen(): React.ReactElement {
   if (searchQuery.trim()) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Search Results" 
-          canGoBack
-          withSafeTop={false}
-          tone="bg"
-        />
-        
         <View style={styles.searchContainer}>
           <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
           <TextInput
@@ -498,13 +512,6 @@ export default function SearchScreen(): React.ReactElement {
   // Empty state with placeholder cards
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader 
-        title="Search" 
-        canGoBack={false}
-        withSafeTop={false}
-        tone="bg"
-      />
-      
       <View style={[styles.searchContainer, { backgroundColor: colors.input }]}>
         <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
         <TextInput

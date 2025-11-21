@@ -19,7 +19,7 @@ import {
 } from 'phosphor-react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useTheme } from '@/components/theme';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { ByteCard } from '@/components/feed/ByteCard';
 import { discourseApi } from '../../shared/discourseApi';
 import { logger } from '../../shared/logger';
@@ -182,6 +182,7 @@ function renderTopicCard(topic: Topic, onPress: () => void, onCategoryPress?: ()
 export default function FeedScreen(): React.ReactElement {
   const { category } = useLocalSearchParams<{ category?: string }>();
   const { isDark, isAmoled } = useTheme();
+  const { setHeader, resetHeader, registerScrollHandler } = useHeader();
   const [terets, setTerets] = useState<Teret[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -189,6 +190,16 @@ export default function FeedScreen(): React.ReactElement {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pageTitle, setPageTitle] = useState('Feed');
   const [isHubView, setIsHubView] = useState(false);
+
+  // Configure header
+  useEffect(() => {
+    setHeader({
+      title: pageTitle,
+      canGoBack: true,
+      tone: "bg",
+    });
+    return () => resetHeader();
+  }, [pageTitle, setHeader, resetHeader]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -432,12 +443,6 @@ export default function FeedScreen(): React.ReactElement {
   if (isLoading && !isRefreshing) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title={pageTitle}
-          canGoBack
-          withSafeTop={false}
-          tone="bg"
-        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.text} />
           <Text style={[styles.loadingText, { color: colors.secondary }]}>
@@ -451,12 +456,6 @@ export default function FeedScreen(): React.ReactElement {
   if (hasError) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title={pageTitle}
-          canGoBack
-          withSafeTop={false}
-          tone="bg"
-        />
         <View style={styles.errorContainer}>
           <Warning size={48} color={colors.error} />
           <Text style={[styles.errorText, { color: colors.error }]}>
@@ -471,18 +470,21 @@ export default function FeedScreen(): React.ReactElement {
     );
   }
 
+  // Register scroll handler
+  useEffect(() => {
+    const unregister = registerScrollHandler((event) => {
+      // Scroll handler registered - header context will update isScrolled automatically
+    });
+    return unregister;
+  }, [registerScrollHandler]);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader 
-        title={pageTitle}
-        canGoBack
-        tone="bg"
-      />
-      
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}

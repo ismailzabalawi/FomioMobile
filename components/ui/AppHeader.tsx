@@ -35,8 +35,6 @@ export interface AppHeaderProps {
   leftNode?: ReactNode;
   /** Array of right-side action buttons/nodes */
   rightActions?: ReactNode[];
-  /** Legacy: single right node (for backward compatibility) */
-  rightNode?: ReactNode;
   /** Optional sub-header row (chips, filters, tabs) below main bar */
   subHeader?: ReactNode;
   /** Visual tone: 'bg' blends with page, 'card' is surfaced, 'transparent' for overlays */
@@ -67,8 +65,12 @@ export interface AppHeaderProps {
   testID?: string;
 }
 
+// UI Spec: Header dimensions
+// - iOS: 44px (native standard)
+// - Android: 48px (Material Design touch target)
+// - Slot width: 44px minimum (touch-safe target per platform guidelines)
 const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : 48;
-const SLOT_MIN_WIDTH = 44; // Symmetric slots prevent title jump
+const SLOT_MIN_WIDTH = 44; // Symmetric slots prevent title jump (touch-safe target)
 
 export const AppHeader = memo(function AppHeader({
   title,
@@ -77,7 +79,6 @@ export const AppHeader = memo(function AppHeader({
   onBackPress,
   leftNode,
   rightActions,
-  rightNode, // Legacy support
   subHeader,
   tone = 'card',
   elevated = false,
@@ -88,7 +89,7 @@ export const AppHeader = memo(function AppHeader({
   centerTitle = false,
   titleNumberOfLines = 1,
   subtitleNumberOfLines = 1,
-  titleFontSize = 20,
+  titleFontSize = 22,
   statusBarStyle = 'auto',
   extendToStatusBar = true,
   testID = 'app-header',
@@ -98,7 +99,8 @@ export const AppHeader = memo(function AppHeader({
   const { themeMode, isDark } = useTheme();
   const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
 
-  const paddingTop = withSafeTop ? insets.top : 0;
+  // Header container is already positioned after status bar, add small padding for visual spacing
+  const paddingTop = withSafeTop ? (Platform.OS === 'ios' ? 8 : 4) : 0;
 
   // Auto-elevate when scrolled
   const shouldElevate = elevated || isScrolled;
@@ -123,8 +125,8 @@ export const AppHeader = memo(function AppHeader({
   // Icon color uses semantic foreground token
   const iconColor = colors.foreground;
 
-  // Resolve right actions (support both new array and legacy single node)
-  const resolvedRightActions = rightActions || (rightNode ? [rightNode] : []);
+  // Resolve right actions
+  const resolvedRightActions = rightActions || [];
 
   return (
     <View
@@ -145,20 +147,6 @@ export const AppHeader = memo(function AppHeader({
           : {}),
       }}
     >
-      {/* Paint status bar area without affecting layout height */}
-      {extendToStatusBar && insets.top > 0 && (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: -insets.top,
-            left: 0,
-            right: 0,
-            height: insets.top,
-            backgroundColor,
-          }}
-        />
-      )}
       <StatusBar style={statusBarStyle as any} />
 
       {/* Progress bar (thin line at top) */}
@@ -174,7 +162,7 @@ export const AppHeader = memo(function AppHeader({
 
       {/* Main bar */}
       <View
-        className="flex-row items-center px-3 justify-between"
+        className="flex-row items-center px-fomio-md justify-between"
         style={{ height: BASE_BAR_HEIGHT }}
       >
         {/* Left slot (always reserves space to prevent title jump) */}
@@ -205,26 +193,15 @@ export const AppHeader = memo(function AppHeader({
         </View>
 
         {/* Title block */}
-        <View className={cn('flex-1 px-2', centerTitle ? 'items-center' : 'items-start')}>
+        <View className={cn('flex-1 px-fomio-sm', centerTitle ? 'items-center' : 'items-start')}>
           {typeof title === 'string' ? (
-            <>
-              <Text
-                numberOfLines={titleNumberOfLines}
-                className="font-semibold"
-                style={{ color: colors.foreground, fontSize: titleFontSize }}
-              >
-                {title}
-              </Text>
-              {!!subtitle && (
-                <Text
-                  numberOfLines={subtitleNumberOfLines}
-                  className="text-xs mt-0.5"
-                  style={{ color: colors.secondary }}
-                >
-                  {subtitle}
-                </Text>
-              )}
-            </>
+            <Text
+              numberOfLines={titleNumberOfLines}
+              className="font-semibold text-title"
+              style={{ color: colors.foreground, fontSize: titleFontSize }}
+            >
+              {title}
+            </Text>
           ) : (
             title
           )}
@@ -246,7 +223,7 @@ export const AppHeader = memo(function AppHeader({
       {/* Sub-header row (chips, filters, tabs) */}
       {subHeader && (
         <View
-          className="px-3 pb-2 border-t"
+          className="px-fomio-md pb-fomio-sm border-t"
           style={{ borderTopColor: borderColor }}
         >
           {subHeader}

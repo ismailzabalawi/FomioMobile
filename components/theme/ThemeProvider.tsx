@@ -57,20 +57,45 @@ export function ThemeProvider({
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        const storedTheme = await AsyncStorage.getItem(storageKey);
+        // Wrap AsyncStorage operations in try-catch to handle file system corruption
+        let storedTheme: string | null = null;
+        try {
+          storedTheme = await AsyncStorage.getItem(storageKey);
+        } catch (storageError: any) {
+          // Handle AsyncStorage errors gracefully (e.g., file system corruption in simulator)
+          console.warn('ThemeProvider: AsyncStorage error, using default theme:', storageError?.message || storageError);
+          // Fall through to use default theme - don't log as error since it's non-critical
+          return; // Exit early if we can't read storage
+        }
+
         if (storedTheme) {
           // Handle migration from old 'amoled' values to 'dark'
           if (storedTheme === 'amoled') {
             setThemeModeState('dark');
-            await AsyncStorage.setItem(storageKey, 'dark');
+            // Try to save, but don't fail if it doesn't work
+            try {
+              await AsyncStorage.setItem(storageKey, 'dark');
+            } catch {
+              // Ignore storage errors during migration - theme is already set in state
+            }
           } else if (['light', 'dark', 'system'].includes(storedTheme)) {
             setThemeModeState(storedTheme as ThemeMode);
           }
         }
-        // Clean up old AMOLED preference - no longer needed
-        await AsyncStorage.removeItem('fomio-amoled');
-      } catch (error) {
-        logger.error('Failed to load theme preferences from storage', error);
+        
+        // Clean up old AMOLED preference - no longer needed (ignore errors)
+        try {
+          await AsyncStorage.removeItem('fomio-amoled');
+        } catch {
+          // Ignore cleanup errors - not critical
+        }
+      } catch (error: any) {
+        // Final fallback - only log if there's an actual error message
+        // Don't use logger.error for storage issues as they're non-critical
+        if (error && error?.message) {
+          console.warn('ThemeProvider: Error loading theme preferences:', error.message);
+        }
+        // Use default theme on any error - app continues to function
       }
     };
 

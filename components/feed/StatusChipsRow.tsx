@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { Pin, Lock, Archive, ShieldCheck } from 'phosphor-react-native';
+import { PushPin, Lock, Archive, ShieldCheck } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
 
@@ -31,7 +31,7 @@ export function StatusChipsRow({
   if (isPinned) {
     chips.push({
       label: 'Pinned',
-      icon: <Pin size={12} weight="fill" />,
+      icon: <PushPin size={12} weight="fill" />,
       color: isDark ? '#fbbf24' : '#f59e0b',
     });
   }

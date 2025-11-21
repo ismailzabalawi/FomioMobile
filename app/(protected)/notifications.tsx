@@ -24,7 +24,7 @@ import {
   Bookmark
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { onAuthEvent } from '../../shared/auth-events';
 
@@ -160,6 +160,7 @@ export default function NotificationsScreen(): React.ReactElement {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [permission, setPermission] = useState<string | null>(null);
+  const { setHeader, resetHeader } = useHeader();
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -195,6 +196,17 @@ export default function NotificationsScreen(): React.ReactElement {
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
+
+  // Configure header
+  useEffect(() => {
+    setHeader({
+      title: "Notifications",
+      canGoBack: false,
+      withSafeTop: false,
+      tone: "bg",
+    });
+    return () => resetHeader();
+  }, [setHeader, resetHeader]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -324,12 +336,6 @@ export default function NotificationsScreen(): React.ReactElement {
   if (permission !== null && permission !== 'granted') {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Notifications" 
-          canGoBack={false}
-          withSafeTop={false}
-          tone="bg"
-        />
         <View style={styles.permissionContainer}>
           <Bell size={64} color={colors.primary} weight="duotone" />
           <Text style={[styles.permissionTitle, { color: colors.text }]}>
@@ -352,12 +358,6 @@ export default function NotificationsScreen(): React.ReactElement {
   if (loading && notifications.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Notifications" 
-          canGoBack={false}
-          withSafeTop={false}
-          tone="bg"
-        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.text }]}>Loading notifications...</Text>
@@ -369,12 +369,6 @@ export default function NotificationsScreen(): React.ReactElement {
   if (hasError) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader 
-          title="Notifications" 
-          canGoBack={false}
-          withSafeTop={false}
-          tone="bg"
-        />
         <View style={styles.errorContainer}>
           <Text style={[styles.errorTitle, { color: colors.text }]}>Unable to load notifications</Text>
           <Text style={[styles.errorText, { color: colors.secondary }]}>
@@ -396,11 +390,6 @@ export default function NotificationsScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader 
-        title="Notifications" 
-        canGoBack={false}
-      />
-      
       {/* Header Actions */}
       {(unreadCount > 0 || notifications.length > 0) && (
         <View style={styles.headerActions}>

@@ -21,7 +21,7 @@ import {
   Check,
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { useNotificationPreferences } from '../../shared/useNotificationPreferences';
 
 interface SettingItemProps {
@@ -144,8 +144,20 @@ const LIKE_FREQUENCY_OPTIONS: Array<{ value: 'always' | 'daily' | 'weekly' | 'ne
 
 export default function NotificationSettingsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
+  const { setHeader, resetHeader } = useHeader();
   const { preferences, setPreference, isLoading } = useNotificationPreferences();
   const [likeFrequencyModalVisible, setLikeFrequencyModalVisible] = useState(false);
+
+  // Configure header
+  React.useEffect(() => {
+    setHeader({
+      title: "Notification Preferences",
+      canGoBack: true,
+      withSafeTop: false,
+      tone: "bg",
+    });
+    return () => resetHeader();
+  }, [setHeader, resetHeader]);
 
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -169,12 +181,6 @@ export default function NotificationSettingsScreen(): React.ReactElement {
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <AppHeader
-          title="Notification Preferences"
-          canGoBack
-          withSafeTop={false}
-          tone="bg"
-        />
         <View style={styles.loadingContainer}>
           <Text style={{ color: colors.secondary }}>Loading preferences...</Text>
         </View>
@@ -184,12 +190,6 @@ export default function NotificationSettingsScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader
-        title="Notification Preferences"
-        canGoBack
-        withSafeTop={false}
-        tone="bg"
-      />
 
       <ScrollView
         style={styles.scrollView}

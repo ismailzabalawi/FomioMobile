@@ -27,7 +27,7 @@ import {
   MediaItem,
   HelpSheet,
 } from '@/components/compose';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { TeretPickerSheet } from '@/components/terets/TeretPickerSheet';
 
 interface ValidationErrors {
@@ -39,6 +39,7 @@ interface ValidationErrors {
 
 export default function ComposeScreen(): React.ReactElement {
   const { isDark } = useTheme();
+  const { setHeader, resetHeader, setActions, setProgress, setBackBehavior } = useHeader();
   const { 
     terets, 
     allCategories, // All categories (Hubs + Terets) for picker
@@ -63,6 +64,8 @@ export default function ComposeScreen(): React.ReactElement {
   const [isTeretSheetOpen, setIsTeretSheetOpen] = useState(false);
   const [isHelpSheetOpen, setIsHelpSheetOpen] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+
+  // Configure header - moved after handleCancel definition
 
   // Debug: Track isHelpSheetOpen changes
   useEffect(() => {
@@ -127,6 +130,20 @@ export default function ComposeScreen(): React.ReactElement {
   const handleCancel = useCallback((): void => {
     router.back();
   }, []);
+
+  // Configure header
+  useEffect(() => {
+    setHeader({
+      title: "Create Byte",
+      withSafeTop: false,
+      tone: "card",
+    });
+    setBackBehavior({
+      canGoBack: true,
+      onBackPress: handleCancel,
+    });
+    return () => resetHeader();
+  }, [setHeader, resetHeader, setBackBehavior, handleCancel]);
 
   const handlePost = useCallback(async (): Promise<void> => {
     // Clear previous errors
@@ -360,18 +377,6 @@ export default function ComposeScreen(): React.ReactElement {
   if (teretsLoading) {
     return (
       <ScreenContainer variant="card">
-        <AppHeader 
-          title="Create Byte" 
-          canGoBack 
-          onBackPress={handleCancel} 
-          withSafeTop={false}
-          tone="card"
-          rightActions={[
-            <Button key="post" disabled variant="default" size="sm">
-              Post
-            </Button>
-          ]}
-        />
         <View className="flex-1 justify-center items-center">
           <Text className="text-body text-fomio-muted dark:text-fomio-muted-dark">
             Loading terets...
@@ -385,18 +390,6 @@ export default function ComposeScreen(): React.ReactElement {
   if (teretsError) {
     return (
       <ScreenContainer variant="card">
-        <AppHeader 
-          title="Create Byte" 
-          canGoBack 
-          onBackPress={handleCancel} 
-          withSafeTop={false}
-          tone="card"
-          rightActions={[
-            <Button key="post" disabled variant="default" size="sm">
-              Post
-            </Button>
-          ]}
-        />
         <View className="flex-1 justify-center items-center px-4">
           <Warning size={48} color="#EF4444" weight="regular" />
           <Text className="text-title font-semibold text-fomio-danger dark:text-fomio-danger-dark mt-4 mb-2 text-center">
@@ -417,13 +410,6 @@ export default function ComposeScreen(): React.ReactElement {
   if (!isAuthLoading && !isAuthenticated) {
     return (
       <ScreenContainer variant="card">
-        <AppHeader 
-          title="Create Byte" 
-          canGoBack 
-          onBackPress={handleCancel} 
-          withSafeTop={false}
-          tone="card"
-        />
         <View className="flex-1 justify-center items-center px-8">
           <SignIn size={64} color={isDark ? '#3b82f6' : '#0ea5e9'} weight="regular" />
           <Text className="text-title font-semibold text-fomio-primary dark:text-fomio-primary-dark mt-6 mb-2 text-center">
@@ -446,27 +432,6 @@ export default function ComposeScreen(): React.ReactElement {
 
   return (
     <ScreenContainer variant="card">
-      <AppHeader 
-        title="Create Byte" 
-        canGoBack 
-        onBackPress={handleCancel} 
-        withSafeTop={false}
-        tone="card"
-        progress={isCreating ? 0.5 : undefined}
-        rightActions={[
-          <Button
-            key="post"
-            onPress={handlePost}
-            disabled={!canPost}
-            loading={isCreating}
-            variant={canPost ? 'default' : 'ghost'}
-            size="sm"
-            style={{ minWidth: 70 }}
-          >
-            {isCreating ? 'Posting...' : 'Post'}
-          </Button>
-        ]}
-      />
 
       <KeyboardAvoidingView 
         className="flex-1"

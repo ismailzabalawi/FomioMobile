@@ -30,7 +30,9 @@
       <intent-filter android:autoVerify="true" data-generated="true">
         <action android:name="android.intent.action.VIEW"/>
         <data android:scheme="fomio" android:host="auth" android:pathPrefix="/callback"/>
+        <data android:scheme="fomio" android:host="auth_redirect"/>
         <data android:scheme="fomio" android:pathPattern=".*auth.*callback.*"/>
+        <data android:scheme="fomio" android:pathPattern=".*auth_redirect.*"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <category android:name="android.intent.category.DEFAULT"/>
       </intent-filter>

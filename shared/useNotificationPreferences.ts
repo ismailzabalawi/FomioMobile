@@ -80,10 +80,16 @@ async function loadPreferencesFromDiscourse(
     if (response.success && response.data) {
       return response.data;
     }
-    console.log('Failed to load Discourse preferences:', response.error);
+    // Only log if there's an actual error, not just missing auth (reduces noise)
+    if (response.error && !response.error.includes('Not authenticated') && !response.error.includes('Please sign in')) {
+      console.log('Failed to load Discourse preferences:', response.error);
+    }
     return null;
-  } catch (error) {
-    console.log('Error loading preferences from Discourse:', error);
+  } catch (error: any) {
+    // Only log non-auth errors to reduce noise
+    if (error?.message && !error.message.includes('Not authenticated') && !error.message.includes('Please sign in')) {
+      console.log('Error loading preferences from Discourse:', error);
+    }
     return null;
   }
 }
@@ -133,19 +139,34 @@ export function useNotificationPreferences(): UseNotificationPreferencesReturn {
     const loadPreferences = async () => {
       try {
         // Step 1: Load from AsyncStorage first (fast, instant UI)
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        // Wrap in try-catch to handle AsyncStorage errors gracefully (e.g., file system corruption in simulator)
+        let stored: string | null = null;
+        try {
+          stored = await AsyncStorage.getItem(STORAGE_KEY);
+        } catch (storageError: any) {
+          // Handle AsyncStorage errors gracefully (e.g., file system corruption in simulator)
+          console.warn('AsyncStorage error, using defaults:', storageError?.message || storageError);
+          // Fall through to use defaults
+        }
+        
         let localPreferences: NotificationPreferences;
         
         if (stored) {
-          const parsed = JSON.parse(stored) as NotificationPreferences;
-          
-          // Migration support: check version
-          if (!parsed.version || parsed.version < 1) {
-            // Migrate old preferences or reset to defaults
-            // For now, merge with defaults to preserve any existing values
-            localPreferences = { ...defaultPreferences, ...parsed, version: 1 };
-          } else {
-            localPreferences = parsed;
+          try {
+            const parsed = JSON.parse(stored) as NotificationPreferences;
+            
+            // Migration support: check version
+            if (!parsed.version || parsed.version < 1) {
+              // Migrate old preferences or reset to defaults
+              // For now, merge with defaults to preserve any existing values
+              localPreferences = { ...defaultPreferences, ...parsed, version: 1 };
+            } else {
+              localPreferences = parsed;
+            }
+          } catch (parseError) {
+            // Invalid JSON, use defaults
+            console.warn('Failed to parse stored preferences, using defaults:', parseError);
+            localPreferences = defaultPreferences;
           }
         } else {
           // No stored preferences, use defaults
@@ -169,18 +190,25 @@ export function useNotificationPreferences(): UseNotificationPreferencesReturn {
                 likeFrequency: remotePreferences.likeFrequency,
               };
               
-              // Save merged result to AsyncStorage
-              await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+              // Save merged result to AsyncStorage (with error handling)
+              try {
+                await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+              } catch (storageError: any) {
+                // Storage failed, but we still use the merged preferences in memory
+                console.warn('Failed to save merged preferences to storage:', storageError?.message || storageError);
+              }
               setPreferences(merged);
             }
           } catch (error) {
-            console.error('Error syncing preferences from Discourse:', error);
+            // Error already handled in loadPreferencesFromDiscourse, just log here
+            console.log('Error syncing preferences from Discourse:', error);
             // Keep local preferences on error
           } finally {
             setIsSyncing(false);
           }
         }
       } catch (error) {
+        // Final fallback: use defaults if everything fails
         console.error('Failed to load notification preferences:', error);
         setPreferences(defaultPreferences);
         setIsLoading(false);
@@ -194,8 +222,10 @@ export function useNotificationPreferences(): UseNotificationPreferencesReturn {
   const savePreferences = useCallback(async (newPreferences: NotificationPreferences) => {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newPreferences));
-    } catch (error) {
-      console.error('Failed to save notification preferences:', error);
+    } catch (error: any) {
+      // Handle AsyncStorage errors gracefully (e.g., file system corruption)
+      console.warn('Failed to save notification preferences to storage:', error?.message || error);
+      // Preferences are still in memory, so app continues to function
     }
   }, []);
 
@@ -253,8 +283,13 @@ export function useNotificationPreferences(): UseNotificationPreferencesReturn {
                 likeFrequency: remotePreferences.likeFrequency,
               };
               
-              // Save merged result to AsyncStorage
-              await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+              // Save merged result to AsyncStorage (with error handling)
+              try {
+                await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+              } catch (storageError: any) {
+                // Storage failed, but we still use the merged preferences in memory
+                console.warn('Failed to save merged preferences to storage on auth event:', storageError?.message || storageError);
+              }
               setPreferences(merged);
             }
           } catch (error) {

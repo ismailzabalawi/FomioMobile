@@ -14,7 +14,9 @@ import { attachIntentReplay } from '@/shared/intent-replay';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
 import * as Linking from 'expo-linking';
-import { Platform } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { HeaderProvider, GlobalHeader } from '@/components/ui/header';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -66,6 +68,14 @@ export default function RootLayout(): React.ReactElement | null {
 
 function RootLayoutNav(): React.ReactElement {
   const { navigationTheme } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  // Calculate total header height to push content down
+  // Header bar: 44px (iOS) or 48px (Android)
+  // Plus internal padding: 8px (iOS) or 4px (Android)
+  const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : 48;
+  const HEADER_PADDING = Platform.OS === 'ios' ? 8 : 4;
+  const headerHeight = BASE_BAR_HEIGHT + HEADER_PADDING;
 
   // Set up deep link listener for Android auth redirects
   useEffect(() => {
@@ -75,8 +85,14 @@ function RootLayoutNav(): React.ReactElement {
         logger.info('Deep link received via Linking listener', { url, platform: Platform.OS });
         
         // Check if this is an auth callback deep link
-        if (url.includes('fomio://auth/callback') || url.includes('fomio:///auth/callback')) {
-          logger.info('Auth callback deep link detected, extracting payload and navigating');
+        // Support both fomio://auth/callback and fomio://auth_redirect formats
+        if (
+          url.includes('fomio://auth/callback') || 
+          url.includes('fomio:///auth/callback') ||
+          url.includes('fomio://auth_redirect') ||
+          url.includes('fomio:///auth_redirect')
+        ) {
+          logger.info('Auth callback deep link detected, extracting payload and navigating', { url });
           
           // Extract payload directly from the URL
           const urlParams = new URLSearchParams(url.split('?')[1] || '');
@@ -98,8 +114,14 @@ function RootLayoutNav(): React.ReactElement {
       Linking.getInitialURL().then((url) => {
         if (url) {
           logger.info('Initial deep link URL detected', { url, platform: Platform.OS });
-          if (url.includes('fomio://auth/callback') || url.includes('fomio:///auth/callback')) {
-            logger.info('Initial auth callback deep link detected');
+          // Support both fomio://auth/callback and fomio://auth_redirect formats
+          if (
+            url.includes('fomio://auth/callback') || 
+            url.includes('fomio:///auth/callback') ||
+            url.includes('fomio://auth_redirect') ||
+            url.includes('fomio:///auth_redirect')
+          ) {
+            logger.info('Initial auth callback deep link detected', { url });
             
             // Extract payload directly from the URL
             const urlParams = new URLSearchParams(url.split('?')[1] || '');
@@ -217,20 +239,43 @@ function RootLayoutNav(): React.ReactElement {
   }, []);
 
   return (
-    <NavigationThemeProvider value={navigationTheme}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          presentation: 'card',
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(protected)" />
-        <Stack.Screen name="(profile)" />
-        <Stack.Screen name="feed" />
-      </Stack>
-    </NavigationThemeProvider>
+    <HeaderProvider>
+      <NavigationThemeProvider value={navigationTheme}>
+        <View style={styles.container}>
+          {/* GlobalHeader positioned after status bar */}
+          <View style={[styles.headerContainer, { top: insets.top }]}>
+            <GlobalHeader />
+          </View>
+          {/* Add padding to push content below header */}
+          <View style={{ paddingTop: headerHeight, flex: 1 }}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                presentation: 'card',
+              }}
+            >
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(protected)" />
+              <Stack.Screen name="(profile)" />
+              <Stack.Screen name="feed" />
+            </Stack>
+          </View>
+        </View>
+      </NavigationThemeProvider>
+    </HeaderProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  headerContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 1000, // Ensure header is above all content
+  },
+});

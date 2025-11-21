@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -33,7 +33,7 @@ import {
 } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { SettingSection } from '@/components/settings';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { useAuth } from '../../shared/useAuth';
@@ -355,6 +355,7 @@ export default function NotificationsScreen(): React.ReactElement {
   const { themeMode, isDark } = useTheme();
   const router = useRouter();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { setHeader, resetHeader, setActions } = useHeader();
   const {
     notifications,
     isLoading: isNotificationsLoading,
@@ -390,6 +391,76 @@ export default function NotificationsScreen(): React.ReactElement {
     () => groupNotificationsByTime(typeFiltered),
     [typeFiltered]
   );
+
+  // Configure header
+  useEffect(() => {
+    setHeader({
+      title: "Notifications",
+      canGoBack: false,
+      withSafeTop: false,
+      tone: "bg",
+    });
+    return () => resetHeader();
+  }, [setHeader, resetHeader]);
+
+  // Use ref to track previous action keys to prevent infinite loops
+  const prevActionKeysRef = useRef<string>('');
+
+  // Update header actions when unreadCount or theme changes
+  useEffect(() => {
+    const themeColors = getThemeColors(themeMode, isDark);
+    const accentColor = themeColors.accent;
+    const secondaryColor = themeColors.secondary;
+    
+    // Create action key string for comparison (avoids React element reference issues)
+    const actionKeys = `${unreadCount > 0}-${themeMode}-${isDark}`;
+    
+    // Only update if keys have actually changed
+    if (prevActionKeysRef.current === actionKeys) {
+      return;
+    }
+    
+    prevActionKeysRef.current = actionKeys;
+    
+    const newActions = [
+      unreadCount > 0 ? (
+        <Pressable
+          key="mark-all-read"
+          onPress={handleMarkAllRead}
+          className="p-2 rounded-full"
+          style={{
+            backgroundColor: `${accentColor}20`,
+          }}
+          android_ripple={{
+            color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+            borderless: true,
+            radius: 20,
+          }}
+        >
+          <Check size={20} color={accentColor} weight="bold" />
+        </Pressable>
+      ) : null,
+      <Pressable
+        key="settings"
+        onPress={handleSettingsPress}
+        className="p-2 rounded-full"
+        style={{
+          backgroundColor: `${secondaryColor}20`,
+        }}
+        android_ripple={{
+          color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+          borderless: true,
+          radius: 20,
+        }}
+      >
+        <Gear size={20} color={secondaryColor} weight="regular" />
+      </Pressable>,
+    ].filter(Boolean);
+    
+    setActions(newActions);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // setActions is stable from useHeader() and doesn't need to be in deps
+  }, [unreadCount, themeMode, isDark, handleMarkAllRead, handleSettingsPress]);
 
   // Load notifications on mount and when authenticated
   useEffect(() => {
@@ -528,12 +599,6 @@ export default function NotificationsScreen(): React.ReactElement {
       <SafeAreaView
         style={[styles.container, { backgroundColor: colors.background }]}
       >
-        <AppHeader
-          title="Notifications"
-          canGoBack={false}
-          withSafeTop={false}
-          tone="bg"
-        />
         <View>
           {[1, 2, 3, 4, 5].map((i) => (
             <NotificationSkeleton key={i} />
@@ -549,12 +614,6 @@ export default function NotificationsScreen(): React.ReactElement {
       <SafeAreaView
         style={[styles.container, { backgroundColor: colors.background }]}
       >
-        <AppHeader
-          title="Notifications"
-          canGoBack={false}
-          withSafeTop={false}
-          tone="bg"
-        />
         <View className="flex-1 justify-center items-center px-8">
           <Text
             className="text-lg font-semibold mb-2 text-center"
@@ -586,12 +645,6 @@ export default function NotificationsScreen(): React.ReactElement {
       <SafeAreaView
         style={[styles.container, { backgroundColor: colors.background }]}
       >
-        <AppHeader
-          title="Notifications"
-          canGoBack={false}
-          withSafeTop={false}
-          tone="bg"
-        />
         <EmptyState
           type="logged-out"
           onSignIn={() => router.push('/(auth)/signin' as any)}
@@ -604,44 +657,6 @@ export default function NotificationsScreen(): React.ReactElement {
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
     >
-      <AppHeader
-        title="Notifications"
-        canGoBack={false}
-        withSafeTop={false}
-        tone="bg"
-        rightActions={[
-          unreadCount > 0 ? (
-            <Pressable
-              onPress={handleMarkAllRead}
-              className="p-2 rounded-full"
-              style={{
-                backgroundColor: `${colors.accent}20`,
-              }}
-              android_ripple={{
-                color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-                borderless: true,
-                radius: 20,
-              }}
-            >
-              <Check size={20} color={colors.accent} weight="bold" />
-            </Pressable>
-          ) : null,
-          <Pressable
-            onPress={handleSettingsPress}
-            className="p-2 rounded-full"
-            style={{
-              backgroundColor: `${colors.secondary}20`,
-            }}
-            android_ripple={{
-              color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-              borderless: true,
-              radius: 20,
-            }}
-          >
-            <Gear size={20} color={colors.secondary} weight="regular" />
-          </Pressable>,
-        ].filter(Boolean)}
-      />
 
       {/* Error banner (when data exists) */}
       {hasError && notifications.length > 0 && (

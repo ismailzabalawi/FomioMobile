@@ -13,7 +13,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AuthGate } from '../../components/shared/auth-gate';
 import { AuthPromptView } from '../../components/shared/auth-prompt-view';
@@ -28,6 +28,7 @@ import { router } from 'expo-router';
 
 export default function EditProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
+  const { setHeader, resetHeader, setBackBehavior } = useHeader();
   const { user: authUser } = useAuth();
   const { user, settings, loading, updating, error, updateProfile, uploadAvatar, refreshUser } = useDiscourseUser(authUser?.username);
   
@@ -253,15 +254,24 @@ export default function EditProfileScreen(): React.ReactElement {
     }
   }, [hasChanges]);
 
+  // Configure header
+  React.useEffect(() => {
+    setHeader({
+      title: "Edit Profile",
+      canGoBack: true,
+      withSafeTop: false,
+      tone: "bg",
+    });
+    setBackBehavior({
+      canGoBack: true,
+      onBackPress: handleCancel,
+    });
+    return () => resetHeader();
+  }, [setHeader, resetHeader, setBackBehavior, handleCancel]);
+
   if (loading) {
     return (
       <ScreenContainer variant="bg">
-        <AppHeader 
-          title="Edit Profile" 
-          canGoBack
-          tone="bg"
-          withSafeTop={false}
-        />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.accent} />
           <Text style={[styles.loadingText, { color: colors.text }]}>Loading profile...</Text>
@@ -273,8 +283,10 @@ export default function EditProfileScreen(): React.ReactElement {
   // Only show error if loading is complete and user is still null
   // This prevents false error logs during initial load
   // Only show error if we have an authenticated user but failed to load their data
-  if (!loading && !user && authUser) {
-    console.error('❌ Edit profile: User data not available', {
+  // Also check that we've actually attempted to load (not just initial mount)
+  if (!loading && !user && authUser && error) {
+    // Only log as warning, not error, since this might be transient
+    console.warn('⚠️ Edit profile: User data not available', {
       authUsername: authUser?.username,
       timestamp: new Date().toISOString(),
       context: 'edit_profile_screen',
@@ -284,12 +296,6 @@ export default function EditProfileScreen(): React.ReactElement {
     });
     return (
       <ScreenContainer variant="bg">
-        <AppHeader 
-          title="Edit Profile" 
-          canGoBack
-          tone="bg"
-          withSafeTop={false}
-        />
         <View style={styles.centered}>
           <Text style={[styles.errorText, { color: colors.error }]}>Failed to load profile</Text>
           {error ? (
@@ -318,12 +324,6 @@ export default function EditProfileScreen(): React.ReactElement {
 
   return (
     <ScreenContainer variant="bg">
-      <AppHeader 
-        title="Edit Profile" 
-        canGoBack
-        onBackPress={handleCancel}
-        withSafeTop={false}
-      />
       <AuthGate
         fallback={
           <AuthPromptView

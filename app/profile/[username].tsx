@@ -1,7 +1,7 @@
 // PublicProfile Screen - Viewing other users' profiles
 // Similar structure to MyProfile but with public profile actions
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,18 +11,11 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
-import Animated, {
-  useAnimatedStyle,
-  useAnimatedScrollHandler,
-  useSharedValue,
-  interpolate,
-  Extrapolate,
-} from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { DotsThreeVertical, Flag, Prohibit } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
-import { AppHeader } from '@/components/ui/AppHeader';
+import { useHeader } from '@/components/ui/header';
 import { useDiscourseUser } from '@/shared/useDiscourseUser';
 import { useAuth } from '@/shared/useAuth';
 import { useUserPosts } from '@/shared/useUserPosts';
@@ -42,16 +35,12 @@ import {
 } from '@/components/profile';
 import { router, useLocalSearchParams } from 'expo-router';
 
-const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
-
 export default function PublicProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { username: targetUsername } = useLocalSearchParams<{ username: string }>();
   const { isAuthenticated } = useAuth();
   const { user, loading: userLoading, error: userError, refreshUser } =
     useDiscourseUser(targetUsername);
-
-  const scrollY = useSharedValue(0);
 
   // Get user's username for data fetching
   const username = user?.username || targetUsername;
@@ -68,6 +57,7 @@ export default function PublicProfileScreen(): React.ReactElement {
   const { media, isLoading: mediaLoading } = useUserMedia(username);
 
   const [refreshing, setRefreshing] = React.useState(false);
+  const { setHeader, resetHeader, setActions } = useHeader();
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -174,30 +164,8 @@ export default function PublicProfileScreen(): React.ReactElement {
     }
   };
 
-  // Scroll handler
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
-  });
-
-  // Animated header style
-  const headerAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      scrollY.value,
-      [80, 120],
-      [0, 1],
-      Extrapolate.CLAMP
-    );
-
-    return {
-      opacity,
-      pointerEvents: opacity > 0.5 ? 'auto' : 'none',
-    };
-  });
-
   // Menu button for header
-  const menuButton = (
+  const menuButton = useMemo(() => (
     <TouchableOpacity
       onPress={() => {
         Alert.alert(
@@ -226,18 +194,27 @@ export default function PublicProfileScreen(): React.ReactElement {
     >
       <DotsThreeVertical size={24} color={isDark ? '#f9fafb' : '#111827'} weight="regular" />
     </TouchableOpacity>
-  );
+  ), [user?.username, handleReport, handleBlock, isDark]);
+
+  // Configure header with dynamic title
+  React.useEffect(() => {
+    if (!user) return;
+    
+    const displayName = user.name || user.username || 'Profile';
+    setHeader({
+      title: displayName,
+      canGoBack: true,
+      withSafeTop: false,
+      tone: "bg",
+    });
+    setActions([menuButton]);
+    return () => resetHeader();
+  }, [user, menuButton, setHeader, resetHeader, setActions]);
 
   // Show loading state
   if (userLoading && !user) {
     return (
       <ScreenContainer variant="bg">
-        <AppHeader
-          title="Profile"
-          canGoBack
-          tone="bg"
-          withSafeTop={false}
-        />
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator
             size="large"
@@ -252,12 +229,6 @@ export default function PublicProfileScreen(): React.ReactElement {
   if (userError || !user) {
     return (
       <ScreenContainer variant="bg">
-        <AppHeader
-          title="Profile"
-          canGoBack
-          tone="bg"
-          withSafeTop={false}
-        />
         <View className="flex-1 items-center justify-center px-4">
           <View className="items-center">
             <View
@@ -301,56 +272,10 @@ export default function PublicProfileScreen(): React.ReactElement {
     );
   }
 
-  const displayName = user.name || user.username || 'Unknown User';
-
   return (
     <ScreenContainer variant="bg">
-      {/* Dynamic Blurred Header */}
-      <AnimatedBlurView
-        intensity={isDark ? 80 : 100}
-        tint={isDark ? 'dark' : 'light'}
-        style={[
-          {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 100,
-            paddingTop: 44, // Status bar height
-            paddingBottom: 12,
-            paddingHorizontal: 16,
-            borderBottomWidth: 1,
-            borderBottomColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-          },
-          headerAnimatedStyle,
-        ]}
-      >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text
-              className="text-lg font-semibold"
-              style={{ color: isDark ? '#f9fafb' : '#111827' }}
-            >
-              {displayName}
-            </Text>
-          </View>
-          {menuButton}
-        </View>
-      </AnimatedBlurView>
-
-      {/* Static Header (hidden when scrolled) */}
-      <AppHeader
-        title="Profile"
-        canGoBack
-        tone="bg"
-        withSafeTop={false}
-        rightActions={[menuButton]}
-      />
-
       {/* Scrollable Content */}
       <Animated.ScrollView
-        onScroll={scrollHandler}
-        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

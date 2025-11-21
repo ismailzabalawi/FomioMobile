@@ -24,7 +24,15 @@
             },
             {
               "scheme": "fomio",
+              "host": "auth_redirect"
+            },
+            {
+              "scheme": "fomio",
               "pathPattern": ".*auth.*callback.*"
+            },
+            {
+              "scheme": "fomio",
+              "pathPattern": ".*auth_redirect.*"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
