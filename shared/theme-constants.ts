@@ -208,11 +208,24 @@ export const COMPONENT_TOKENS = {
 
 import type { ThemeMode } from '@/components/theme';
 
+type ThemeColors = typeof COLORS.light | typeof COLORS.dark | typeof COLORS.darkAmoled;
+
 /**
  * Get theme colors based on current theme mode
  * Dark mode always uses AMOLED (true black)
+ * 
+ * Supports both ThemeMode and boolean (isDark) for backward compatibility
  */
-export const getThemeColors = (themeMode: ThemeMode, isAmoled?: boolean) => {
+export function getThemeColors(themeMode: ThemeMode, isAmoled?: boolean): ThemeColors;
+export function getThemeColors(isDark: boolean): ThemeColors;
+export function getThemeColors(themeModeOrIsDark: ThemeMode | boolean, isAmoled?: boolean): ThemeColors {
+  // Handle boolean (isDark) for backward compatibility
+  if (typeof themeModeOrIsDark === 'boolean') {
+    return themeModeOrIsDark ? COLORS.darkAmoled : COLORS.light;
+  }
+  
+  // Handle ThemeMode
+  const themeMode = themeModeOrIsDark as ThemeMode;
   if (themeMode === 'light') {
     return COLORS.light;
   }
@@ -226,7 +239,7 @@ export const getThemeColors = (themeMode: ThemeMode, isAmoled?: boolean) => {
     return COLORS.darkAmoled;
   }
   return COLORS.light;
-};
+}
 
 /**
  * Common style utilities

@@ -12,6 +12,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Gear, PencilSimple } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
@@ -98,17 +99,21 @@ export default function ProfileScreen(): React.ReactElement {
     </TouchableOpacity>
   ), [handleSettings, colors.foreground]);
 
-  // Configure header
-  React.useEffect(() => {
-    setHeader({
-      title: "Profile",
-      canGoBack: false,
-      withSafeTop: false,
-      tone: "bg",
-    });
-    setActions([settingsButton]);
-    return () => resetHeader();
-  }, [setHeader, resetHeader, setActions, settingsButton]);
+  // Configure header - use useFocusEffect to ensure header is set when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      setHeader({
+        title: "Profile",
+        canGoBack: false,
+        withSafeTop: false,
+        tone: "bg",
+      });
+      setActions([settingsButton]);
+      return () => {
+        resetHeader();
+      };
+    }, [setHeader, resetHeader, setActions, settingsButton])
+  );
 
   // Show loading state
   if (authLoading || (isAuthenticated && userLoading && !user)) {

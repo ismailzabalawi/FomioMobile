@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { useHeaderState, useHeaderDispatch, HeaderState } from './HeaderProvider';
 
@@ -13,7 +13,9 @@ export interface UseHeaderReturn {
   setSubHeader: (subHeader: React.ReactNode | undefined) => void;
   setActions: (rightActions: React.ReactNode[] | undefined) => void;
   setBackBehavior: (config: { canGoBack?: boolean; onBackPress?: () => void }) => void;
-  registerScrollHandler: (handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void) => () => void;
+  registerScrollHandler: (
+    handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
+  ) => { onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void; unregister: () => void };
 }
 
 export function useHeader(): UseHeaderReturn {
@@ -101,4 +103,3 @@ export function useHeader(): UseHeaderReturn {
     registerScrollHandler,
   };
 }
-

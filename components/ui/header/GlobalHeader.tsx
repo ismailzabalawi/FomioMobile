@@ -1,33 +1,24 @@
 import React, { useMemo } from 'react';
-import { AppHeader, AppHeaderProps } from '../AppHeader';
+import { AppHeader, AppHeaderProps, APP_HEADER_DEFAULTS } from '../AppHeader';
 import { useHeaderState } from './HeaderProvider';
-import { getThemeColors } from '@/shared/theme-constants';
-import { useTheme } from '@/components/theme';
 
-// Default header values matching AppHeader defaults
-const DEFAULT_HEADER_STATE: Required<Omit<AppHeaderProps, 'title' | 'subtitle' | 'onBackPress' | 'leftNode' | 'rightActions' | 'subHeader' | 'progress' | 'testID'>> = {
-  canGoBack: false,
-  tone: 'card',
-  elevated: false,
-  isScrolled: false,
-  withSafeTop: true,
-  enableHaptics: true,
-  centerTitle: false,
-  titleNumberOfLines: 1,
-  subtitleNumberOfLines: 1,
-  titleFontSize: 22,
-  statusBarStyle: 'auto',
-  extendToStatusBar: false, // Header starts after status bar, doesn't extend into it
-};
+const DEFAULT_HEADER_STATE: Required<
+  Omit<
+    AppHeaderProps,
+    | 'title'
+    | 'subtitle'
+    | 'onBackPress'
+    | 'leftNode'
+    | 'rightActions'
+    | 'subHeader'
+    | 'progress'
+    | 'testID'
+  >
+> = APP_HEADER_DEFAULTS;
 
 export function GlobalHeader() {
   const { header } = useHeaderState();
-  const { themeMode, isDark } = useTheme();
 
-  // Memoize theme colors (single call per theme change)
-  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
-
-  // Merge header state with defaults
   const resolvedProps: AppHeaderProps = useMemo(() => {
     // If no title is set, don't render header
     if (!header.title) {
@@ -54,6 +45,7 @@ export function GlobalHeader() {
       titleFontSize: header.titleFontSize ?? DEFAULT_HEADER_STATE.titleFontSize,
       statusBarStyle: header.statusBarStyle ?? DEFAULT_HEADER_STATE.statusBarStyle,
       extendToStatusBar: header.extendToStatusBar ?? DEFAULT_HEADER_STATE.extendToStatusBar,
+      largeTitle: header.largeTitle ?? DEFAULT_HEADER_STATE.largeTitle,
       testID: 'global-header',
     };
   }, [header]);
@@ -65,4 +57,3 @@ export function GlobalHeader() {
 
   return <AppHeader {...resolvedProps} />;
 }
-

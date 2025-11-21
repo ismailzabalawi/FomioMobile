@@ -22,6 +22,7 @@ type ThemeProviderState = {
   toggleTheme: () => Promise<void>;
   isDark: boolean;
   isAmoled: boolean; // Always equals isDark - dark mode is always AMOLED
+  setAmoled: (isAmoled: boolean) => Promise<void>; // No-op for backward compatibility
   colorScheme: 'light' | 'dark';
   navigationTheme: NavigationTheme;
   // Legacy compatibility

@@ -3,7 +3,8 @@ import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, To
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
-import { ByteCard } from '../../components/feed/ByteCard';
+import { ByteCard } from '@/components/bytes/ByteCard';
+import { discourseByteToByte } from '@/shared/adapters/discourseByteToByte';
 import { useHeader } from '@/components/ui/header';
 import { useFeed, FeedItem } from '../../shared/useFeed';
 import { useAuth } from '../../shared/useAuth';
@@ -105,44 +106,17 @@ export default function HomeScreen(): React.ReactElement {
     // TODO: Navigate to tag search screen
   };
 
-  const formatTimestamp = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
-    if (diffInHours < 1) {
-      return 'Just now';
-    } else if (diffInHours < 24) {
-      const hours = Math.floor(diffInHours);
-      return `${hours}h ago`;
-    } else if (diffInHours < 168) { // 7 days
-      const days = Math.floor(diffInHours / 24);
-      return `${days}d ago`;
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-      });
-    }
-  };
+  // formatTimestamp removed - now handled by formatTimeAgo in ByteCard component
 
-  const renderFeedItem = ({ item }: { item: FeedItem }): React.ReactElement => (
-    <ByteCard
-      id={item.id}
-      title={item.title}
-      hub={item.hubName || item.category.name}
-      teret={item.category.name !== item.hubName ? item.category.name : undefined}
-      author={{
-        name: item.author.name || 'Unknown User',
-        avatar: item.author.avatar || '',
-      }}
-      replies={item.replyCount}
-      activity={formatTimestamp(item.lastActivity || item.createdAt)}
-      onPress={() => handleBytePress(item.id)}
-      onCategoryPress={() => handleTeretPress(item.category.name)}
-    />
-  );
+  const renderFeedItem = ({ item }: { item: FeedItem }): React.ReactElement => {
+    const byte = discourseByteToByte(item);
+    return (
+      <ByteCard
+        byte={byte}
+        onPress={() => handleBytePress(item.id)}
+      />
+    );
+  };
 
   const renderFooter = () => {
     if (!hasMore) {

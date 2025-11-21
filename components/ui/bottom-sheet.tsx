@@ -12,9 +12,11 @@ import {
   BottomSheetModalProps,
   BottomSheetBackdrop,
   BottomSheetBackdropProps,
-  BottomSheetModalRef,
 } from '@gorhom/bottom-sheet';
 import { useTheme } from '@/components/theme';
+
+// Type for BottomSheetModal ref - use ElementRef for type safety
+type BottomSheetModalRef = React.ElementRef<typeof BottomSheetModal>;
 
 interface ThemedBottomSheetProps extends Omit<BottomSheetModalProps, 'backgroundStyle' | 'handleIndicatorStyle'> {
   /**
@@ -134,5 +136,6 @@ export {
   useBottomSheet,
 } from '@gorhom/bottom-sheet';
 
-export type { BottomSheetModalRef } from '@gorhom/bottom-sheet';
+// Export the ref type
+export type { BottomSheetModalRef };
 

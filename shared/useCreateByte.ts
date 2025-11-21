@@ -125,7 +125,7 @@ export function useCreateByte() {
         closed: data.isClosed || false,
       };
 
-      console.log('📝 Creating byte with data:', {
+      logger.debug('Creating byte', {
         title: postData.title,
         category: postData.category,
         categoryType: typeof postData.category,
@@ -157,7 +157,7 @@ export function useCreateByte() {
         throw new Error('Unexpected response structure from Discourse API');
       }
 
-      console.log('✅ Byte created successfully with ID:', byteId);
+      logger.debug('Byte created successfully', { byteId });
 
       setState({
         isCreating: false,
@@ -248,7 +248,7 @@ export function useCreateByte() {
         reply_to_post_number: replyToPostNumber,
       };
 
-      console.log('💬 Creating reply with data:', {
+      logger.debug('Creating reply', {
         topicId,
         contentLength: content.length,
         replyToPostNumber
@@ -278,7 +278,7 @@ export function useCreateByte() {
         throw new Error('Unexpected response structure from Discourse API');
       }
 
-      console.log('✅ Reply created successfully with ID:', postId);
+      logger.debug('Reply created successfully', { postId });
 
       setState({
         isCreating: false,

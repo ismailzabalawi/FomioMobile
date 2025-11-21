@@ -1,14 +1,25 @@
-import React from 'react';
-import { View, Text, Pressable, TouchableOpacity, StyleSheet, ViewStyle, TextStyle, ImageStyle } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+/**
+ * DEPRECATED: This component is title-focused and will be removed in a future version.
+ * 
+ * Please use the new content-first ByteCard from `components/bytes/ByteCard` instead.
+ * The new component displays full content (Twitter/Threads-style) and supports
+ * rich media, link previews, and better integration with Discourse API data.
+ * 
+ * Migration: Replace imports from `components/feed/ByteCard` with `components/bytes/ByteCard`
+ * and use the `topicToByte` adapter from `shared/adapters/topicToByte` to transform TopicData.
+ */
+
+import React, { useCallback, useMemo } from 'react';
+import { Pressable, Text, View, ViewStyle } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { ChatCircle, BookmarkSimple, Heart } from 'phosphor-react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
 import { Avatar } from '../ui/avatar';
-import { getThemeColors, spacing, borderRadius, createTextStyle } from '@/shared/design-system';
+import { BORDER_RADIUS, SPACING, getThemeColors } from '@/shared/theme-constants';
 import { useBookmarkStore } from '@/shared/useBookmarkSync';
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const MIN_TOUCH_TARGET = 44;
 
 export interface ByteCardProps {
   id: string | number;
@@ -33,7 +44,7 @@ export interface ByteCardProps {
 
 /**
  * ByteCard Component
- * 
+ *
  * Simplified card component matching Discourse /latest API structure:
  * - Title (always visible, wraps to next line)
  * - Hub and optional Teret (category path)
@@ -41,7 +52,7 @@ export interface ByteCardProps {
  * - Number of replies
  * - Activity (formatted timestamp)
  */
-export function ByteCard({
+function ByteCardComponent({
   id,
   title,
   hub,
@@ -58,59 +69,51 @@ export function ByteCard({
   hasMedia,
   coverImage,
 }: ByteCardProps) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = getThemeColors(isDark);
-  
+  const { themeMode, isAmoled } = useTheme();
+  const colors = useMemo(() => getThemeColors(themeMode, isAmoled), [themeMode, isAmoled]);
+
   // Read bookmark state from store, fallback to prop
   const isBookmarkedFromStore = useBookmarkStore(state => state.isBookmarked(Number(id)));
   const isBookmarked = isBookmarkedFromStore || isBookmarkedProp || false;
-  
+
   // Handle avatar source
-  const avatarSource = author.avatar && author.avatar.trim() !== '' 
-    ? { uri: author.avatar } 
+  const avatarSource = author.avatar && author.avatar.trim() !== ''
+    ? { uri: author.avatar }
     : undefined;
-  
+
   // Build category path: "Hub" or "Hub › Teret"
   const categoryPath = teret ? `${hub} › ${teret}` : hub;
-  
-  // AMOLED dark mode uses true black
-  const cardBackground = isAmoled ? '#000000' : colors.surface;
-  const cardBorder = isAmoled ? '#1a1a1a' : colors.border;
 
-  // Press feedback animation
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(1);
+  const cardStyle = useMemo(
+    () => ({
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      minHeight: MIN_TOUCH_TARGET,
+    }),
+    [colors.border, colors.card],
+  );
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
+  const triggerHaptic = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+  }, []);
+
+  const handlePress = useCallback(() => {
+    triggerHaptic();
+    onPress();
+  }, [onPress, triggerHaptic]);
 
   return (
-    <AnimatedPressable
-      style={[
-        styles.card,
-        {
-          backgroundColor: cardBackground,
-          borderColor: cardBorder,
-        },
-        animatedStyle,
-        style,
-      ]}
-      onPressIn={() => {
-        scale.value = withSpring(0.98);
-        opacity.value = withSpring(0.8);
-      }}
-      onPressOut={() => {
-        scale.value = withSpring(1);
-        opacity.value = withSpring(1);
-      }}
-      onPress={onPress}
+    <Pressable
+      className="mx-4 my-2 rounded-fomio-card border px-4 py-4"
+      style={({ pressed }) => [cardStyle, pressed && { opacity: 0.94 }, style]}
+      onPress={handlePress}
+      android_ripple={{ color: `${colors.border}50`, foreground: true }}
       accessible
       accessibilityRole="button"
       accessibilityLabel={`${title} by ${author.name || 'Unknown'}`}
+      accessibilityHint="Opens the byte details"
     >
-      <View style={styles.row}>
+      <View className="flex-row items-start">
         {/* Avatar */}
         <Avatar
           source={avatarSource}
@@ -119,222 +122,167 @@ export function ByteCard({
         />
 
         {/* Content */}
-        <View style={styles.content}>
+        <View className="ml-4 flex-1" style={{ minWidth: 0 }}>
           {/* Title row with unread indicator and bookmark */}
-          <View style={styles.titleRow}>
-            <Text 
-              style={[styles.title, { color: colors.text }]}
+          <View className="mb-1 flex-row items-start">
+            <Text
+              className="flex-1 text-body font-semibold text-fomio-foreground dark:text-fomio-foreground-dark"
               numberOfLines={2}
             >
               {title}
             </Text>
             {isBookmarked && (
-              <BookmarkSimple 
-                size={16} 
-                weight="fill" 
-                color={isDark ? '#fbbf24' : '#f59e0b'} 
-                style={{ marginLeft: 8 }}
-              />
+      <BookmarkSimple
+        size={16}
+        weight="fill"
+        color={colors.bookmark}
+        style={{ marginLeft: SPACING.sm }}
+      />
             )}
           </View>
 
-          {/* Meta row: Category path + Activity + Replies + Like count */}
-          <View style={styles.metaRow}>
-            {/* Category path */}
-            <TouchableOpacity
-              onPress={onCategoryPress}
-              disabled={!onCategoryPress}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              accessible={!!onCategoryPress}
-              accessibilityRole={onCategoryPress ? 'button' : 'text'}
-              accessibilityLabel={`View ${categoryPath}`}
-            >
-              <Text style={[styles.category, { color: colors.textSecondary }]}>
-                {categoryPath}
-              </Text>
-            </TouchableOpacity>
+          <MetaRow
+            categoryPath={categoryPath}
+            activity={activity}
+            unreadCount={unreadCount}
+            onCategoryPress={onCategoryPress}
+            colors={colors}
+          />
 
-            {/* Separator */}
-            <Text style={[styles.separator, { color: colors.textSecondary }]}>•</Text>
+          <EngagementRow
+            replies={replies}
+            likeCount={likeCount}
+            colors={colors}
+          />
 
-            {/* Activity timestamp */}
-            <Text style={[styles.activity, { color: colors.textSecondary }]}>
-              {activity}
-            </Text>
-
-            {/* Unread indicator */}
-            {unreadCount && unreadCount > 0 && (
-              <>
-                <Text style={[styles.separator, { color: colors.textSecondary }]}>•</Text>
-                <View style={styles.unreadBadge}>
-                  <View 
-                    style={[
-                      styles.unreadDot, 
-                      { backgroundColor: isDark ? '#3b82f6' : '#2563eb' }
-                    ]} 
-                  />
-                  <Text 
-                    style={[
-                      styles.unreadText, 
-                      { color: isDark ? '#3b82f6' : '#2563eb' }
-                    ]}
-                  >
-                    {unreadCount} new
-                  </Text>
-                </View>
-              </>
-            )}
-
-            {/* Spacer */}
-            <View style={styles.spacer} />
-
-            {/* Like count */}
-            {likeCount !== undefined && likeCount > 0 && (
-              <View style={styles.likes}>
-                <Heart size={16} weight="regular" color={colors.textSecondary} />
-                <Text style={[styles.likesText, { color: colors.textSecondary }]}>
-                  {likeCount}
-                </Text>
-              </View>
-            )}
-
-            {/* Replies count */}
-            <View style={styles.replies}>
-              <ChatCircle size={16} weight="regular" color={colors.textSecondary} />
-              <Text style={[styles.repliesText, { color: colors.textSecondary }]}>
-                {replies}
-              </Text>
-            </View>
-          </View>
-
-          {/* Media thumbnail hint */}
-          {hasMedia && coverImage && (
-            <View style={styles.mediaThumbnail}>
-              <Image
-                source={{ uri: coverImage }}
-                style={styles.thumbnailImage}
-                contentFit="cover"
-              />
-            </View>
-          )}
+          <MediaThumbnail coverImage={coverImage} hasMedia={hasMedia} />
         </View>
       </View>
-    </AnimatedPressable>
+    </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    marginHorizontal: spacing.md,
-    marginVertical: spacing.sm,
-    padding: spacing.md,
-  } as ViewStyle,
-  
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  } as ViewStyle,
-  
-  content: {
-    flex: 1,
-    marginLeft: spacing.md,
-    minWidth: 0, // Allows text to wrap properly
-  } as ViewStyle,
-  
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.xs,
-  } as ViewStyle,
-  
-  title: {
-    ...createTextStyle('bodyMedium', undefined, {
-      fontWeight: '700',
-    }),
-    flex: 1,
-  } as TextStyle,
-  
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  } as ViewStyle,
-  
-  unreadBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: spacing.xs,
-  } as ViewStyle,
-  
-  unreadDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: spacing.xs,
-  } as ViewStyle,
-  
-  unreadText: {
-    ...createTextStyle('caption', undefined, {
-      fontWeight: '600',
-    }),
-  } as TextStyle,
-  
-  likes: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: spacing.sm,
-  } as ViewStyle,
-  
-  likesText: {
-    ...createTextStyle('caption', undefined, {
-      fontWeight: '600',
-      marginLeft: spacing.xs,
-    }),
-  } as TextStyle,
-  
-  mediaThumbnail: {
-    marginTop: spacing.sm,
-    borderRadius: borderRadius.md,
-    overflow: 'hidden',
-    alignSelf: 'flex-end',
-  } as ViewStyle,
-  
-  thumbnailImage: {
-    width: 80,
-    height: 60,
-    borderRadius: borderRadius.md,
-  } as ImageStyle,
-  
-  category: {
-    ...createTextStyle('caption'),
-  } as TextStyle,
-  
-  separator: {
-    ...createTextStyle('caption'),
-    marginHorizontal: spacing.xs,
-  } as TextStyle,
-  
-  activity: {
-    ...createTextStyle('caption'),
-  } as TextStyle,
-  
-  spacer: {
-    flex: 1,
-    minWidth: spacing.sm,
-  } as ViewStyle,
-  
-  replies: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: spacing.sm,
-  } as ViewStyle,
-  
-  repliesText: {
-    ...createTextStyle('caption', undefined, {
-      fontWeight: '600',
-      marginLeft: spacing.xs,
-    }),
-  } as TextStyle,
+type MetaRowProps = {
+  categoryPath: string;
+  activity: string;
+  unreadCount?: number;
+  onCategoryPress?: () => void;
+  colors: ReturnType<typeof getThemeColors>;
+};
+
+const MetaRow = React.memo(function MetaRow({
+  categoryPath,
+  activity,
+  unreadCount,
+  onCategoryPress,
+  colors,
+}: MetaRowProps) {
+  const handleCategoryPress = useCallback(() => {
+    if (onCategoryPress) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      onCategoryPress();
+    }
+  }, [onCategoryPress]);
+
+  return (
+    <View className="flex-row flex-wrap items-center" accessible accessibilityRole="text">
+      <Pressable
+        onPress={handleCategoryPress}
+        disabled={!onCategoryPress}
+        hitSlop={12}
+        className="min-h-11 justify-center"
+        accessibilityRole={onCategoryPress ? 'button' : 'text'}
+        accessibilityLabel={`View ${categoryPath}`}
+        accessibilityHint="Opens the hub and category for this byte"
+      >
+        <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">{categoryPath}</Text>
+      </Pressable>
+
+      <Text className="mx-1 text-caption text-fomio-muted dark:text-fomio-muted-dark">•</Text>
+
+      <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">{activity}</Text>
+
+      {unreadCount && unreadCount > 0 && (
+        <>
+          <Text className="mx-1 text-caption text-fomio-muted dark:text-fomio-muted-dark">•</Text>
+          <View
+            className="ml-2 flex-row items-center"
+            accessibilityRole="text"
+            accessibilityLabel={`${unreadCount} new updates`}
+            accessible
+          >
+            <View
+              className="mr-1 h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: colors.accent }}
+            />
+            <Text
+              className="text-caption font-semibold"
+              style={{ color: colors.accent }}
+            >
+              {unreadCount} new
+            </Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
 });
+
+type EngagementRowProps = {
+  replies: number;
+  likeCount?: number;
+  colors: ReturnType<typeof getThemeColors>;
+};
+
+const EngagementRow = React.memo(function EngagementRow({ replies, likeCount, colors }: EngagementRowProps) {
+  return (
+    <View
+      className="mt-2 flex-row items-center"
+      style={{ minHeight: MIN_TOUCH_TARGET }}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${replies} replies${likeCount ? `, ${likeCount} likes` : ''}`}
+    >
+      {likeCount !== undefined && likeCount > 0 && (
+        <View className="mr-4 flex-row items-center">
+          <Heart size={16} weight="regular" color={colors.comment} />
+          <Text className="ml-1 text-caption font-semibold text-fomio-muted dark:text-fomio-muted-dark">
+            {likeCount}
+          </Text>
+        </View>
+      )}
+
+      <View className="flex-row items-center">
+        <ChatCircle size={16} weight="regular" color={colors.comment} />
+        <Text className="ml-1 text-caption font-semibold text-fomio-muted dark:text-fomio-muted-dark">{replies}</Text>
+      </View>
+    </View>
+  );
+});
+
+type MediaThumbnailProps = {
+  coverImage?: string;
+  hasMedia?: boolean;
+};
+
+const MediaThumbnail = React.memo(function MediaThumbnail({ coverImage, hasMedia }: MediaThumbnailProps) {
+  if (!hasMedia || !coverImage) {
+    return null;
+  }
+
+  return (
+    <View className="mt-2 self-end overflow-hidden rounded-lg">
+      <Image
+        source={{ uri: coverImage }}
+        style={{
+          width: 80,
+          height: 60,
+          borderRadius: BORDER_RADIUS.lg,
+        }}
+        contentFit="cover"
+      />
+    </View>
+  );
+});
+
+export const ByteCard = React.memo(ByteCardComponent);

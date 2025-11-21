@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -17,12 +17,15 @@ import {
   Warning,
   ArrowClockwise
 } from 'phosphor-react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/components/theme';
 import { useHeader } from '@/components/ui/header';
-import { ByteCard } from '@/components/feed/ByteCard';
+import { ByteCard } from '@/components/bytes/ByteCard';
+import { ByteCardSkeleton } from '@/components/bytes/ByteCardSkeleton';
+import { topicSummaryToByte } from '@/shared/adapters/topicSummaryToByte';
 import { discourseApi } from '../../shared/discourseApi';
 import { logger } from '../../shared/logger';
+import { getThemeColors } from '../../shared/theme-constants';
 
 interface Teret {
   id: number;
@@ -80,12 +83,13 @@ interface Topic {
 
 function TeretCard({ teret, onPress }: { teret: Teret; onPress: () => void }) {
   const { isDark, isAmoled } = useTheme();
+  const themeColors = getThemeColors(isDark);
   const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
+    background: isAmoled ? themeColors.background : (isDark ? themeColors.card : themeColors.background),
+    text: themeColors.foreground,
+    secondary: themeColors.secondary,
+    border: themeColors.border,
+    accent: themeColors.accent,
   };
 
   return (
@@ -129,52 +133,15 @@ function TeretCard({ teret, onPress }: { teret: Teret; onPress: () => void }) {
   );
 }
 
-// Format date helper for activity timestamp
-const formatDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) {
-      return 'Just now';
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`;
-    } else if (diffInHours < 168) { // 7 days
-      const days = Math.floor(diffInHours / 24);
-      return `${days}d ago`;
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-      });
-    }
-  } catch (error) {
-    return 'Unknown time';
-  }
-};
+// formatDate removed - now handled by formatTimeAgo in ByteCard component
 
 // Helper to render ByteCard from Topic
 function renderTopicCard(topic: Topic, onPress: () => void, onCategoryPress?: () => void) {
+  const byte = topicSummaryToByte(topic);
   return (
     <ByteCard
-      id={topic.id}
-      title={topic.title}
-      hub={topic.category.name}
-      author={{
-        name: topic.author.name,
-        avatar: topic.author.avatar,
-      }}
-      replies={topic.replyCount}
-      activity={formatDate(topic.lastPostedAt || topic.createdAt)}
+      byte={byte}
       onPress={onPress}
-      onCategoryPress={onCategoryPress}
-      unreadCount={topic.unreadCount}
-      isBookmarked={topic.isBookmarked}
-      likeCount={topic.likeCount}
-      hasMedia={topic.hasMedia}
-      coverImage={topic.coverImage}
     />
   );
 }
@@ -191,21 +158,34 @@ export default function FeedScreen(): React.ReactElement {
   const [pageTitle, setPageTitle] = useState('Feed');
   const [isHubView, setIsHubView] = useState(false);
 
-  // Configure header
-  useEffect(() => {
-    setHeader({
-      title: pageTitle,
-      canGoBack: true,
-      tone: "bg",
-    });
-    return () => resetHeader();
-  }, [pageTitle, setHeader, resetHeader]);
+  // Header-aware scroll handler (updates header isScrolled while allowing page-specific logic)
+  const { onScroll: headerScrollHandler, unregister: unregisterHeaderScroll } = useMemo(
+    () => registerScrollHandler(() => {}),
+    [registerScrollHandler]
+  );
+
+  useEffect(() => unregisterHeaderScroll, [unregisterHeaderScroll]);
+
+  // Configure header - use useFocusEffect to ensure header is set when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      setHeader({
+        title: pageTitle,
+        canGoBack: true,
+        tone: "bg",
+      });
+      return () => {
+        resetHeader();
+      };
+    }, [pageTitle, setHeader, resetHeader])
+  );
   
+  const themeColors = getThemeColors(isDark);
   const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    error: '#ef4444',
+    background: isAmoled ? themeColors.background : (isDark ? themeColors.background : themeColors.background),
+    text: themeColors.foreground,
+    secondary: themeColors.secondary,
+    error: themeColors.destructive,
   };
 
   // Load data based on category parameter
@@ -225,7 +205,7 @@ export default function FeedScreen(): React.ReactElement {
         const targetCategory = allCategories.find((cat: any) => cat.slug === category);
         
         // Debug logging
-        console.log('🔍 Feed Debug:', {
+        logger.debug('Feed Debug', {
           category,
           targetCategory: targetCategory ? {
             id: targetCategory.id,
@@ -249,7 +229,7 @@ export default function FeedScreen(): React.ReactElement {
         // Check if this category has subcategories (terets)
         const subcategories = allCategories.filter((cat: any) => cat.parent_category_id === targetCategory.id);
         
-        console.log('🔍 Subcategories Debug:', {
+        logger.debug('Subcategories Debug', {
           targetCategoryId: targetCategory.id,
           subcategoriesCount: subcategories.length,
           subcategories: subcategories.map((cat: any) => ({
@@ -265,20 +245,21 @@ export default function FeedScreen(): React.ReactElement {
           setIsHubView(true);
           setPageTitle(targetCategory.name);
           
+          const currentThemeColors = getThemeColors(isDark);
           const terets = subcategories.map((cat: any) => ({
             id: cat.id,
             name: cat.name,
             description: cat.description || '',
             slug: cat.slug,
-            color: cat.color || '#000000',
-            text_color: cat.text_color || '#ffffff',
+            color: cat.color || currentThemeColors.foreground,
+            text_color: cat.text_color || currentThemeColors.background,
             topic_count: cat.topic_count || 0,
             post_count: cat.post_count || 0,
             parent_category_id: cat.parent_category_id,
             parent_category: {
               id: targetCategory.id,
               name: targetCategory.name,
-              color: targetCategory.color || '#000000',
+              color: targetCategory.color || themeColors.foreground,
               slug: targetCategory.slug,
             },
           }));
@@ -295,6 +276,7 @@ export default function FeedScreen(): React.ReactElement {
             throw new Error('Failed to load topics');
           }
 
+          const currentThemeColors = getThemeColors(isDark);
           const transformedTopics = topicsResponse.data.topic_list.topics.map((topic: any) => {
             // Extract first image from excerpt if available
             const excerpt = topic.excerpt || '';
@@ -314,7 +296,7 @@ export default function FeedScreen(): React.ReactElement {
             category: {
               id: topic.category_id,
               name: targetCategory.name,
-              color: targetCategory.color || '#000000',
+              color: targetCategory.color || currentThemeColors.foreground,
               slug: targetCategory.slug,
             },
             tags: topic.tags || [],
@@ -362,6 +344,7 @@ export default function FeedScreen(): React.ReactElement {
           43: 'Announcements',
         };
 
+        const currentThemeColors = getThemeColors(isDark);
         const transformedTopics = topicsResponse.data.topic_list.topics.slice(0, 20).map((topic: any) => {
             // Extract first image from excerpt if available
             const excerpt = topic.excerpt || '';
@@ -381,7 +364,7 @@ export default function FeedScreen(): React.ReactElement {
           category: {
             id: topic.category_id,
             name: categoryMap[topic.category_id] || 'Unknown',
-            color: '#000000',
+            color: currentThemeColors.foreground,
             slug: 'unknown',
           },
           tags: topic.tags || [],
@@ -415,7 +398,7 @@ export default function FeedScreen(): React.ReactElement {
     } finally {
       setIsLoading(false);
     }
-  }, [category]);
+  }, [category, isDark]);
 
   // Handle refresh
   const handleRefresh = useCallback(async () => {
@@ -431,12 +414,12 @@ export default function FeedScreen(): React.ReactElement {
 
   // Handle navigation
   const handleTeretPress = useCallback((teret: Teret) => {
-    console.log('Teret pressed:', teret.name);
+    logger.debug('Teret pressed', { teretName: teret.name, teretSlug: teret.slug });
     router.push(`/feed?category=${teret.slug}`);
   }, []);
 
   const handleBytePress = useCallback((topic: Topic) => {
-    console.log('Byte pressed:', topic.id);
+    logger.debug('Byte pressed', { topicId: topic.id });
     router.push(`/feed/${topic.id}`);
   }, []);
 
@@ -470,20 +453,13 @@ export default function FeedScreen(): React.ReactElement {
     );
   }
 
-  // Register scroll handler
-  useEffect(() => {
-    const unregister = registerScrollHandler((event) => {
-      // Scroll handler registered - header context will update isScrolled automatically
-    });
-    return unregister;
-  }, [registerScrollHandler]);
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onScroll={headerScrollHandler}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl

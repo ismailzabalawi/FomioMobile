@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
-import { AppHeaderProps } from '../AppHeader';
+import { APP_HEADER_DEFAULTS } from '../AppHeader';
 
 // Header state interface - all fields optional (overrides only)
 export interface HeaderState {
@@ -24,23 +24,15 @@ export interface HeaderState {
   statusBarStyle?: 'light' | 'dark' | 'auto';
   extendToStatusBar?: boolean;
   scrollThreshold?: number;
+  largeTitle?: boolean;
 }
 
 // Default header values
-const DEFAULT_HEADER_STATE: Required<Omit<HeaderState, 'title' | 'subtitle' | 'onBackPress' | 'leftNode' | 'rightActions' | 'subHeader' | 'progress'>> = {
-  canGoBack: false,
-  tone: 'card',
-  elevated: false,
-  isScrolled: false,
-  withSafeTop: true,
-  enableHaptics: true,
-  centerTitle: false,
-  titleNumberOfLines: 1,
-  subtitleNumberOfLines: 1,
-  titleFontSize: 22,
-  statusBarStyle: 'auto',
-  extendToStatusBar: true,
-  scrollThreshold: 100, // HEADER_VISIBILITY_THRESHOLD from useScrollHeader.ts
+const DEFAULT_HEADER_STATE: Required<
+  Omit<HeaderState, 'title' | 'subtitle' | 'onBackPress' | 'leftNode' | 'rightActions' | 'subHeader' | 'progress'>
+> = {
+  ...APP_HEADER_DEFAULTS,
+  scrollThreshold: 24, // Quick settle like X/Twitter when nudging the feed
 };
 
 // State context (read-only)
@@ -52,7 +44,9 @@ interface HeaderStateContextValue {
 interface HeaderDispatchContextValue {
   setHeader: (partial: Partial<HeaderState>) => void;
   resetHeader: () => void;
-  registerScrollHandler: (handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void) => () => void;
+  registerScrollHandler: (
+    handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
+  ) => { onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void; unregister: () => void };
 }
 
 const HeaderStateContext = createContext<HeaderStateContextValue | undefined>(undefined);
@@ -64,7 +58,6 @@ export interface HeaderProviderProps {
 
 export function HeaderProvider({ children }: HeaderProviderProps) {
   const [headerState, setHeaderState] = useState<HeaderState>({});
-  const [scrollHandlers, setScrollHandlers] = useState<Set<(event: NativeSyntheticEvent<NativeScrollEvent>) => void>>(new Set());
 
   // Merge partial state updates
   const setHeader = useCallback((partial: Partial<HeaderState>) => {
@@ -83,31 +76,29 @@ export function HeaderProvider({ children }: HeaderProviderProps) {
   // Register scroll handler and return unregister function
   const registerScrollHandler = useCallback(
     (handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void) => {
-      // Create wrapped handler that updates isScrolled state
-      // Use captured scrollThresholdValue instead of reading from headerState
+      let isRegistered = true;
+
+      // Create wrapped handler that updates isScrolled state and calls the original handler
       const wrappedHandler = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        if (!isRegistered) return;
+
         const offsetY = event.nativeEvent.contentOffset.y;
         const isScrolled = offsetY > scrollThresholdValue;
-        
+
         // Update scroll state
         setHeaderState((prev) => {
           if (prev.isScrolled === isScrolled) return prev;
           return { ...prev, isScrolled };
         });
-        
-        // Call original handler
+
         handler(event);
       };
 
-      setScrollHandlers((prev) => new Set(prev).add(wrappedHandler));
-
-      // Return unregister function
-      return () => {
-        setScrollHandlers((prev) => {
-          const next = new Set(prev);
-          next.delete(wrappedHandler);
-          return next;
-        });
+      return {
+        onScroll: wrappedHandler,
+        unregister: () => {
+          isRegistered = false;
+        },
       };
     },
     [scrollThresholdValue]
@@ -155,4 +146,3 @@ export function useHeaderDispatch() {
   }
   return context;
 }
-

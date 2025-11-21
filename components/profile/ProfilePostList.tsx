@@ -9,7 +9,8 @@
 import React, { useCallback } from 'react';
 import { View, Text, FlatList, ActivityIndicator } from 'react-native';
 import { useTheme } from '@/components/theme';
-import { ByteCard } from '../feed/ByteCard';
+import { ByteCard } from '@/components/bytes/ByteCard';
+import { postItemToByte } from '@/shared/adapters/postItemToByte';
 import { router } from 'expo-router';
 import { discourseApi } from '@/shared/discourseApi';
 
@@ -41,31 +42,7 @@ export interface ProfilePostListProps {
   emptyMessage?: string;
 }
 
-// Format date helper for activity timestamp
-const formatDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) {
-      return 'Just now';
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`;
-    } else if (diffInHours < 168) { // 7 days
-      const days = Math.floor(diffInHours / 24);
-      return `${days}d ago`;
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-      });
-    }
-  } catch (error) {
-    return 'Unknown time';
-  }
-};
+// formatDate removed - now handled by formatTimeAgo in ByteCard component
 
 export function ProfilePostList({
   posts,
@@ -83,23 +60,11 @@ export function ProfilePostList({
 
   const renderItem = useCallback(
     ({ item }: { item: PostItem }) => {
+      const byte = postItemToByte(item);
       return (
         <ByteCard
-          id={item.id}
-          title={item.title}
-          hub={item.hubName}
-          teret={item.teretName}
-          author={{
-            name: item.author.name,
-            avatar: item.author.avatar,
-          }}
-          replies={item.replyCount}
-          activity={formatDate(item.lastPostedAt || item.createdAt)}
+          byte={byte}
           onPress={() => handlePress(item.id)}
-          isBookmarked={item.isBookmarked}
-          likeCount={item.likeCount}
-          hasMedia={item.hasMedia}
-          coverImage={item.coverImage}
         />
       );
     },

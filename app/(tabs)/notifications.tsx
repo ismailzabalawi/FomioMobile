@@ -403,6 +403,25 @@ export default function NotificationsScreen(): React.ReactElement {
     return () => resetHeader();
   }, [setHeader, resetHeader]);
 
+  // Define handlers before they're used in useEffect
+  const handleMarkAllRead = useCallback(() => {
+    Alert.alert('Mark All as Read', 'Mark all notifications as read?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Mark Read',
+        onPress: async () => {
+          await markAllAsRead();
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        },
+      },
+    ]);
+  }, [markAllAsRead]);
+
+  const handleSettingsPress = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    router.push('/(profile)/notification-settings' as any);
+  }, [router]);
+
   // Use ref to track previous action keys to prevent infinite loops
   const prevActionKeysRef = useRef<string>('');
 
@@ -506,24 +525,6 @@ export default function NotificationsScreen(): React.ReactElement {
       console.error('Failed to mark notification as read:', error);
     }
   }, [markAsRead]);
-
-  const handleMarkAllRead = useCallback(() => {
-    Alert.alert('Mark All as Read', 'Mark all notifications as read?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Mark Read',
-        onPress: async () => {
-          await markAllAsRead();
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-        },
-      },
-    ]);
-  }, [markAllAsRead]);
-
-  const handleSettingsPress = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
-    router.push('/(profile)/notification-settings' as any);
-  }, [router]);
 
   // Render filter chip
   const renderFilterChip = useCallback((

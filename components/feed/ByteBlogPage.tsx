@@ -510,6 +510,19 @@ export function ByteBlogPage({
     [handleScrollDebounced]
   );
 
+  // Header-aware scroll handler that also updates header scroll state
+  const { onScroll: headerAwareScroll, unregister: unregisterHeaderScroll } = useMemo(
+    () => registerScrollHandler(handleScroll),
+    [registerScrollHandler, handleScroll]
+  );
+
+  useEffect(() => unregisterHeaderScroll, [unregisterHeaderScroll]);
+
+  // Check if author has Staff badge - defined before useEffect that uses it
+  const isStaff = useMemo(() => {
+    return topic?.authorBadges?.some(badge => badge.name === 'Staff') || false;
+  }, [topic]);
+
   // Configure header
   useEffect(() => {
     if (topic) {
@@ -554,13 +567,6 @@ export function ByteBlogPage({
     }
     return () => resetHeader();
   }, [topic, isDark, isStaff, formatTimeAgo, setHeader, resetHeader, setBackBehavior, setActions, setSubHeader, onShare, retry]);
-
-  // Register scroll handler
-  useEffect(() => {
-    const unregister = registerScrollHandler(handleScroll);
-    return unregister;
-  }, [registerScrollHandler, handleScroll]);
-
 
   // Empty states for comments
   const renderEmptyComments = useCallback(() => {
@@ -878,9 +884,6 @@ export function ByteBlogPage({
     );
   }
 
-  // Check if author has Staff badge
-  const isStaff = topic?.authorBadges?.some(badge => badge.name === 'Staff') || false;
-
   // Main render - MINIMAL VERSION
   return (
     <KeyboardAvoidingView
@@ -904,7 +907,7 @@ export function ByteBlogPage({
             data={flatListData}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
-            onScroll={handleScroll}
+            onScroll={headerAwareScroll}
             scrollEventThrottle={16}
             onScrollToIndexFailed={handleScrollToIndexFailed}
             contentContainerStyle={{ 

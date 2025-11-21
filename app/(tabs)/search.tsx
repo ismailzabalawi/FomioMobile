@@ -20,52 +20,21 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { useHeader } from '@/components/ui/header';
-import { ByteCard } from '@/components/feed/ByteCard';
+import { ByteCard } from '@/components/bytes/ByteCard';
+import { searchResultToByte } from '@/shared/adapters/searchResultToByte';
 import { useSearch } from '../../shared/useSearch';
 import { router } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-// Format date helper for activity timestamp
-const formatDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) {
-      return 'Just now';
-    } else if (diffInHours < 24) {
-      return `${diffInHours}h ago`;
-    } else if (diffInHours < 168) { // 7 days
-      const days = Math.floor(diffInHours / 24);
-      return `${days}d ago`;
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-      });
-    }
-  } catch (error) {
-    return 'Unknown time';
-  }
-};
+// formatDate removed - now handled by formatTimeAgo in ByteCard component
 
 // Helper to render ByteCard from topic data
 function renderTopicCard(topic: any, onPress: () => void, onCategoryPress?: () => void) {
+  const byte = searchResultToByte(topic);
   return (
     <ByteCard
-      id={topic.id}
-      title={topic.title}
-      hub={topic.category?.name || 'Uncategorized'}
-      author={{
-        name: topic.author?.name || 'Unknown',
-        avatar: topic.author?.avatar,
-      }}
-      replies={topic.replyCount || 0}
-      activity={formatDate(topic.lastPostedAt || topic.createdAt || new Date().toISOString())}
+      byte={byte}
       onPress={onPress}
-      onCategoryPress={onCategoryPress}
     />
   );
 }

@@ -1,8 +1,8 @@
 import 'react-native-reanimated';
 import React, { useRef, useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, Alert } from 'react-native';
-import { ThemedBottomSheet, BottomSheetModalRef } from '@/components/ui';
-import { DotsThreeVertical, Bell, BellSlash, Pin, Lock, Archive, Flag, Link, Share as ShareIcon } from 'phosphor-react-native';
+import { ThemedBottomSheet, BottomSheetModalRef } from '@/components/ui/bottom-sheet';
+import { DotsThreeVertical, Bell, BellSlash, PushPin, Lock, Archive, Flag, Link, Share as ShareIcon } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
 import { TopicData } from '../../shared/useTopic';
@@ -217,7 +217,7 @@ export function OverflowMenu({
                 backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
               }}
             >
-              <Pin size={20} color={colors.foreground} weight="regular" />
+              <PushPin size={20} color={colors.foreground} weight="regular" />
               <Text className="ml-3 text-base font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
                 {topic.isPinned ? 'Unpin' : 'Pin'}
               </Text>
