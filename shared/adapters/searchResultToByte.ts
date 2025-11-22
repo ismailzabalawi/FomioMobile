@@ -1,6 +1,9 @@
 import type { Byte } from '@/types/byte';
 import { extractMedia } from '@/lib/utils/media';
 
+// Declare __DEV__ for TypeScript (React Native global)
+declare const __DEV__: boolean;
+
 const FALLBACK_HTML = '<p>[Content unavailable]</p>';
 
 /**
@@ -40,8 +43,8 @@ export function searchResultToByte(result: SearchResultTopic): Byte {
   // Use content, fallback to excerpt, then to FALLBACK_HTML
   const cooked = result.content || result.excerpt || FALLBACK_HTML;
   
-  // Warn if both content and excerpt are missing (telemetry)
-  if (!result.content && !result.excerpt) {
+  // Only warn in development mode (expected for some search results)
+  if (__DEV__ && !result.content && !result.excerpt) {
     console.warn('searchResultToByte: missing content and excerpt for result', result.id);
   }
   

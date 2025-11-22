@@ -1,12 +1,11 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { Pressable, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import type { Byte } from '@/types/byte';
 import { ByteCardHeader } from './ByteCardHeader';
 import { ByteCardContent } from './ByteCardContent';
 import { ByteCardMedia } from './ByteCardMedia';
 import { ByteCardFooter } from './ByteCardFooter';
+import { useByteCardActions } from './useByteCardActions';
 
 export interface ByteCardProps {
   byte: Byte;
@@ -31,16 +30,15 @@ export function ByteCard({
   showSeparator = true,
   onPress,
 }: ByteCardProps) {
-  const router = useRouter();
+  const { onCardPress } = useByteCardActions(byte);
 
-  const handlePress = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+  const handlePress = () => {
     if (onPress) {
       onPress();
     } else {
-      router.push(`/feed/${byte.id}`);
+      onCardPress();
     }
-  }, [byte.id, onPress, router]);
+  };
 
   return (
     <Pressable

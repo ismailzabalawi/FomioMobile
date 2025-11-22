@@ -27,7 +27,9 @@ import {
   MediaItem,
   HelpSheet,
 } from '@/components/compose';
-import { useHeader } from '@/components/ui/header';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { useScreenBackBehavior } from '@/shared/hooks/useScreenBackBehavior';
+import { useSafeNavigation } from '@/shared/hooks/useSafeNavigation';
 import { TeretPickerSheet } from '@/components/terets/TeretPickerSheet';
 
 interface ValidationErrors {
@@ -39,7 +41,7 @@ interface ValidationErrors {
 
 export default function ComposeScreen(): React.ReactElement {
   const { isDark } = useTheme();
-  const { setHeader, resetHeader, setActions, setProgress, setBackBehavior } = useHeader();
+  const { safeBack } = useSafeNavigation();
   const { 
     terets, 
     allCategories, // All categories (Hubs + Terets) for picker
@@ -128,22 +130,20 @@ export default function ComposeScreen(): React.ReactElement {
   }, [titleLen, bodyLen, minTitle, minPost, selectedTeret, isAuthenticated, isAuthLoading, isCreating, settingsLoading]);
 
   const handleCancel = useCallback((): void => {
-    router.back();
-  }, []);
+    safeBack();
+  }, [safeBack]);
 
   // Configure header
-  useEffect(() => {
-    setHeader({
-      title: "Create Byte",
-      withSafeTop: false,
-      tone: "card",
-    });
-    setBackBehavior({
-      canGoBack: true,
-      onBackPress: handleCancel,
-    });
-    return () => resetHeader();
-  }, [setHeader, resetHeader, setBackBehavior, handleCancel]);
+  useScreenHeader({
+    title: "Create Byte",
+    withSafeTop: false,
+    tone: "card",
+    canGoBack: true,
+  }, []);
+
+  useScreenBackBehavior({
+    onBackPress: handleCancel,
+  }, [handleCancel]);
 
   const handlePost = useCallback(async (): Promise<void> => {
     // Clear previous errors
@@ -240,7 +240,7 @@ export default function ComposeScreen(): React.ReactElement {
         setSelectedTeret(null);
         setImages([]);
         setSuccessMessage('');
-        router.back();
+        safeBack();
       }, 1500);
     } catch (error: any) {
       const errorMsg = error?.message || 'Failed to create post. Please try again.';
@@ -265,6 +265,7 @@ export default function ComposeScreen(): React.ReactElement {
     user,
     minTitle,
     minPost,
+    safeBack,
   ]);
 
   const handleTeretPress = useCallback(() => {

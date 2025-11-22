@@ -9,6 +9,8 @@ import { CommentItem, Comment } from './CommentItem';
 import { useTopic, TopicData } from '../../shared/useTopic';
 import { usePostActions } from '../../shared/usePostActions';
 import { discourseApi } from '../../shared/discourseApi';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { useScreenBackBehavior } from '@/shared/hooks/useScreenBackBehavior';
 import { useHeader } from '../ui/header';
 import { StatusChipsRow } from './StatusChipsRow';
 import { OverflowMenu } from './OverflowMenu';
@@ -38,7 +40,7 @@ export function ByteBlogPage({
 }: ByteBlogPageProps) {
   const { isDark, isAmoled } = useTheme();
   const { user, isAuthenticated } = useAuth();
-  const { setHeader, resetHeader, setSubHeader, setActions, setBackBehavior, registerScrollHandler } = useHeader();
+  const { registerScrollHandler } = useHeader();
   const { topic, isLoading, hasError, errorMessage, retry, refetch } = useTopic(topicId);
   const [isCommentsVisible, setIsCommentsVisible] = useState(initialCommentsVisible);
   const [replyTo, setReplyTo] = useState<{ postNumber: number; username: string } | null>(null);
@@ -524,49 +526,53 @@ export function ByteBlogPage({
   }, [topic]);
 
   // Configure header
-  useEffect(() => {
-    if (topic) {
-      setHeader({
-        title: topic.category.name || 'Byte',
-        canGoBack: true,
-        tone: "bg",
-        withSafeTop: false,
-        titleFontSize: 24,
-        statusBarStyle: isDark ? 'light' : 'dark',
-        extendToStatusBar: true,
-      });
-      setBackBehavior({
-        canGoBack: true,
-      });
-      setActions([
-        <ShareButton 
-          key="share" 
-          title={topic.title || ''} 
-          url={topic.url || ''} 
-          onPress={onShare}
-        />,
-        <OverflowMenu 
-          key="menu"
-          topic={topic}
-          onWatch={onShare}
-          onMute={onShare}
-          onPin={onShare}
-          onClose={onShare}
-          onShare={onShare}
-          onRefresh={retry}
-        />
-      ]);
-      setSubHeader(
-        <StatusChipsRow
-          isPinned={topic.isPinned}
-          isLocked={topic.isClosed}
-          isArchived={topic.isArchived}
-          isStaff={isStaff}
-        />
-      );
-    }
-    return () => resetHeader();
-  }, [topic, isDark, isStaff, formatTimeAgo, setHeader, resetHeader, setBackBehavior, setActions, setSubHeader, onShare, retry]);
+  const headerActions = useMemo(() => {
+    if (!topic) return undefined;
+    return [
+      <ShareButton 
+        key="share" 
+        title={topic.title || ''} 
+        url={topic.url || ''} 
+        onPress={onShare}
+      />,
+      <OverflowMenu 
+        key="menu"
+        topic={topic}
+        onWatch={onShare}
+        onMute={onShare}
+        onPin={onShare}
+        onClose={onShare}
+        onShare={onShare}
+        onRefresh={retry}
+      />
+    ];
+  }, [topic, onShare, retry]);
+
+  const headerSubHeader = useMemo(() => {
+    if (!topic) return undefined;
+    return (
+      <StatusChipsRow
+        isPinned={topic.isPinned}
+        isLocked={topic.isClosed}
+        isArchived={topic.isArchived}
+        isStaff={isStaff}
+      />
+    );
+  }, [topic, isStaff]);
+
+  useScreenHeader({
+    title: topic?.category?.name ?? "Byte",
+    canGoBack: true,
+    tone: "bg",
+    withSafeTop: false,
+    titleFontSize: 24,
+    statusBarStyle: isDark ? 'light' : 'dark',
+    extendToStatusBar: true,
+    rightActions: headerActions,
+    subHeader: headerSubHeader,
+  }, [topic, isDark, isStaff, headerActions, headerSubHeader]);
+
+  useScreenBackBehavior({}, []);
 
   // Empty states for comments
   const renderEmptyComments = useCallback(() => {

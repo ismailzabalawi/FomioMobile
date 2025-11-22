@@ -15,6 +15,8 @@ import Animated from 'react-native-reanimated';
 import { DotsThreeVertical, Flag, Prohibit } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { useSafeNavigation } from '@/shared/hooks/useSafeNavigation';
 import { useHeader } from '@/components/ui/header';
 import { useDiscourseUser } from '@/shared/useDiscourseUser';
 import { useAuth } from '@/shared/useAuth';
@@ -57,7 +59,8 @@ export default function PublicProfileScreen(): React.ReactElement {
   const { media, isLoading: mediaLoading } = useUserMedia(username);
 
   const [refreshing, setRefreshing] = React.useState(false);
-  const { setHeader, resetHeader, setActions } = useHeader();
+  const { safeBack } = useSafeNavigation();
+  const { setActions } = useHeader();
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -121,7 +124,7 @@ export default function PublicProfileScreen(): React.ReactElement {
               const response = await discourseApi.blockUser(user.username);
               if (response.success) {
                 Alert.alert('Blocked', `${user.username} has been blocked.`);
-                router.back();
+                safeBack();
               } else {
                 Alert.alert('Error', response.error || 'Failed to block user');
               }
@@ -194,22 +197,18 @@ export default function PublicProfileScreen(): React.ReactElement {
     >
       <DotsThreeVertical size={24} color={isDark ? '#f9fafb' : '#111827'} weight="regular" />
     </TouchableOpacity>
-  ), [user?.username, handleReport, handleBlock, isDark]);
+  ), [user?.username, handleReport, handleBlock, isDark, safeBack]);
 
   // Configure header with dynamic title
-  React.useEffect(() => {
-    if (!user) return;
-    
-    const displayName = user.name || user.username || 'Profile';
-    setHeader({
-      title: displayName,
-      canGoBack: true,
-      withSafeTop: false,
-      tone: "bg",
-    });
-    setActions([menuButton]);
-    return () => resetHeader();
-  }, [user, menuButton, setHeader, resetHeader, setActions]);
+  const displayName = user ? (user.name || user.username || 'Profile') : 'Profile';
+  
+  useScreenHeader({
+    title: displayName,
+    canGoBack: true,
+    withSafeTop: false,
+    tone: "bg",
+    rightActions: [menuButton],
+  }, [user, menuButton]);
 
   // Show loading state
   if (userLoading && !user) {

@@ -206,6 +206,7 @@ export const COMPONENT_TOKENS = {
   },
 } as const;
 
+import { Appearance } from 'react-native';
 import type { ThemeMode } from '@/components/theme';
 
 type ThemeColors = typeof COLORS.light | typeof COLORS.dark | typeof COLORS.darkAmoled;
@@ -233,12 +234,14 @@ export function getThemeColors(themeModeOrIsDark: ThemeMode | boolean, isAmoled?
   if (themeMode === 'dark') {
     return COLORS.darkAmoled;
   }
-  // For system mode, check if resolved to dark (isAmoled indicates dark)
-  // This maintains backward compatibility with the signature
-  if (isAmoled) {
-    return COLORS.darkAmoled;
-  }
-  return COLORS.light;
+  // For system mode, check the resolved color scheme
+  // If isAmoled is provided, use it (indicates system resolved to dark mode)
+  // Otherwise, check the system color scheme directly
+  const isSystemDark = isAmoled !== undefined 
+    ? isAmoled 
+    : Appearance.getColorScheme() === 'dark';
+  
+  return isSystemDark ? COLORS.darkAmoled : COLORS.light;
 }
 
 /**
@@ -276,4 +279,3 @@ export const createThemedStyles = (isDark: boolean) => {
     },
   };
 };
-

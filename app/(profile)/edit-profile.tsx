@@ -13,7 +13,9 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
-import { useHeader } from '@/components/ui/header';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { useScreenBackBehavior } from '@/shared/hooks/useScreenBackBehavior';
+import { useSafeNavigation } from '@/shared/hooks/useSafeNavigation';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AuthGate } from '../../components/shared/auth-gate';
 import { AuthPromptView } from '../../components/shared/auth-prompt-view';
@@ -28,7 +30,7 @@ import { router } from 'expo-router';
 
 export default function EditProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
-  const { setHeader, resetHeader, setBackBehavior } = useHeader();
+  const { safeBack } = useSafeNavigation();
   const { user: authUser } = useAuth();
   const { user, settings, loading, updating, error, updateProfile, uploadAvatar, refreshUser } = useDiscourseUser(authUser?.username);
   
@@ -215,7 +217,7 @@ export default function EditProfileScreen(): React.ReactElement {
         });
         Alert.alert('Success', 'Profile updated successfully!');
         setHasChanges(false);
-        router.back();
+        safeBack();
       } else {
         const errorMessage = error || 'Failed to update profile. Please try again.';
         console.error('❌ Profile update failed:', {
@@ -237,7 +239,7 @@ export default function EditProfileScreen(): React.ReactElement {
       console.error('❌ Profile update exception:', errorDetails);
       Alert.alert('Error', 'An error occurred while updating your profile.');
     }
-  }, [user, displayName, bio, location, website, updateProfile, error, loading, authUser, refreshUser]);
+  }, [user, displayName, bio, location, website, updateProfile, error, loading, authUser, refreshUser, safeBack]);
 
   const handleCancel = useCallback(() => {
     if (hasChanges) {
@@ -246,28 +248,25 @@ export default function EditProfileScreen(): React.ReactElement {
         'You have unsaved changes. Are you sure you want to discard them?',
         [
           { text: 'Keep Editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => router.back() }
+          { text: 'Discard', style: 'destructive', onPress: () => safeBack() }
         ]
       );
     } else {
-      router.back();
+      safeBack();
     }
-  }, [hasChanges]);
+  }, [hasChanges, safeBack]);
 
   // Configure header
-  React.useEffect(() => {
-    setHeader({
-      title: "Edit Profile",
-      canGoBack: true,
-      withSafeTop: false,
-      tone: "bg",
-    });
-    setBackBehavior({
-      canGoBack: true,
-      onBackPress: handleCancel,
-    });
-    return () => resetHeader();
-  }, [setHeader, resetHeader, setBackBehavior, handleCancel]);
+  useScreenHeader({
+    title: "Edit Profile",
+    canGoBack: true,
+    withSafeTop: false,
+    tone: "bg",
+  }, []);
+
+  useScreenBackBehavior({
+    onBackPress: handleCancel,
+  }, [handleCancel]);
 
   if (loading) {
     return (

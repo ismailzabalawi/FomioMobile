@@ -382,10 +382,16 @@ class DiscourseApiService {
           const isWriteOperation = method !== 'GET' && method !== 'HEAD';
           
           if (isWriteOperation && !hasUsername) {
-            console.warn('⚠️ Write operation without Api-Username header - request may fail', {
+            console.error('❌ Write operation without Api-Username header - request will fail with CSRF error', {
               method,
               endpoint,
             });
+            // Return early to prevent CSRF error
+            return {
+              success: false,
+              error: 'Authentication incomplete. Please sign in again.',
+              status: 403,
+            };
           }
           
           console.log('🔑 Using User API Key for authentication', {
@@ -395,6 +401,19 @@ class DiscourseApiService {
             method,
           });
         } else {
+          // For write operations without API key, return early
+          const isWriteOperation = method !== 'GET' && method !== 'HEAD';
+          if (isWriteOperation) {
+            console.error('❌ Write operation without API key - request will fail', {
+              method,
+              endpoint,
+            });
+            return {
+              success: false,
+              error: 'Authentication required. Please sign in to perform this action.',
+              status: 401,
+            };
+          }
           console.log('⚠️ User API Key not found, request may fail');
         }
       } catch (error) {
@@ -444,20 +463,42 @@ class DiscourseApiService {
           
           // Handle 401/403 (unauthorized/forbidden) - API key expired or invalid
           if (response.status === 401 || response.status === 403) {
-            console.log('🔒 API key expired or invalid (401/403), clearing authentication');
+            const isCsrfError = errorData.errors?.some((err: string) => 
+              typeof err === 'string' && err.includes('CSRF')
+            ) || errorData.message?.includes('CSRF');
             
-            // Clear User API Key
-            try {
-              const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
-              await UserApiKeyManager.clearApiKey();
-              console.log('🔑 User API Key cleared due to 401/403');
-            } catch (error) {
-              console.warn('Failed to clear User API Key', error);
+            if (isCsrfError) {
+              // CSRF error usually means API key authentication failed
+              // This can happen if:
+              // 1. API key is missing
+              // 2. Api-Username header is missing (required for write operations)
+              // 3. API key doesn't have write permissions
+              console.error('🔒 CSRF error (403) - API key authentication issue', {
+                endpoint,
+                method: options.method || 'GET',
+                hasApiKey: !!headers['User-Api-Key'],
+                hasUsername: !!headers['Api-Username'],
+              });
+            } else {
+              console.log('🔒 API key expired or invalid (401/403), clearing authentication');
+            }
+            
+            // Clear User API Key only if it's not a CSRF error (CSRF might be fixable)
+            if (!isCsrfError) {
+              try {
+                const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
+                await UserApiKeyManager.clearApiKey();
+                console.log('🔑 User API Key cleared due to 401/403');
+              } catch (error) {
+                console.warn('Failed to clear User API Key', error);
+              }
             }
             
             return {
               success: false,
-              error: 'Authorization expired. Please authorize the app again.',
+              error: isCsrfError 
+                ? 'Authentication failed. Please sign in again to perform this action.'
+                : 'Authorization expired. Please authorize the app again.',
               errors: errorData.errors,
               status: response.status, // Include status for error handling
             };
@@ -470,6 +511,18 @@ class DiscourseApiService {
               error: 'No active session',
               status: 404,
             };
+          }
+          
+          // Handle 429 (Rate Limiting) - retry with exponential backoff
+          if (response.status === 429 && retries > 0) {
+            const retryAfter = response.headers.get('Retry-After');
+            const delayMs = retryAfter 
+              ? parseInt(retryAfter, 10) * 1000 
+              : Math.min(60000, 1000 * Math.pow(2, 4 - retries)); // Exponential backoff, max 60s
+            
+            console.warn(`⏳ Rate limited (429). Retrying after ${delayMs}ms (${retries} retries left)`);
+            await this.delay(delayMs);
+            return this.makeRequest<T>(endpoint, options, retries - 1);
           }
           
           // Retry on 5xx errors (server errors)

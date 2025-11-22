@@ -2,6 +2,9 @@ import type { Byte as DiscourseByte } from '../discourseApi';
 import type { Byte } from '@/types/byte';
 import { extractMedia } from '@/lib/utils/media';
 
+// Declare __DEV__ for TypeScript (React Native global)
+declare const __DEV__: boolean;
+
 const FALLBACK_HTML = '<p>[Content unavailable]</p>';
 const FALLBACK_RAW = '[Content unavailable]';
 
@@ -13,8 +16,9 @@ export function discourseByteToByte(byte: DiscourseByte): Byte {
   // Use content, fallback to excerpt, then to FALLBACK_HTML
   const cooked = byte.content || byte.excerpt || FALLBACK_HTML;
   
-  // Warn if both content and excerpt are missing (telemetry)
-  if (!byte.content && !byte.excerpt) {
+  // Only warn in development mode for missing content (expected for summary endpoints)
+  // This prevents noisy logs in production for normal feed/list responses
+  if (__DEV__ && !byte.content && !byte.excerpt) {
     console.warn('discourseByteToByte: missing content and excerpt for byte', byte.id);
   }
   
@@ -36,7 +40,7 @@ export function discourseByteToByte(byte: DiscourseByte): Byte {
   return {
     id: byte.id,
     author: {
-      id: byte.author.id || 0,
+      id: typeof byte.author.id === 'string' ? parseInt(byte.author.id, 10) || 0 : (byte.author.id || 0),
       name: byte.author.name || byte.author.username || 'Unknown User',
       username: byte.author.username || 'unknown',
       avatar: byte.author.avatar || '',

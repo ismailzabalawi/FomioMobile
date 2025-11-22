@@ -1,9 +1,9 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Heart, ChatCircle, BookmarkSimple, Share } from 'phosphor-react-native';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
+import { useByteCardActions } from './useByteCardActions';
 import type { Byte } from '@/types/byte';
 
 const MIN_TOUCH_TARGET = 44;
@@ -21,53 +21,56 @@ const MIN_TOUCH_TARGET = 44;
 export function ByteCardFooter({ byte }: { byte: Byte }) {
   const { themeMode, isAmoled } = useTheme();
   const colors = getThemeColors(themeMode, isAmoled);
-
-  const handleLike = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    // TODO: Implement like action
-    console.log('Like:', byte.id);
-  }, [byte.id]);
-
-  const handleComment = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    // TODO: Navigate to comments or open comment sheet
-    console.log('Comment:', byte.id);
-  }, [byte.id]);
-
-  const handleBookmark = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    // TODO: Implement bookmark action
-    console.log('Bookmark:', byte.id);
-  }, [byte.id]);
-
-  const handleShare = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    // TODO: Implement share action
-    console.log('Share:', byte.id);
-  }, [byte.id]);
+  
+  const {
+    isLiked,
+    isBookmarked,
+    likeCount,
+    replyCount,
+    loadingLike,
+    loadingBookmark,
+    toggleLike,
+    toggleBookmark,
+    onCommentPress,
+    onSharePress,
+  } = useByteCardActions(byte);
 
   return (
     <View className="flex-row items-center gap-6 mt-3 mb-3">
       <FooterButton
-        icon={<Heart size={20} weight="regular" color={colors.comment} />}
-        count={byte.stats.likes}
-        onPress={handleLike}
+        icon={
+          <Heart 
+            size={20} 
+            weight={isLiked ? "fill" : "regular"} 
+            color={isLiked ? colors.like : colors.comment} 
+          />
+        }
+        count={likeCount}
+        onPress={toggleLike}
         label="Like"
+        loading={loadingLike}
       />
       <FooterButton
         icon={<ChatCircle size={20} weight="regular" color={colors.comment} />}
-        count={byte.stats.replies}
-        onPress={handleComment}
+        count={replyCount}
+        onPress={onCommentPress}
         label="Comment"
       />
       <FooterButton
-        icon={<BookmarkSimple size={20} weight="regular" color={colors.comment} />}
-        onPress={handleBookmark}
+        icon={
+          <BookmarkSimple 
+            size={20} 
+            weight={isBookmarked ? "fill" : "regular"} 
+            color={isBookmarked ? colors.bookmark : colors.comment} 
+          />
+        }
+        onPress={toggleBookmark}
         label="Bookmark"
+        loading={loadingBookmark}
       />
       <FooterButton
         icon={<Share size={20} weight="regular" color={colors.comment} />}
-        onPress={handleShare}
+        onPress={onSharePress}
         label="Share"
       />
     </View>
@@ -77,20 +80,26 @@ export function ByteCardFooter({ byte }: { byte: Byte }) {
 interface FooterButtonProps {
   icon: React.ReactNode;
   count?: number;
-  onPress: () => void;
+  onPress: () => void | Promise<void>;
   label: string;
+  loading?: boolean;
 }
 
-function FooterButton({ icon, count, onPress, label }: FooterButtonProps) {
+function FooterButton({ icon, count, onPress, label, loading }: FooterButtonProps) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={loading}
       className="flex-row items-center gap-1 min-h-11 justify-center"
-      style={{ minHeight: MIN_TOUCH_TARGET }}
+      style={{ 
+        minHeight: MIN_TOUCH_TARGET,
+        opacity: loading ? 0.6 : 1,
+      }}
       hitSlop={8}
       accessible
       accessibilityRole="button"
       accessibilityLabel={`${label}${count !== undefined && count > 0 ? `, ${count}` : ''}`}
+      accessibilityState={{ disabled: loading }}
     >
       {icon}
       {count !== undefined && count > 0 && (

@@ -2,6 +2,9 @@ import type { TopicData } from '../useTopic';
 import type { Byte } from '@/types/byte';
 import { extractMedia } from '@/lib/utils/media';
 
+// Declare __DEV__ for TypeScript (React Native global)
+declare const __DEV__: boolean;
+
 const FALLBACK_HTML = '<p>[Content unavailable]</p>';
 const FALLBACK_RAW = '[Content unavailable]';
 
@@ -13,8 +16,8 @@ export function topicToByte(topic: TopicData): Byte {
   // Use content, fallback to excerpt, then to FALLBACK_HTML
   const cooked = topic.content || topic.posts?.[0]?.content || FALLBACK_HTML;
   
-  // Warn if content is missing (telemetry)
-  if (!topic.content && !topic.posts?.[0]?.content) {
+  // Only warn in development mode (expected for some edge cases)
+  if (__DEV__ && !topic.content && !topic.posts?.[0]?.content) {
     console.warn('topicToByte: missing content for topic', topic.id);
   }
   

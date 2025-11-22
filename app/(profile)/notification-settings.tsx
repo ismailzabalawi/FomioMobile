@@ -21,7 +21,7 @@ import {
   Check,
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { useHeader } from '@/components/ui/header';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useNotificationPreferences } from '../../shared/useNotificationPreferences';
 
 interface SettingItemProps {
@@ -144,20 +144,16 @@ const LIKE_FREQUENCY_OPTIONS: Array<{ value: 'always' | 'daily' | 'weekly' | 'ne
 
 export default function NotificationSettingsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
-  const { setHeader, resetHeader } = useHeader();
   const { preferences, setPreference, isLoading } = useNotificationPreferences();
   const [likeFrequencyModalVisible, setLikeFrequencyModalVisible] = useState(false);
 
   // Configure header
-  React.useEffect(() => {
-    setHeader({
-      title: "Notification Preferences",
-      canGoBack: true,
-      withSafeTop: false,
-      tone: "bg",
-    });
-    return () => resetHeader();
-  }, [setHeader, resetHeader]);
+  useScreenHeader({
+    title: "Notification Preferences",
+    canGoBack: true,
+    withSafeTop: false,
+    tone: "bg",
+  }, []);
 
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),

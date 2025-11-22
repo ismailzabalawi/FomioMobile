@@ -33,7 +33,7 @@ import {
 } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
-import { useHeader } from '@/components/ui/header';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { SettingSection } from '@/components/settings';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { useAuth } from '../../shared/useAuth';
@@ -355,7 +355,6 @@ export default function NotificationsScreen(): React.ReactElement {
   const { themeMode, isDark } = useTheme();
   const router = useRouter();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
-  const { setHeader, resetHeader, setActions } = useHeader();
   const {
     notifications,
     isLoading: isNotificationsLoading,
@@ -393,15 +392,12 @@ export default function NotificationsScreen(): React.ReactElement {
   );
 
   // Configure header
-  useEffect(() => {
-    setHeader({
-      title: "Notifications",
-      canGoBack: false,
-      withSafeTop: false,
-      tone: "bg",
-    });
-    return () => resetHeader();
-  }, [setHeader, resetHeader]);
+  useScreenHeader({
+    title: "Notifications",
+    canGoBack: false,
+    withSafeTop: false,
+    tone: "bg",
+  }, []);
 
   // Define handlers before they're used in useEffect
   const handleMarkAllRead = useCallback(() => {

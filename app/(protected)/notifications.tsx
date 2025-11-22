@@ -24,7 +24,7 @@ import {
   Bookmark
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { useHeader } from '@/components/ui/header';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { onAuthEvent } from '../../shared/auth-events';
 
@@ -160,7 +160,6 @@ export default function NotificationsScreen(): React.ReactElement {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [permission, setPermission] = useState<string | null>(null);
-  const { setHeader, resetHeader } = useHeader();
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -198,15 +197,12 @@ export default function NotificationsScreen(): React.ReactElement {
   }, [fetchNotifications]);
 
   // Configure header
-  useEffect(() => {
-    setHeader({
-      title: "Notifications",
-      canGoBack: false,
-      withSafeTop: false,
-      tone: "bg",
-    });
-    return () => resetHeader();
-  }, [setHeader, resetHeader]);
+  useScreenHeader({
+    title: "Notifications",
+    canGoBack: false,
+    withSafeTop: false,
+    tone: "bg",
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);

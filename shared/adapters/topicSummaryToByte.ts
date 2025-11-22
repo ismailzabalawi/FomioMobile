@@ -1,6 +1,9 @@
 import type { Byte } from '@/types/byte';
 import { extractMedia } from '@/lib/utils/media';
 
+// Declare __DEV__ for TypeScript (React Native global)
+declare const __DEV__: boolean;
+
 const FALLBACK_HTML = '<p>[Content unavailable]</p>';
 
 /**
@@ -50,8 +53,8 @@ export function topicSummaryToByte(topic: Topic): Byte {
   // Use excerpt as cooked content, fallback to FALLBACK_HTML
   const cooked = topic.excerpt || FALLBACK_HTML;
   
-  // Warn if excerpt is missing (telemetry)
-  if (!topic.excerpt) {
+  // Only warn in development mode (expected for some topics without excerpts)
+  if (__DEV__ && !topic.excerpt) {
     console.warn('topicSummaryToByte: missing excerpt for topic', topic.id);
   }
   

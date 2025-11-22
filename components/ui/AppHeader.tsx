@@ -23,6 +23,8 @@ import { ArrowLeft } from 'phosphor-react-native';
 import { cn } from '@/lib/utils/cn';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
+import { useSafeNavigation } from '@/shared/hooks/useSafeNavigation';
+import { useHeader } from '@/components/ui/header';
 
 export interface AppHeaderProps {
   /** Title text or custom ReactNode (e.g., search field) */
@@ -131,6 +133,8 @@ export const AppHeader = memo(function AppHeader({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { themeMode, isDark } = useTheme();
+  const { header } = useHeader();
+  const { safeBack } = useSafeNavigation();
   
   // Memoize colors with proper dependencies - ensures theme updates trigger re-renders
   const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
@@ -179,8 +183,16 @@ export const AppHeader = memo(function AppHeader({
     if (enableHaptics) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-    if (onBackPress) return onBackPress();
-    router.back();
+    // Use onBackPress from props first, then from header state, then safeBack
+    if (onBackPress) {
+      onBackPress();
+      return;
+    }
+    if (header.onBackPress) {
+      header.onBackPress();
+      return;
+    }
+    safeBack();
   }
 
   // Backgrounds and borders follow ThemeProvider colors (future theme engine safe)

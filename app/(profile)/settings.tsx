@@ -32,7 +32,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '@/components/theme';
-import { useHeader } from '@/components/ui/header';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { SettingItem, SettingSection } from '@/components/settings';
 import { useAuth } from '../../shared/useAuth';
 import { revokeKey } from '../../lib/discourse';
@@ -44,21 +44,17 @@ import { getThemeColors } from '@/shared/theme-constants';
 
 export default function SettingsScreen(): React.ReactElement {
   const { themeMode, setThemeMode, isDark } = useTheme();
-  const { setHeader, resetHeader } = useHeader();
   const { user, isAuthenticated, signOut } = useAuth();
   const { user: discourseUser, loading: userLoading } = useDiscourseUser();
   const { settings, updateSettings } = useSettingsStorage();
 
   // Configure header
-  useEffect(() => {
-    setHeader({
-      title: "Settings",
-      canGoBack: true,
-      withSafeTop: false,
-      tone: "bg",
-    });
-    return () => resetHeader();
-  }, [setHeader, resetHeader]);
+  useScreenHeader({
+    title: "Settings",
+    canGoBack: true,
+    withSafeTop: false,
+    tone: "bg",
+  }, []);
 
   // Memoize theme colors - dark mode always uses AMOLED
   const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);

@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
 import { ByteCard } from '@/components/bytes/ByteCard';
 import { discourseByteToByte } from '@/shared/adapters/discourseByteToByte';
-import { useHeader } from '@/components/ui/header';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useFeed, FeedItem } from '../../shared/useFeed';
 import { useAuth } from '../../shared/useAuth';
 import { getSession, getLatest } from '../../lib/discourse';
@@ -13,7 +13,6 @@ import { getSession, getLatest } from '../../lib/discourse';
 export default function HomeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
-  const { setHeader, resetHeader } = useHeader();
   const { 
     items, 
     isLoading: isFeedLoading, 
@@ -29,15 +28,12 @@ export default function HomeScreen(): React.ReactElement {
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Configure header
-  useEffect(() => {
-    setHeader({
-      title: "Fomio",
-      canGoBack: false,
-      withSafeTop: false,
-      tone: "bg",
-    });
-    return () => resetHeader();
-  }, [setHeader, resetHeader]);
+  useScreenHeader({
+    title: "Fomio",
+    canGoBack: false,
+    withSafeTop: false,
+    tone: "bg",
+  }, []);
   
   // Load user session if authenticated
   useEffect(() => {

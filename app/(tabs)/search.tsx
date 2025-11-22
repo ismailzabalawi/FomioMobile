@@ -19,7 +19,7 @@ import {
   Rocket
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { useHeader } from '@/components/ui/header';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { ByteCard } from '@/components/bytes/ByteCard';
 import { searchResultToByte } from '@/shared/adapters/searchResultToByte';
 import { useSearch } from '../../shared/useSearch';
@@ -366,7 +366,6 @@ function EmptyStateCards() {
 
 export default function SearchScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
-  const { setHeader, resetHeader } = useHeader();
   const [searchQuery, setSearchQuery] = useState('');
   
   const { 
@@ -381,24 +380,12 @@ export default function SearchScreen(): React.ReactElement {
   } = useSearch();
 
   // Configure header
-  React.useEffect(() => {
-    if (searchQuery.trim()) {
-      setHeader({
-        title: "Search Results",
-        canGoBack: true,
-        withSafeTop: false,
-        tone: "bg",
-      });
-    } else {
-      setHeader({
-        title: "Search",
-        canGoBack: false,
-        withSafeTop: false,
-        tone: "bg",
-      });
-    }
-    return () => resetHeader();
-  }, [searchQuery, setHeader, resetHeader]);
+  useScreenHeader({
+    title: searchQuery.trim() ? "Search Results" : "Search",
+    canGoBack: searchQuery.trim() ? true : false,
+    withSafeTop: false,
+    tone: "bg",
+  }, [searchQuery]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
