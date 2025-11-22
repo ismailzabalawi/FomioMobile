@@ -211,10 +211,6 @@ export async function signIn(): Promise<boolean> {
       // Clear nonce after successful verification (prevents reuse)
       await UserApiKeyManager.clearNonce();
       
-      // Store API key securely
-      await SecureStore.setItemAsync(STORAGE_KEY, key);
-      await SecureStore.setItemAsync(CLIENT_ID_KEY, clientId);
-
       // Get username from API after storing the key
       // This is needed for the Api-Username header required by Discourse API
       let username: string | undefined;
@@ -229,6 +225,21 @@ export async function signIn(): Promise<boolean> {
         logger.warn('Failed to get username during sign in (non-critical)', error);
         // Don't fail sign in if username fetch fails - we can get it later
       }
+
+      // Store API key and username together in new storage keys
+      await SecureStore.setItemAsync("fomio_user_api_key", key);
+      if (username) {
+        await SecureStore.setItemAsync("fomio_user_api_username", username);
+      }
+      
+      // Also store in legacy locations for backward compatibility during migration
+      await SecureStore.setItemAsync(STORAGE_KEY, key);
+      await SecureStore.setItemAsync(CLIENT_ID_KEY, clientId);
+
+      // Optional: clean legacy keys after successful migration
+      // Uncomment after verifying new keys work:
+      // await SecureStore.deleteItemAsync("disc_user_api_key");
+      // await SecureStore.deleteItemAsync("disc_user_api_username");
 
       await UserApiKeyManager.storeApiKey({
         key,
@@ -297,57 +308,56 @@ export async function signIn(): Promise<boolean> {
  */
 export async function authHeaders(): Promise<Record<string, string>> {
   try {
-    let key: string | null = null;
-    let clientId: string | null = null;
-    let username: string | null = null;
+    // Read from new unified storage keys
+    const key = await SecureStore.getItemAsync("fomio_user_api_key");
+    const user = await SecureStore.getItemAsync("fomio_user_api_username");
 
-    const apiKeyData = await UserApiKeyManager.getApiKey();
-    if (apiKeyData?.key) {
-      key = apiKeyData.key;
-      clientId = apiKeyData.clientId;
-      username = apiKeyData.username || null;
-    }
-
-    if (!key) {
-      key = await SecureStore.getItemAsync(STORAGE_KEY);
-    }
-
-    if (!clientId) {
-      clientId = await SecureStore.getItemAsync(CLIENT_ID_KEY);
-    }
-    
-    // Try to get username from stored auth data if not in API key data
-    if (!username) {
-      try {
-        const storedAuth = await SecureStore.getItemAsync('auth-token-v1');
-        if (storedAuth) {
-          const parsed = JSON.parse(storedAuth);
-          username = parsed.username || null;
+    if (!key || !user) {
+      // Fallback to legacy storage for backward compatibility
+      const legacyKey = await SecureStore.getItemAsync(STORAGE_KEY);
+      if (legacyKey) {
+        // Try to get username from UserApiKeyManager or stored auth
+        let legacyUsername: string | null = null;
+        
+        const apiKeyData = await UserApiKeyManager.getApiKey();
+        if (apiKeyData?.username) {
+          legacyUsername = apiKeyData.username;
+        } else {
+          try {
+            const storedAuth = await SecureStore.getItemAsync('auth-token-v1');
+            if (storedAuth) {
+              const parsed = JSON.parse(storedAuth);
+              legacyUsername = parsed.username || null;
+            }
+          } catch {
+            // Ignore errors reading stored auth
+          }
         }
-      } catch {
-        // Ignore errors reading stored auth
+
+        if (legacyKey && legacyUsername) {
+          // Migrate to new keys
+          await SecureStore.setItemAsync("fomio_user_api_key", legacyKey);
+          await SecureStore.setItemAsync("fomio_user_api_username", legacyUsername);
+          
+          return {
+            "User-Api-Key": legacyKey,
+            "Api-Username": legacyUsername,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+          };
+        }
       }
-    }
-    
-    if (!key) {
+      
+      console.warn("⚠️ Missing User-Api-Key or Api-Username");
       return {};
     }
-    
-    const headers: Record<string, string> = {
-      'User-Api-Key': key,
+
+    return {
+      "User-Api-Key": key,
+      "Api-Username": user,
+      "Accept": "application/json",
+      "Content-Type": "application/json",
     };
-    
-    if (clientId) {
-      headers['User-Api-Client-Id'] = clientId;
-    }
-    
-    // CRITICAL: Discourse API requires Api-Username header for write operations
-    // This header identifies which user is making the request
-    if (username) {
-      headers['Api-Username'] = username;
-    }
-    
-    return headers;
   } catch (error) {
     logger.error('Failed to get auth headers', error);
     return {};

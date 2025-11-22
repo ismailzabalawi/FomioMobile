@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
 import { signIn } from '../../lib/auth';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { logger } from '../../shared/logger';
 
 export default function AuthorizeScreen() {

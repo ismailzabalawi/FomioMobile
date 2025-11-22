@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { PaperPlaneRight } from 'phosphor-react-native';
-import { useAuth } from '@/shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { router } from 'expo-router';
 
 // UI Spec: NewCommentInput — Input for adding a new comment or reply, with send button, theming, and accessibility.

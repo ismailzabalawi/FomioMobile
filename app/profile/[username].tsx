@@ -19,7 +19,7 @@ import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useSafeNavigation } from '@/shared/hooks/useSafeNavigation';
 import { useHeader } from '@/components/ui/header';
 import { useDiscourseUser } from '@/shared/useDiscourseUser';
-import { useAuth } from '@/shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { useUserPosts } from '@/shared/useUserPosts';
 import { useUserReplies } from '@/shared/useUserReplies';
 import { useUserMedia } from '@/shared/useUserMedia';

@@ -3,7 +3,7 @@ import { Share, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { discourseApi } from '@/shared/discourseApi';
-import { useAuth } from '@/shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { useBookmarkStore } from '@/shared/useBookmarkSync';
 import { useToast } from '@/shared/form-validation';
 import { logger } from '@/shared/logger';

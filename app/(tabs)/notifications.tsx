@@ -36,7 +36,7 @@ import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { SettingSection } from '@/components/settings';
 import { useNotifications, Notification } from '../../shared/useNotifications';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { useNotificationPreferences } from '../../shared/useNotificationPreferences';
 import {
   formatRelativeTime,

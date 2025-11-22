@@ -3,7 +3,7 @@ import { ScrollView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
-import { useAuth } from '../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 
 interface WelcomeScreenProps {}
 

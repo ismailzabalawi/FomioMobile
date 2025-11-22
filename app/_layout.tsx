@@ -10,6 +10,7 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import '../global.css';
 
 import { ThemeProvider, useTheme } from '@/components/theme';
+import { AuthProvider } from '@/shared/auth-context';
 import { attachIntentReplay } from '@/shared/intent-replay';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
@@ -59,7 +60,9 @@ export default function RootLayout(): React.ReactElement | null {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <BottomSheetModalProvider>
         <ThemeProvider defaultTheme="system">
-          <RootLayoutNav />
+          <AuthProvider>
+            <RootLayoutNav />
+          </AuthProvider>
         </ThemeProvider>
       </BottomSheetModalProvider>
     </GestureHandlerRootView>

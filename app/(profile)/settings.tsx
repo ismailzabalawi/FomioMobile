@@ -34,7 +34,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { SettingItem, SettingSection } from '@/components/settings';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { revokeKey } from '../../lib/discourse';
 import { clearAll } from '../../lib/store';
 import { router } from 'expo-router';

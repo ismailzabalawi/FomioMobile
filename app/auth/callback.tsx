@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import { logger } from '../../shared/logger';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { discourseApi } from '../../shared/discourseApi';
 import { UserApiKeyManager } from '../../shared/userApiKeyManager';
 import { hasUserApiKey } from '../../lib/auth';
@@ -134,7 +134,10 @@ export default function AuthCallbackScreen() {
             // Get or generate client ID
             const clientId = await UserApiKeyManager.getOrGenerateClientId();
 
-            // Store API key securely
+            // Store API key securely in new unified storage
+            await SecureStore.setItemAsync("fomio_user_api_key", decrypted.key);
+            
+            // Store API key in UserApiKeyManager for backward compatibility
             await UserApiKeyManager.storeApiKey({
               key: decrypted.key,
               clientId,
@@ -161,10 +164,11 @@ export default function AuthCallbackScreen() {
         if (userResponse.success && userResponse.data) {
           // Map Discourse user to AppUser
           const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
+          const username = userResponse.data.username || 'unknown';
           const appUser = {
             id: userResponse.data.id?.toString() || '0',
-            username: userResponse.data.username || 'unknown',
-            name: userResponse.data.name || userResponse.data.username || 'Unknown User',
+            username: username,
+            name: userResponse.data.name || username || 'Unknown User',
             email: userResponse.data.email || '',
             avatar: userResponse.data.avatar_template
               ? `${DISCOURSE_URL}${userResponse.data.avatar_template.replace('{size}', '120')}`
@@ -181,6 +185,11 @@ export default function AuthCallbackScreen() {
                 })
               : 'Unknown',
           };
+
+          // Store username with API key
+          if (username) {
+            await SecureStore.setItemAsync("fomio_user_api_username", username);
+          }
 
           await setAuthenticatedUser(appUser);
           logger.info('AuthCallbackScreen: User authenticated successfully');

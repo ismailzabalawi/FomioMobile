@@ -7,7 +7,7 @@ import { ByteCard } from '@/components/bytes/ByteCard';
 import { discourseByteToByte } from '@/shared/adapters/discourseByteToByte';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useFeed, FeedItem } from '../../shared/useFeed';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { getSession, getLatest } from '../../lib/discourse';
 
 export default function HomeScreen(): React.ReactElement {

@@ -17,7 +17,7 @@ import { OverflowMenu } from './OverflowMenu';
 import { ShareButton } from './ShareButton';
 import { StickyActionBar } from './StickyActionBar';
 import { MarkdownContent } from './MarkdownContent';
-import { useAuth } from '@/shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { useBookmarkStore } from '@/shared/useBookmarkSync';
 
 export interface ByteBlogPageProps {

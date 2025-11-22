@@ -20,7 +20,7 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AuthGate } from '../../components/shared/auth-gate';
 import { AuthPromptView } from '../../components/shared/auth-prompt-view';
 import { useDiscourseUser } from '../../shared/useDiscourseUser';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { Avatar } from '../../components/ui/avatar';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';

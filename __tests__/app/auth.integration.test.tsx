@@ -5,7 +5,7 @@
 import React from 'react';
 import { render, fireEvent, waitFor, screen } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage');
@@ -24,16 +24,17 @@ jest.mock('@/components/theme', () => ({
   }),
 }));
 
-// Mock useAuth hook
-jest.mock('../../shared/useAuth', () => ({
+// Mock auth-context module
+jest.mock('@/shared/auth-context', () => ({
   useAuth: jest.fn(),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 import { Text, TouchableOpacity, View } from 'react-native';
 
 // Test component that uses useAuth hook
 const TestAuthComponent = () => {
-  const { user, isLoading, isAuthenticated, signIn, signUp, signOut, updateProfile } = useAuth();
+  const { user, isLoading, isAuthenticated, signIn, signUp, signOut, setAuthenticatedUser } = useAuth();
 
   return (
     <View>
@@ -65,7 +66,11 @@ const TestAuthComponent = () => {
       </TouchableOpacity>
       <TouchableOpacity
         testID="update-user-button"
-        onPress={() => updateProfile({ username: 'updateduser' })}
+        onPress={() => {
+          if (user) {
+            setAuthenticatedUser({ ...user, username: 'updateduser' });
+          }
+        }}
       >
         <Text>Update User</Text>
       </TouchableOpacity>
@@ -81,18 +86,19 @@ describe('Authentication Integration Tests', () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
     (AsyncStorage.removeItem as jest.Mock).mockResolvedValue(undefined);
+    // Reset mock implementation
+    mockUseAuth.mockClear();
   });
 
   it('should initialize with unauthenticated state', async () => {
     // Default mock implementation
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: null,
       isLoading: false,
       isAuthenticated: false,
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });
@@ -120,14 +126,13 @@ describe('Authentication Integration Tests', () => {
       joinedDate: 'Joined January 2024'
     };
     
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: mockUser,
       isLoading: false,
       isAuthenticated: true,
       signIn: mockSignIn,
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });
@@ -166,14 +171,13 @@ describe('Authentication Integration Tests', () => {
       joinedDate: 'Joined January 2024'
     };
     
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: mockUser,
       isLoading: false,
       isAuthenticated: true,
       signIn: jest.fn(),
       signUp: mockSignUp,
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });
@@ -215,14 +219,13 @@ describe('Authentication Integration Tests', () => {
       joinedDate: 'Joined January 2024'
     };
     
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: mockUser,
       isLoading: false,
       isAuthenticated: true,
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: mockSignOut,
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });
@@ -239,7 +242,7 @@ describe('Authentication Integration Tests', () => {
   });
 
   it('should handle user update', async () => {
-    const mockUpdateProfile = jest.fn().mockResolvedValue({ success: true });
+    const mockSetAuthenticatedUser = jest.fn().mockResolvedValue(undefined);
     const mockUser = { 
       id: '1', 
       email: 'test@example.com', 
@@ -254,16 +257,15 @@ describe('Authentication Integration Tests', () => {
       joinedDate: 'Joined January 2024'
     };
     
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: mockUser,
       isLoading: false,
       isAuthenticated: true,
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateProfile: mockUpdateProfile,
       refreshAuth: jest.fn(),
-      setAuthenticatedUser: jest.fn(),
+      setAuthenticatedUser: mockSetAuthenticatedUser,
     });
 
     render(<TestAuthComponent />);
@@ -275,7 +277,7 @@ describe('Authentication Integration Tests', () => {
 
     fireEvent.press(screen.getByTestId('update-user-button'));
 
-    expect(mockUpdateProfile).toHaveBeenCalledWith({ username: 'updateduser' });
+    expect(mockSetAuthenticatedUser).toHaveBeenCalledWith({ ...mockUser, username: 'updateduser' });
   });
 
   it('should restore authentication state from storage', async () => {
@@ -293,14 +295,13 @@ describe('Authentication Integration Tests', () => {
       joinedDate: 'Joined January 2024'
     };
     
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: mockUser,
       isLoading: false,
       isAuthenticated: true,
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });
@@ -314,14 +315,13 @@ describe('Authentication Integration Tests', () => {
   });
 
   it('should handle corrupted storage data gracefully', async () => {
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: null,
       isLoading: false,
       isAuthenticated: false,
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });
@@ -334,14 +334,13 @@ describe('Authentication Integration Tests', () => {
   });
 
   it('should handle storage errors gracefully', async () => {
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: null,
       isLoading: false,
       isAuthenticated: false,
       signIn: jest.fn(),
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });
@@ -359,14 +358,13 @@ describe('Authentication Integration Tests', () => {
       error: 'Network error' 
     });
     
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: null,
       isLoading: false,
       isAuthenticated: false,
       signIn: mockSignIn,
       signUp: jest.fn(),
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });
@@ -388,14 +386,13 @@ describe('Authentication Integration Tests', () => {
       error: 'Network error' 
     });
     
-    mockUseAuth.mockReturnValue({
+    (mockUseAuth as jest.Mock).mockReturnValue({
       user: null,
       isLoading: false,
       isAuthenticated: false,
       signIn: jest.fn(),
       signUp: mockSignUp,
       signOut: jest.fn(),
-      updateProfile: jest.fn(),
       refreshAuth: jest.fn(),
       setAuthenticatedUser: jest.fn(),
     });

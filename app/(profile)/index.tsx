@@ -19,7 +19,7 @@ import { useTheme } from '@/components/theme';
 import { useHeader } from '@/components/ui/header';
 import { SettingItem, SettingSection } from '@/components/settings';
 import { useDiscourseUser } from '@/shared/useDiscourseUser';
-import { useAuth } from '@/shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { useUserPosts } from '@/shared/useUserPosts';
 import { useUserReplies } from '@/shared/useUserReplies';
 import { useUserMedia } from '@/shared/useUserMedia';

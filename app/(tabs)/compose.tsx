@@ -15,7 +15,7 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/theme';
 import { useTerets, Teret } from '../../shared/useTerets';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { useDiscourseSettings } from '../../shared/useDiscourseSettings';
 import { createTopic } from '../../lib/discourse';
 import { discourseApi } from '@/shared/discourseApi';

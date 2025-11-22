@@ -1,12 +1,12 @@
 import React from "react";
 import { Slot, Redirect } from "expo-router";
 import { ActivityIndicator, View, StyleSheet } from "react-native";
-import { useAuth } from "../../shared/useAuth";
+import { useAuthState } from "@/shared/useAuthState";
 
 export default function ProtectedLayout() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { ready, signedIn } = useAuthState();
 
-  if (isLoading) {
+  if (!ready) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" />
@@ -14,7 +14,7 @@ export default function ProtectedLayout() {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!signedIn) {
     return <Redirect href="/(auth)/signin" />;
   }
 

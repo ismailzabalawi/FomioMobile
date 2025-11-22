@@ -1,4 +1,4 @@
-export { useAuth } from './useAuth';
+export { useAuth } from './auth-context';
 export { onAuthEvent, emitAuthEvent, type AuthEvent } from './auth-events';
 export { storeIntent, attachIntentReplay, type Intent, type IntentType, type IntentHandlers } from './intent-replay';
 export { requireAuth } from './requireAuth';

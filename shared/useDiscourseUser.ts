@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { discourseApi, DiscourseUser, UserSettings, DiscourseApiResponse } from './discourseApi';
-import { useAuth } from './useAuth';
+import { useAuth } from '@/shared/auth-context';
 import { onAuthEvent } from './auth-events';
 
 export interface UseDiscourseUserReturn {

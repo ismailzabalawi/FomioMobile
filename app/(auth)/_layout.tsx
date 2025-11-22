@@ -1,7 +1,7 @@
 import React from 'react';
 import { Stack, Redirect } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useAuth } from '../../shared/useAuth';
+import { useAuth } from '@/shared/auth-context';
 
 export default function AuthLayout(): React.ReactElement {
   const { isAuthenticated, isLoading } = useAuth();
