@@ -48,11 +48,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 /**
  * useAuth hook - must be used within AuthProvider
  * This is the unified import path: @/shared/auth-context
+ * 
+ * Returns safe defaults if context is not available (e.g., in BottomSheetModal portals)
+ * to prevent crashes, but logs a warning for debugging.
  */
+// Declare __DEV__ for TypeScript (React Native global)
+declare const __DEV__: boolean;
+
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used within <AuthProvider>");
+    // Return safe defaults instead of throwing to support components in portals/modals
+    // that might not have access to the AuthProvider context
+    // Only warn in development mode to reduce noise in production
+    if (__DEV__) {
+      // Use a one-time warning per component mount to avoid spam
+      const hasWarned = (global as any).__useAuthWarningShown;
+      if (!hasWarned) {
+        console.warn("useAuth called outside <AuthProvider> - returning default values. Consider passing isAuthenticated as a prop.");
+        (global as any).__useAuthWarningShown = true;
+        // Reset after a delay to allow warnings in different components
+        setTimeout(() => {
+          (global as any).__useAuthWarningShown = false;
+        }, 5000);
+      }
+    }
+    return {
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      signIn: async () => ({ success: false, error: "Not within AuthProvider" }),
+      signOut: async () => {},
+      signUp: async () => ({ success: false, error: "Not within AuthProvider" }),
+      refreshAuth: async () => {},
+      setAuthenticatedUser: async () => {},
+    };
   }
   return context;
 }

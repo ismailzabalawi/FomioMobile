@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Heart, ChatCircle, BookmarkSimple, Share, DotsThreeVertical } from 'phosphor-react-native';
+import { Heart, ChatCircle, BookmarkSimple, Share } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
 import * as Haptics from 'expo-haptics';
@@ -15,16 +15,22 @@ export interface StickyActionBarProps {
   onComment: () => void;
   onBookmark: () => void;
   onShare: () => void;
-  onOverflow?: () => void;
 }
 
-// UI Spec: StickyActionBar — Sticky action bar that stays above keyboard
-// - Component that renders action buttons: Like, Comment, Bookmark, Share, Overflow
-// - Uses KeyboardAvoidingView with behavior based on platform
-// - Positions above keyboard when keyboard is open
-// - Stays visible when scrolling
-// - Uses Fomio theme tokens for styling
-// - Shows current state (liked, bookmarked) with filled icons
+/**
+ * StickyActionBar — Compact, centered action bar for ByteBlogPage
+ * 
+ * UI Spec: StickyActionBar
+ * - Evenly spaced icons across the bar (justify-between)
+ * - Larger icons (26px) for better visibility
+ * - Icons perfectly aligned horizontally (0° on x-axis)
+ * - All icons at same vertical position regardless of counts
+ * - Reduced height: py-1.5 for minimal vertical padding
+ * - Counts positioned consistently below icons
+ * - Uses semantic tokens: text-caption, theme colors
+ * - Background matches screen (uses same semantic tokens as screen)
+ * - Safe area aware padding
+ */
 export function StickyActionBar({
   isLiked,
   isBookmarked,
@@ -34,7 +40,6 @@ export function StickyActionBar({
   onComment,
   onBookmark,
   onShare,
-  onOverflow,
 }: StickyActionBarProps) {
   const { isDark, isAmoled } = useTheme();
   const colors = getThemeColors(isDark);
@@ -60,109 +65,120 @@ export function StickyActionBar({
     onShare();
   };
 
-  const backgroundColor = isAmoled ? '#000000' : (isDark ? colors.card : '#ffffff');
   const borderColor = colors.border;
   const iconColor = colors.foreground;
+  const likedColor = isDark ? '#ef4444' : '#dc2626';
+  const bookmarkedColor = isDark ? '#fbbf24' : '#f59e0b';
 
   return (
     <View
-      className="flex-row items-center justify-around border-t px-4 py-3"
+      className={`border-t ${isAmoled ? 'bg-fomio-bg-dark' : isDark ? 'bg-fomio-bg-dark' : 'bg-fomio-bg'}`}
       style={{
-        backgroundColor,
         borderTopColor: borderColor,
         borderTopWidth: 1,
-        paddingBottom: Math.max(insets.bottom, 12),
+        paddingBottom: Math.max(insets.bottom, 8),
       }}
     >
+      <View
+        className="flex-row items-start justify-between px-6 py-1.5"
+        style={{ maxWidth: 600, alignSelf: 'center', width: '100%' }}
+      >
+        {/* Like */}
         <TouchableOpacity
-          className="flex-1 items-center py-2"
+          className="items-center"
+          style={{ minHeight: 44, minWidth: 44 }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={handleLike}
           activeOpacity={0.7}
           accessible
           accessibilityRole="button"
           accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
         >
-          <Heart
-            size={24}
-            weight={isLiked ? 'fill' : 'regular'}
-            color={isLiked ? (isDark ? '#ef4444' : '#dc2626') : iconColor}
-          />
-          <Text
-            className="text-xs mt-1 font-medium"
-            style={{ color: iconColor }}
-          >
-            {likeCount}
-          </Text>
+          <View style={{ height: 26, justifyContent: 'center' }}>
+            <Heart
+              size={26}
+              weight={isLiked ? 'fill' : 'regular'}
+              color={isLiked ? likedColor : iconColor}
+            />
+          </View>
+          {likeCount > 0 && (
+            <Text
+              className="text-caption mt-0.5 font-medium"
+              style={{ color: iconColor }}
+            >
+              {likeCount}
+            </Text>
+          )}
         </TouchableOpacity>
 
+        {/* Comment */}
         <TouchableOpacity
-          className="flex-1 items-center py-2"
+          className="items-center"
+          style={{ minHeight: 44, minWidth: 44 }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={handleComment}
           activeOpacity={0.7}
           accessible
           accessibilityRole="button"
           accessibilityLabel="Comment"
         >
-          <ChatCircle
-            size={24}
-            weight="regular"
-            color={iconColor}
-          />
-          <Text
-            className="text-xs mt-1 font-medium"
-            style={{ color: iconColor }}
-          >
-            {replyCount}
-          </Text>
+          <View style={{ height: 26, justifyContent: 'center' }}>
+            <ChatCircle
+              size={26}
+              weight="regular"
+              color={iconColor}
+            />
+          </View>
+          {replyCount > 0 && (
+            <Text
+              className="text-caption mt-0.5 font-medium"
+              style={{ color: iconColor }}
+            >
+              {replyCount}
+            </Text>
+          )}
         </TouchableOpacity>
 
+        {/* Bookmark */}
         <TouchableOpacity
-          className="flex-1 items-center py-2"
+          className="items-center"
+          style={{ minHeight: 44, minWidth: 44 }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={handleBookmark}
           activeOpacity={0.7}
           accessible
           accessibilityRole="button"
           accessibilityLabel={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
         >
-          <BookmarkSimple
-            size={24}
-            weight={isBookmarked ? 'fill' : 'regular'}
-            color={isBookmarked ? (isDark ? '#fbbf24' : '#f59e0b') : iconColor}
-          />
+          <View style={{ height: 26, justifyContent: 'center' }}>
+            <BookmarkSimple
+              size={26}
+              weight={isBookmarked ? 'fill' : 'regular'}
+              color={isBookmarked ? bookmarkedColor : iconColor}
+            />
+          </View>
         </TouchableOpacity>
 
+        {/* Share */}
         <TouchableOpacity
-          className="flex-1 items-center py-2"
+          className="items-center"
+          style={{ minHeight: 44, minWidth: 44 }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={handleShare}
           activeOpacity={0.7}
           accessible
           accessibilityRole="button"
           accessibilityLabel="Share"
         >
-          <Share
-            size={24}
-            weight="regular"
-            color={iconColor}
-          />
-        </TouchableOpacity>
-
-        {onOverflow && (
-          <TouchableOpacity
-            className="flex-1 items-center py-2"
-            onPress={onOverflow}
-            activeOpacity={0.7}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="More options"
-          >
-            <DotsThreeVertical
-              size={24}
+          <View style={{ height: 26, justifyContent: 'center' }}>
+            <Share
+              size={26}
               weight="regular"
               color={iconColor}
             />
-          </TouchableOpacity>
-        )}
+          </View>
+        </TouchableOpacity>
       </View>
+    </View>
   );
 }
-

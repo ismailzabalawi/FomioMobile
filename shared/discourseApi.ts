@@ -454,9 +454,14 @@ class DiscourseApiService {
           // 404 on /session/current.json is expected when user is not authenticated
           // Don't log it as an error - it's normal behavior
           const isSessionCheck = endpoint === '/session/current.json' && response.status === 404;
+          const isAdminUserEndpoint = endpoint.includes('/admin/users/') && response.status === 404;
           
           if (isSessionCheck) {
             console.log('📱 No active session (user not authenticated)');
+          } else if (isAdminUserEndpoint) {
+            // Admin endpoint requires admin access - 404 is expected for non-admin users
+            // Silently handle this - the caller will use fallback user data
+            console.debug(`⚠️ Admin endpoint not accessible (expected for non-admin): ${endpoint}`);
           } else {
             console.error(`❌ HTTP Error ${response.status}:`, errorData);
           }
@@ -466,6 +471,20 @@ class DiscourseApiService {
             const isCsrfError = errorData.errors?.some((err: string) => 
               typeof err === 'string' && err.includes('CSRF')
             ) || errorData.message?.includes('CSRF');
+            
+            // Check if this is a permissions error (invalid_access) vs invalid key
+            const isPermissionError = errorData.error_type === 'invalid_access' || 
+                                    errorData.errors?.some((err: string) => 
+                                      typeof err === 'string' && (
+                                        err.includes('not permitted') || 
+                                        err.includes('permission') ||
+                                        err.includes('invalid_access')
+                                      )
+                                    );
+            
+            // Don't clear keys for permission errors on GET requests - these are permissions issues, not invalid keys
+            const isGetRequest = (options.method || 'GET').toUpperCase() === 'GET';
+            const shouldClearKeys = !isCsrfError && !(isPermissionError && isGetRequest);
             
             if (isCsrfError) {
               // CSRF error usually means API key authentication failed
@@ -479,12 +498,18 @@ class DiscourseApiService {
                 hasApiKey: !!headers['User-Api-Key'],
                 hasUsername: !!headers['Api-Username'],
               });
+            } else if (isPermissionError && isGetRequest) {
+              // Permission error on GET request - don't clear keys, just log
+              console.warn('⚠️ Permission error (403) - API key valid but lacks permissions for this resource', {
+                endpoint,
+                errorType: errorData.error_type,
+              });
             } else {
               console.log('🔒 API key expired or invalid (401/403), clearing authentication');
             }
             
-            // Clear User API Key only if it's not a CSRF error (CSRF might be fixable)
-            if (!isCsrfError) {
+            // Clear User API Key only if it's a real authentication failure (not CSRF or permission error on GET)
+            if (shouldClearKeys) {
               try {
                 const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
                 await UserApiKeyManager.clearApiKey();
@@ -1547,11 +1572,9 @@ class DiscourseApiService {
 
   // Like/Bookmark Actions
   async unlikePost(postId: number): Promise<DiscourseApiResponse<any>> {
-    return this.makeRequest<any>(`/post_actions/${postId}`, {
+    // Official Discourse API: DELETE /post_actions/{postId}.json?post_action_type_id=2
+    return this.makeRequest<any>(`/post_actions/${postId}.json?post_action_type_id=2`, {
       method: 'DELETE',
-      body: JSON.stringify({
-        post_action_type_id: 2, // Like action type
-      }),
     });
   }
 
@@ -1873,12 +1896,20 @@ class DiscourseApiService {
   }
 
   mapTopicToByte(topic: any): Byte {
+    // Detect if this is a summary (no post_stream) or full topic
+    const isSummary = !topic.post_stream;
+    
     return {
       id: topic.id,
       title: topic.title,
       excerpt: topic.excerpt,
-      content: topic.post_stream?.posts?.[0]?.cooked || '', // First post content
-      rawContent: topic.post_stream?.posts?.[0]?.raw || '',
+      // For summaries: use excerpt as content, for full topics: use post_stream
+      content: isSummary 
+        ? (topic.excerpt || '')  // Summary: excerpt IS the content
+        : (topic.post_stream?.posts?.[0]?.cooked || ''), // Full: use cooked HTML
+      rawContent: isSummary 
+        ? ''  // Summaries don't have raw markdown
+        : (topic.post_stream?.posts?.[0]?.raw || ''),
       hubId: topic.category_id,
       hubName: topic.category?.name || '',
       author: this.mapDiscourseUserToAppUser(topic.details?.created_by || topic.last_poster),
@@ -1894,11 +1925,14 @@ class DiscourseApiService {
       updatedAt: topic.updated_at || topic.created_at,
       isPinned: topic.pinned || false,
       isLocked: topic.closed || false,
-      isLiked: topic.liked || false,
+      isLiked: topic.liked || 
+               (topic.details?.actions_summary?.some((a: any) => a.id === 2 && a.acted) || false),
       likeCount: topic.like_count || 0,
       viewCount: topic.views || 0,
       tags: topic.tags || [],
-      discourseId: topic.id
+      discourseId: topic.id,
+      // Add bookmark state if available
+      isBookmarked: topic.details?.bookmarked || false,
     };
   }
 

@@ -36,43 +36,57 @@ export function ByteCardFooter({ byte }: { byte: Byte }) {
   } = useByteCardActions(byte);
 
   return (
-    <View className="flex-row items-center gap-6 mt-3 mb-3">
-      <FooterButton
-        icon={
-          <Heart 
-            size={20} 
-            weight={isLiked ? "fill" : "regular"} 
-            color={isLiked ? colors.like : colors.comment} 
-          />
-        }
-        count={likeCount}
-        onPress={toggleLike}
-        label="Like"
-        loading={loadingLike}
-      />
-      <FooterButton
-        icon={<ChatCircle size={20} weight="regular" color={colors.comment} />}
-        count={replyCount}
-        onPress={onCommentPress}
-        label="Comment"
-      />
-      <FooterButton
-        icon={
-          <BookmarkSimple 
-            size={20} 
-            weight={isBookmarked ? "fill" : "regular"} 
-            color={isBookmarked ? colors.bookmark : colors.comment} 
-          />
-        }
-        onPress={toggleBookmark}
-        label="Bookmark"
-        loading={loadingBookmark}
-      />
-      <FooterButton
-        icon={<Share size={20} weight="regular" color={colors.comment} />}
-        onPress={onSharePress}
-        label="Share"
-      />
+    <View className="flex-row items-center justify-between mt-3 mb-3" style={{ flexWrap: 'nowrap' }}>
+      <View className="flex-row items-center" style={{ gap: 24 }}>
+        <FooterButton
+          icon={
+            <Heart 
+              size={20} 
+              weight={isLiked ? "fill" : "regular"} 
+              color={isLiked ? colors.like : colors.comment} 
+            />
+          }
+          count={likeCount}
+          onPress={toggleLike}
+          label="Like"
+          loading={loadingLike}
+        />
+        <FooterButton
+          icon={<ChatCircle size={20} weight="regular" color={colors.comment} />}
+          count={replyCount}
+          onPress={onCommentPress}
+          label="Comment"
+        />
+        <FooterButton
+          icon={
+            <BookmarkSimple 
+              size={20} 
+              weight={isBookmarked ? "fill" : "regular"} 
+              color={isBookmarked ? colors.bookmark : colors.comment} 
+            />
+          }
+          onPress={toggleBookmark}
+          label="Bookmark"
+          loading={loadingBookmark}
+        />
+        <FooterButton
+          icon={<Share size={20} weight="regular" color={colors.comment} />}
+          onPress={onSharePress}
+          label="Share"
+        />
+      </View>
+      
+      {/* Category badge in right corner */}
+      {byte.teret && byte.teret.name && (
+        <Text
+          className="px-2 py-0.5 rounded-full text-xs text-white font-medium"
+          style={{
+            backgroundColor: byte.teret.color || '#4A6CF7',
+          }}
+        >
+          {byte.teret.name}
+        </Text>
+      )}
     </View>
   );
 }

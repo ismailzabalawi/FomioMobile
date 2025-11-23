@@ -13,19 +13,29 @@ import { getThemeColors } from './theme-constants';
 export function getMarkdownStyles(isDark: boolean) {
   const colors = getThemeColors(isDark);
   const codeFontFamily = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+  
+  // ✅ Use AMOLED foreground color (#F5F5F7) for dark mode for maximum visibility
+  // This matches the fomio-foreground-dark token from tailwind.config.js
+  const textColor = isDark ? '#F5F5F7' : colors.foreground;
 
   return {
-    // Root container
+    // Root container - CRITICAL: Set default text color here for inheritance
     body: {
       margin: 0,
       padding: 0,
+      color: textColor, // ✅ Default text color for all markdown content
+    },
+    
+    // ✅ Default text style that applies to all text elements
+    text: {
+      color: textColor,
     },
     
     // Headings
     heading1: {
       fontSize: 24,
       fontWeight: '700' as const,
-      color: colors.foreground,
+      color: textColor,
       marginTop: 24,
       marginBottom: 12,
       lineHeight: 32,
@@ -33,7 +43,7 @@ export function getMarkdownStyles(isDark: boolean) {
     heading2: {
       fontSize: 20,
       fontWeight: '700' as const,
-      color: colors.foreground,
+      color: textColor,
       marginTop: 20,
       marginBottom: 10,
       lineHeight: 28,
@@ -41,7 +51,7 @@ export function getMarkdownStyles(isDark: boolean) {
     heading3: {
       fontSize: 18,
       fontWeight: '600' as const,
-      color: colors.foreground,
+      color: textColor,
       marginTop: 16,
       marginBottom: 8,
       lineHeight: 24,
@@ -49,7 +59,7 @@ export function getMarkdownStyles(isDark: boolean) {
     heading4: {
       fontSize: 16,
       fontWeight: '600' as const,
-      color: colors.foreground,
+      color: textColor,
       marginTop: 14,
       marginBottom: 6,
       lineHeight: 22,
@@ -57,7 +67,7 @@ export function getMarkdownStyles(isDark: boolean) {
     heading5: {
       fontSize: 15,
       fontWeight: '600' as const,
-      color: colors.foreground,
+      color: textColor,
       marginTop: 12,
       marginBottom: 6,
       lineHeight: 20,
@@ -65,7 +75,7 @@ export function getMarkdownStyles(isDark: boolean) {
     heading6: {
       fontSize: 14,
       fontWeight: '600' as const,
-      color: colors.foreground,
+      color: textColor,
       marginTop: 10,
       marginBottom: 4,
       lineHeight: 18,
@@ -75,7 +85,7 @@ export function getMarkdownStyles(isDark: boolean) {
     paragraph: {
       fontSize: 16,
       lineHeight: 26,
-      color: colors.foreground,
+      color: textColor,
       marginTop: 0,
       marginBottom: 16,
       paddingHorizontal: 0,
@@ -95,7 +105,7 @@ export function getMarkdownStyles(isDark: boolean) {
     listItem: {
       fontSize: 16,
       lineHeight: 26,
-      color: colors.foreground,
+      color: textColor,
       marginBottom: 8,
     },
     bullet_list_icon: {
@@ -116,7 +126,7 @@ export function getMarkdownStyles(isDark: boolean) {
       fontSize: 14,
       fontFamily: codeFontFamily,
       backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-      color: colors.foreground,
+      color: textColor,
       padding: 12,
       borderRadius: 8,
       marginTop: 12,
@@ -128,7 +138,7 @@ export function getMarkdownStyles(isDark: boolean) {
       fontSize: 14,
       fontFamily: codeFontFamily,
       backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-      color: colors.foreground,
+      color: textColor,
       padding: 12,
       borderRadius: 8,
       marginTop: 12,
@@ -153,7 +163,7 @@ export function getMarkdownStyles(isDark: boolean) {
     blockquote_text: {
       fontSize: 16,
       lineHeight: 24,
-      color: colors.foreground,
+      color: textColor,
       fontStyle: 'italic' as const,
     },
     
@@ -174,11 +184,11 @@ export function getMarkdownStyles(isDark: boolean) {
     // Strong/Emphasis
     strong: {
       fontWeight: '700' as const,
-      color: colors.foreground,
+      color: textColor,
     },
     em: {
       fontStyle: 'italic' as const,
-      color: colors.foreground,
+      color: textColor,
     },
     
     // Horizontal rule
@@ -206,13 +216,13 @@ export function getMarkdownStyles(isDark: boolean) {
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       fontWeight: '600' as const,
-      color: colors.foreground,
+      color: textColor,
     },
     td: {
       padding: 12,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
-      color: colors.foreground,
+      color: textColor,
     },
     tr: {},
   };

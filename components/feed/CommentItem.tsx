@@ -1,7 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Animated } from 'react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
+import { getThemeColors } from '@/shared/theme-constants';
 import { Heart, ChatCircle } from 'phosphor-react-native';
 import { MarkdownContent } from './MarkdownContent';
 
@@ -27,7 +28,8 @@ interface CommentItemProps {
 }
 
 export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemProps) {
-  const { isDark, isAmoled } = useTheme();
+  const { isDark, isAmoled, themeMode } = useTheme();
+  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-10)).current;
   
@@ -99,7 +101,7 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
             <Heart 
               size={18} 
               weight={comment.likes > 0 ? 'fill' : 'regular'} 
-              color={isDark ? '#a1a1aa' : '#17131B'} 
+              color={colors.foreground} 
             />
             <Text className="text-[13px] ml-1 font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
               {comment.likes}
@@ -112,7 +114,7 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
             accessibilityRole="button"
             accessibilityLabel="Reply to comment"
           >
-            <ChatCircle size={18} weight="regular" color={isDark ? '#a1a1aa' : '#17131B'} />
+            <ChatCircle size={18} weight="regular" color={colors.foreground} />
             <Text className="text-[13px] ml-1 font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
               Reply
             </Text>

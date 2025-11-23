@@ -59,7 +59,7 @@ describe('Logger Utility', () => {
   });
 
   describe('logger.error', () => {
-    it('should log error messages', () => {
+    it('should log error messages without error object', () => {
       logger.error('Test error');
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('ERROR: Test error')
@@ -71,6 +71,23 @@ describe('Logger Utility', () => {
       logger.error('Error occurred:', error);
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('ERROR: Error occurred:')
+      );
+    });
+
+    it('should not log when error is explicitly null', () => {
+      logger.error('Test error', null);
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it('should handle null errors gracefully (expected SecureStore failures)', () => {
+      logger.error('SecureStore operation failed', null);
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it('should log error messages with context but no error object', () => {
+      logger.error('Test error', undefined, { component: 'TestComponent' });
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('ERROR: Test error')
       );
     });
   });

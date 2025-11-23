@@ -4,11 +4,16 @@
  */
 export interface Byte {
   id: string | number;
+  title?: string; // Topic title from Discourse
   author: {
     id: number;
     name: string;
     username: string;
     avatar: string;
+    verified?: boolean;
+    admin?: boolean;
+    moderator?: boolean;
+    groups?: Array<{ id: number; name: string; flair_url?: string }>;
   };
   teret?: {
     id: number;
@@ -18,6 +23,8 @@ export interface Byte {
   raw: string;      // Markdown raw content
   cooked: string;   // HTML from Discourse
   createdAt: string;
+  updatedAt?: string; // When post was last updated
+  origin: 'summary' | 'hydrated'; // Explicit source tracking
   media?: string[]; // images / videos URLs
   linkPreview?: {
     url: string;
@@ -29,6 +36,18 @@ export interface Byte {
     likes: number;
     replies: number;
     views?: number;
+  };
+  // Engagement state
+  isLiked?: boolean;
+  isBookmarked?: boolean;
+  // Thread context (for replies/reposts)
+  replyTo?: {
+    username: string;
+    postId?: number;
+  };
+  repostedBy?: {
+    username: string;
+    userId: number;
   };
 }
 

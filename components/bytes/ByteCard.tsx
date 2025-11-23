@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, Text } from 'react-native';
 import type { Byte } from '@/types/byte';
 import { ByteCardHeader } from './ByteCardHeader';
 import { ByteCardContent } from './ByteCardContent';
@@ -24,6 +24,7 @@ export interface ByteCardProps {
  * - Footer actions: like, comment, bookmark, share
  * - Separator: subtle divider between cards
  * - Themed: uses Fomio semantic tokens (Light + AMOLED Dark)
+ * - Renders byte as-is (summary or full content)
  */
 export function ByteCard({ 
   byte, 
@@ -49,18 +50,25 @@ export function ByteCard({
       accessibilityRole="button"
       accessibilityLabel={`Byte by ${byte.author.name}`}
     >
-      <View className="flex-row gap-3">
-        {/* Avatar is inside header component */}
-        <View className="flex-1" style={{ minWidth: 0 }}>
-          <ByteCardHeader byte={byte} />
-          <ByteCardContent byte={byte} />
-          <ByteCardMedia byte={byte} />
-          <ByteCardFooter byte={byte} />
-          
-          {showSeparator && (
-            <View className="h-[1px] bg-fomio-border-soft dark:bg-fomio-border-soft-dark opacity-20 mt-3 mb-1" />
-          )}
-        </View>
+      <View className="flex-1" style={{ minWidth: 0 }}>
+        {/* Title first */}
+        {byte.title && (
+          <Text className="text-title font-bold text-fomio-foreground dark:text-fomio-foreground-dark mb-3">
+            {byte.title}
+          </Text>
+        )}
+        
+        {/* Author row: avatar | name | username */}
+        <ByteCardHeader byte={byte} />
+        
+        {/* Content, media, footer */}
+        <ByteCardContent byte={byte} />
+        <ByteCardMedia byte={byte} />
+        <ByteCardFooter byte={byte} />
+        
+        {showSeparator && (
+          <View className="h-[1px] bg-fomio-border-soft dark:bg-fomio-border-soft-dark opacity-20 mt-3 mb-1" />
+        )}
       </View>
     </Pressable>
   );

@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { discourseApi } from '@/shared/discourseApi';
 import { useAuth } from '@/shared/auth-context';
 import { useBookmarkStore } from '@/shared/useBookmarkSync';
+import { optimisticEngagementStore } from '@/shared/stores/optimisticEngagementStore';
 import { useToast } from '@/shared/form-validation';
 import { logger } from '@/shared/logger';
 import type { Byte } from '@/types/byte';
@@ -49,8 +50,11 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
   const toggleBookmarkInStore = useBookmarkStore(state => state.toggleBookmark);
   const isBookmarked = useBookmarkStore(state => state.isBookmarked(Number(byte.id)));
   
-  // Local state for optimistic UI
-  const [isLiked, setIsLiked] = useState(false);
+  // Get optimistic like state (local takes precedence over byte.isLiked)
+  const localLike = optimisticEngagementStore.getLocalLike(Number(byte.id));
+  const isLiked = localLike ?? byte.isLiked ?? false;
+  
+  // Local state for UI
   const [likeCount, setLikeCount] = useState(byte.stats.likes);
   const [loadingLike, setLoadingLike] = useState(false);
   const [loadingBookmark, setLoadingBookmark] = useState(false);
@@ -88,7 +92,10 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
             (a: any) => a.id === 2 // Like action type ID (from Discourse API)
           );
           if (likeAction?.acted) {
-            setIsLiked(true);
+            // Only set if not already set optimistically
+            if (optimisticEngagementStore.getLocalLike(Number(byte.id)) === undefined) {
+              optimisticEngagementStore.setLocalLike(Number(byte.id), true);
+            }
           }
         }
         
@@ -172,7 +179,8 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
     // Optimistic update
     const previousLiked = isLiked;
     const previousCount = likeCount;
-    setIsLiked(!isLiked);
+    const newLiked = !isLiked;
+    optimisticEngagementStore.setLocalLike(Number(byte.id), newLiked);
     setLikeCount(prev => isLiked ? prev - 1 : prev + 1);
     
     try {
@@ -181,7 +189,7 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
       
       if (!postId) {
         // Rollback optimistic update
-        setIsLiked(previousLiked);
+        optimisticEngagementStore.setLocalLike(Number(byte.id), previousLiked);
         setLikeCount(previousCount);
         throw new Error('Failed to find post');
       }
@@ -194,7 +202,7 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
       
       if (!response.success) {
         // Rollback optimistic update
-        setIsLiked(previousLiked);
+        optimisticEngagementStore.setLocalLike(Number(byte.id), previousLiked);
         setLikeCount(previousCount);
         
         throw new Error(response.error || 'Failed to update like status');
@@ -206,7 +214,7 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
       );
     } catch (error) {
       // Rollback optimistic update
-      setIsLiked(previousLiked);
+      optimisticEngagementStore.setLocalLike(Number(byte.id), previousLiked);
       setLikeCount(previousCount);
       
       logger.error('Failed to toggle like', error);
@@ -238,7 +246,9 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
     
     // Optimistic update
     const previousBookmarked = isBookmarked;
-    toggleBookmarkInStore(Number(byte.id), !isBookmarked);
+    const newBookmarked = !isBookmarked;
+    toggleBookmarkInStore(Number(byte.id), newBookmarked);
+    optimisticEngagementStore.setLocalBookmark(Number(byte.id), newBookmarked);
     
     try {
       // Use topic-level API: toggleTopicBookmark handles both bookmark/unbookmark
@@ -248,6 +258,7 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
       if (!response.success) {
         // Rollback optimistic update
         toggleBookmarkInStore(Number(byte.id), previousBookmarked);
+        optimisticEngagementStore.setLocalBookmark(Number(byte.id), previousBookmarked);
         
         throw new Error(response.error || 'Failed to update bookmark status');
       }
@@ -259,6 +270,7 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
     } catch (error) {
       // Rollback optimistic update
       toggleBookmarkInStore(Number(byte.id), previousBookmarked);
+      optimisticEngagementStore.setLocalBookmark(Number(byte.id), previousBookmarked);
       
       logger.error('Failed to toggle bookmark', error);
       showError(

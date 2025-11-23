@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { PaperPlaneRight } from 'phosphor-react-native';
@@ -13,16 +13,36 @@ interface NewCommentInputProps {
     username: string;
   };
   onFocus?: () => void;
+  isAuthenticated?: boolean; // Optional prop for when used in contexts without AuthProvider (e.g., BottomSheetModal)
 }
 
-export function NewCommentInput({ onSend, replyTo, onFocus }: NewCommentInputProps) {
+export interface NewCommentInputRef {
+  focus: () => void;
+  blur: () => void;
+}
+
+export const NewCommentInput = forwardRef<NewCommentInputRef, NewCommentInputProps>(
+  ({ onSend, replyTo, onFocus, isAuthenticated: isAuthenticatedProp }, ref) => {
   const { isDark, isAmoled } = useTheme();
-  const { isAuthenticated } = useAuth();
+  // useAuth now returns safe defaults if context is missing (e.g., in BottomSheetModal portals)
+  // If prop is provided, it takes precedence
+  const authContext = useAuth();
+  const isAuthenticated = isAuthenticatedProp !== undefined ? isAuthenticatedProp : authContext.isAuthenticated;
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
   const wasFocusedRef = useRef<boolean>(false); // Track if input was focused
+
+  // Expose focus/blur methods via ref
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+    },
+    blur: () => {
+      inputRef.current?.blur();
+    },
+  }));
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#23232b' : '#f8fafc'),
@@ -194,7 +214,9 @@ export function NewCommentInput({ onSend, replyTo, onFocus }: NewCommentInputPro
       </TouchableOpacity>
     </View>
   );
-}
+});
+
+NewCommentInput.displayName = 'NewCommentInput';
 
 const styles = StyleSheet.create({
   inputRow: {

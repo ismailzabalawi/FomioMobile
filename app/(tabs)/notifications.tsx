@@ -34,6 +34,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { useHeader } from '@/components/ui/header';
 import { SettingSection } from '@/components/settings';
 import { useNotifications, Notification } from '../../shared/useNotifications';
 import { useAuth } from '@/shared/auth-context';
@@ -398,6 +399,9 @@ export default function NotificationsScreen(): React.ReactElement {
     withSafeTop: false,
     tone: "bg",
   }, []);
+
+  // Get setActions from useHeader for dynamic updates
+  const { setActions } = useHeader();
 
   // Define handlers before they're used in useEffect
   const handleMarkAllRead = useCallback(() => {

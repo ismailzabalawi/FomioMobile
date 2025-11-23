@@ -8,7 +8,7 @@
 // - Smart Post button enable/disable
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Pressable, Keyboard } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
@@ -19,7 +19,7 @@ import { useAuth } from '@/shared/auth-context';
 import { useDiscourseSettings } from '../../shared/useDiscourseSettings';
 import { createTopic } from '../../lib/discourse';
 import { discourseApi } from '@/shared/discourseApi';
-import { SignIn, Check, Warning } from 'phosphor-react-native';
+import { SignIn, Check, Warning, Question } from 'phosphor-react-native';
 import { 
   ComposeEditor,
   MediaGrid,
@@ -66,6 +66,8 @@ export default function ComposeScreen(): React.ReactElement {
   const [isTeretSheetOpen, setIsTeretSheetOpen] = useState(false);
   const [isHelpSheetOpen, setIsHelpSheetOpen] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [showHelpTip, setShowHelpTip] = useState(false);
+  const [editorMode, setEditorMode] = useState<'write' | 'preview'>('write');
 
   // Configure header - moved after handleCancel definition
 
@@ -133,13 +135,71 @@ export default function ComposeScreen(): React.ReactElement {
     safeBack();
   }, [safeBack]);
 
-  // Configure header
+  const handleModeChange = useCallback((mode: 'write' | 'preview') => {
+    setEditorMode(mode);
+    if (mode === 'preview') {
+      Keyboard.dismiss();
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, []);
+
+  // Configure header with help icon and mode toggle
   useScreenHeader({
     title: "Create Byte",
     withSafeTop: false,
     tone: "card",
     canGoBack: true,
-  }, []);
+    rightActions: [
+      <Pressable
+        key="mode-toggle"
+        onPress={() => handleModeChange(editorMode === 'write' ? 'preview' : 'write')}
+        hitSlop={12}
+        className="px-3 py-1.5 rounded-full active:opacity-70"
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={editorMode === 'write' ? "Switch to preview mode" : "Switch to write mode"}
+      >
+        <Text
+          className={
+            editorMode === 'write'
+              ? 'text-caption font-semibold text-fomio-accent dark:text-fomio-accent-dark'
+              : 'text-caption text-fomio-muted dark:text-fomio-muted-dark'
+          }
+        >
+          {editorMode === 'write' ? 'Preview' : 'Write'}
+        </Text>
+      </Pressable>,
+      <Pressable
+        key="help-tip"
+        onPress={() => {
+          setShowHelpTip(prev => !prev);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        }}
+        hitSlop={12}
+        className="p-2 rounded-full active:opacity-70"
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={showHelpTip ? "Hide help tip" : "Show help tip"}
+      >
+        <Question 
+          size={20} 
+          color={isDark ? '#A1A1AA' : '#6B6B72'} 
+          weight="regular" 
+        />
+      </Pressable>,
+    ],
+    subHeader: showHelpTip ? (
+      <View className="px-4 py-2">
+        <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
+          Pro tip:{' '}
+          <Text className="font-mono">
+            /help
+          </Text>{' '}
+          shows all slash commands.
+        </Text>
+      </View>
+    ) : undefined,
+  }, [showHelpTip, isDark, editorMode, handleModeChange]);
 
   useScreenBackBehavior({
     onBackPress: handleCancel,
@@ -443,6 +503,7 @@ export default function ComposeScreen(): React.ReactElement {
           className="flex-1"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ flexGrow: 1 }}
         >
           {/* Authentication Warning */}
           {!isAuthLoading && !isAuthenticated && (
@@ -506,18 +567,9 @@ export default function ComposeScreen(): React.ReactElement {
             onTeretPress={handleTeretPress}
             onSlashHelp={handleSlashHelp}
             onSlashImage={handleSlashImage}
+            mode={editorMode}
+            onModeChange={handleModeChange}
           />
-
-          {/* Small hint under editor */}
-          <View className="px-4 mt-2">
-            <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
-              Pro tip:{' '}
-              <Text className="font-mono">
-                /help
-              </Text>{' '}
-              shows all slash commands.
-            </Text>
-          </View>
 
           {/* Media Grid */}
           {images.length > 0 && (

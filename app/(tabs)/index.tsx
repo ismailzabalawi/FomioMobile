@@ -4,11 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
 import { ByteCard } from '@/components/bytes/ByteCard';
-import { discourseByteToByte } from '@/shared/adapters/discourseByteToByte';
+import { topicSummaryToByte } from '@/shared/adapters/topicSummaryToByte';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useFeed, FeedItem } from '../../shared/useFeed';
 import { useAuth } from '@/shared/auth-context';
-import { getSession, getLatest } from '../../lib/discourse';
+import { getSession } from '../../lib/discourse';
 
 export default function HomeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
@@ -102,10 +102,11 @@ export default function HomeScreen(): React.ReactElement {
     // TODO: Navigate to tag search screen
   };
 
-  // formatTimestamp removed - now handled by formatTimeAgo in ByteCard component
-
   const renderFeedItem = ({ item }: { item: FeedItem }): React.ReactElement => {
-    const byte = discourseByteToByte(item);
+    // Items from useFeed are already Byte objects, but we need to ensure they're properly formatted
+    // Since useFeed now returns summary bytes directly, we can use them as-is
+    const byte = item as any; // FeedItem is already Byte
+    
     return (
       <ByteCard
         byte={byte}

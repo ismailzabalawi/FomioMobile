@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { discourseApi, Byte, Hub } from './discourseApi';
+import { discourseApi, Hub } from './discourseApi';
 import { onAuthEvent } from './auth-events';
+import { topicSummaryToByte } from './adapters/topicSummaryToByte';
+import type { Byte as FeedByte } from '@/types/byte';
 
-export type FeedItem = Byte;
+export type FeedItem = FeedByte;
 
 export interface FeedState {
-  bytes: Byte[];
+  bytes: FeedByte[];
   isLoading: boolean;
   isRefreshing: boolean;
   error: string | null;
@@ -62,16 +64,73 @@ export function useFeed(filters: FeedFilters = {}) {
         hubId: filters.hubId 
       });
 
-      const response = await discourseApi.getBytes(filters.hubId, page);
+      let queryParams = '';
+      let topics: any[] = [];
+      let categories: any[] = [];
 
-      console.log('🔍 useFeed: Response received', {
-        success: response.success,
-        bytesCount: response.data?.length || 0,
-        error: response.error,
+      if (filters.hubId) {
+        // For category, use getCategoryTopics
+        const categoryResponse = await discourseApi.getCategoryTopics(String(filters.hubId), page > 0 ? `page=${page}` : '');
+        if (!categoryResponse.success || !categoryResponse.data?.topic_list?.topics) {
+          throw new Error(categoryResponse.error || 'Failed to load feed');
+        }
+        topics = categoryResponse.data.topic_list.topics;
+        categories = categoryResponse.data.categories || [];
+      } else {
+        // For latest feed
+        if (page > 0) {
+          queryParams = `page=${page}`;
+        }
+        const rawResponse = await discourseApi.getTopics(queryParams);
+        if (!rawResponse.success || !rawResponse.data?.topic_list?.topics) {
+          throw new Error(rawResponse.error || 'Failed to load feed');
+        }
+        topics = rawResponse.data.topic_list.topics;
+        categories = rawResponse.data.categories || [];
+      }
+
+      // Build category map from categories array
+      const categoryMap = new Map();
+      categories.forEach((cat: any) => {
+        categoryMap.set(cat.id, {
+          id: cat.id,
+          name: cat.name,
+          color: cat.color,
+        });
       });
 
-      if (response.success && response.data) {
-        const newBytes = response.data;
+      console.log('🔍 useFeed: Category extraction', {
+        categoriesCount: categories.length,
+        categoryMapSize: categoryMap.size,
+        sampleCategories: Array.from(categoryMap.entries()).slice(0, 3),
+        firstTopicCategoryId: topics[0]?.category_id,
+        firstTopicHasCategory: !!categoryMap.get(topics[0]?.category_id),
+      });
+
+      // Enrich topics with category data before mapping
+      const enrichedTopics = topics.map((topic: any) => ({
+        ...topic,
+        category: categoryMap.get(topic.category_id) || null,
+      }));
+
+      console.log('🔍 useFeed: After enrichment', {
+        firstTopicCategory: enrichedTopics[0]?.category,
+        topicsWithCategory: enrichedTopics.filter(t => t.category).length,
+        totalTopics: enrichedTopics.length,
+      });
+
+      // Map topics to bytes using simple summary adapter
+      // No user resolution - adapter uses data directly from API response
+      const newBytes: FeedByte[] = enrichedTopics.map((topic: any) => {
+        return topicSummaryToByte(topic);
+      });
+
+      console.log('🔍 useFeed: Response received', {
+        success: true,
+        bytesCount: newBytes.length,
+      });
+
+      if (newBytes.length > 0) {
         currentPageRef.current = page + 1;
         
         setFeedState(prev => ({
@@ -86,9 +145,7 @@ export function useFeed(filters: FeedFilters = {}) {
         
         console.log('✅ useFeed: Successfully loaded', newBytes.length, 'bytes');
       } else {
-        const errorMsg = response.error || 'Failed to load feed';
-        console.error('❌ useFeed: Failed to load feed', errorMsg);
-        throw new Error(errorMsg);
+        throw new Error('No bytes returned from feed');
       }
     } catch (error) {
       console.error('❌ useFeed: Exception caught', error);

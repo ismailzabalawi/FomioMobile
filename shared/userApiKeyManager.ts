@@ -438,11 +438,35 @@ export class UserApiKeyManager {
     try {
       const apiKeyData = await SecureStore.getItemAsync(API_KEY_STORAGE_KEY);
       if (!apiKeyData) {
-        return null;
+        return null; // Key doesn't exist - this is expected, not an error
       }
       return JSON.parse(apiKeyData) as UserApiKeyData;
     } catch (error: any) {
-      logger.error('UserApiKeyManager: Failed to get API key', error);
+      // Only log actual errors (storage failures, parse errors), not null/undefined
+      // On iOS simulator, SecureStore can fail with null errors due to storage directory issues
+      // CRITICAL: Don't call logger.error for SecureStore null errors - they cause React Native LogBox to show "ERROR null"
+      if (error && error !== null && error !== undefined) {
+        const errorMessage = error?.message || String(error);
+        // Only log if it's a real error, not just a null value
+        // Also check if error object itself stringifies to null
+        if (errorMessage && 
+            errorMessage !== 'null' && 
+            errorMessage !== 'undefined' &&
+            String(error) !== 'null' &&
+            String(error) !== 'undefined') {
+          // Final check: ensure error object doesn't stringify to null
+          try {
+            const errorStringify = JSON.stringify(error);
+            if (errorStringify && errorStringify !== 'null' && errorStringify !== null) {
+              logger.error('UserApiKeyManager: Failed to get API key', error);
+            }
+            // If stringify is null, silently skip logging (expected SecureStore behavior)
+          } catch {
+            // If stringify fails, skip logging to avoid React Native LogBox issues
+          }
+        }
+      }
+      // Return null for any error (expected or unexpected) - caller should handle gracefully
       return null;
     }
   }

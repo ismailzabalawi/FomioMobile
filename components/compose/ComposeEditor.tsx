@@ -1,7 +1,7 @@
 // UI Spec: ComposeEditor
 // - Auto-expanding TextInput for body (multiline, min 120px height)
-// - Minimal inline title TextInput above content area
-// - Teret row between title and body (simple, tappable row)
+// - Teret row at the top (simple, tappable row)
+// - Minimal inline title TextInput below Teret picker
 // - Uses NativeWind classes with semantic tokens
 // - Placeholder: "Start writing…" for body
 // - Placeholder: "Add title" for title field
@@ -9,7 +9,8 @@
 // - Phase 3: Write/Preview toggle with Markdown renderer
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Keyboard } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Markdown from 'react-native-markdown-display';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
@@ -28,6 +29,8 @@ interface ComposeEditorProps {
   onTeretPress: () => void;
   onSlashHelp?: () => void;
   onSlashImage?: () => void;
+  mode: EditorMode;
+  onModeChange: (mode: EditorMode) => void;
 }
 
 export function ComposeEditor({
@@ -39,10 +42,12 @@ export function ComposeEditor({
   onTeretPress,
   onSlashHelp,
   onSlashImage,
+  mode,
+  onModeChange,
 }: ComposeEditorProps) {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [bodyHeight, setBodyHeight] = useState(120);
-  const [mode, setMode] = useState<EditorMode>('write');
   const [selection, setSelection] = useState<{ start: number; end: number }>({
     start: body.length,
     end: body.length,
@@ -320,30 +325,16 @@ export function ComposeEditor({
   );
 
   return (
-    <View className="flex-1 px-4">
-      {/* Title Input - Minimal inline, editor-first styling */}
-      <View className="mb-3">
-        <TextInput
-          className="text-body text-fomio-foreground dark:text-fomio-foreground-dark rounded-fomio-card px-5 py-4"
-          placeholder="Add title"
-          placeholderTextColor="rgba(161, 161, 170, 0.8)"
-          value={title}
-          onChangeText={onChangeTitle}
-          maxLength={255}
-          accessible
-          accessibilityLabel="Post title input"
-          style={{
-            fontSize: 17,
-            lineHeight: 24,
-            minHeight: 50,
-            backgroundColor: inputBg,
-          }}
-        />
-      </View>
-
-      {/* Teret Row - Simple, minimal row between title and body */}
+    <View 
+      className="flex-1"
+      style={{ 
+        paddingHorizontal: Math.max(insets.left, insets.right, 12),
+        paddingTop: Math.max(insets.top * 0.3, 4),
+      }}
+    >
+      {/* Teret Row - Simple, minimal row at the top */}
       <TouchableOpacity
-        className="mb-3 py-3 flex-row items-center justify-between"
+        className="mb-2 py-2.5 flex-row items-center justify-between"
         onPress={onTeretPress}
         activeOpacity={0.7}
         accessible
@@ -376,62 +367,31 @@ export function ComposeEditor({
         />
       </TouchableOpacity>
 
-      {/* Write/Preview Toggle */}
-      <View className="flex-row mb-2 gap-2">
-        <TouchableOpacity
-          className={`px-3 py-1 rounded-full ${
-            mode === 'write'
-              ? 'bg-fomio-accent/10 dark:bg-fomio-accent-dark/10'
-              : 'bg-transparent'
-          }`}
-          onPress={() => setMode('write')}
-          activeOpacity={0.7}
+      {/* Title Input - Minimal inline, editor-first styling */}
+      <View className="mb-2">
+        <TextInput
+          className="text-body text-fomio-foreground dark:text-fomio-foreground-dark rounded-fomio-card px-3 py-3"
+          placeholder="Add title"
+          placeholderTextColor="rgba(161, 161, 170, 0.8)"
+          value={title}
+          onChangeText={onChangeTitle}
+          maxLength={255}
           accessible
-          accessibilityRole="button"
-          accessibilityLabel="Switch to write mode"
-        >
-          <Text
-            className={
-              mode === 'write'
-                ? 'text-caption font-semibold text-fomio-accent dark:text-fomio-accent-dark'
-                : 'text-caption text-fomio-muted dark:text-fomio-muted-dark'
-            }
-          >
-            Write
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          className={`px-3 py-1 rounded-full ${
-            mode === 'preview'
-              ? 'bg-fomio-accent/10 dark:bg-fomio-accent-dark/10'
-              : 'bg-transparent'
-          }`}
-          onPress={() => {
-            setMode('preview');
-            Keyboard.dismiss();
+          accessibilityLabel="Post title input"
+          style={{
+            fontSize: 17,
+            lineHeight: 24,
+            minHeight: 50,
+            backgroundColor: inputBg,
           }}
-          activeOpacity={0.7}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Switch to preview mode"
-        >
-          <Text
-            className={
-              mode === 'preview'
-                ? 'text-caption font-semibold text-fomio-accent dark:text-fomio-accent-dark'
-                : 'text-caption text-fomio-muted dark:text-fomio-muted-dark'
-            }
-          >
-            Preview
-          </Text>
-        </TouchableOpacity>
+        />
       </View>
 
       {/* Body Input or Preview - Full height */}
       <View className="flex-1">
         {mode === 'write' ? (
           <TextInput
-            className="text-body text-fomio-foreground dark:text-fomio-foreground-dark rounded-fomio-card px-5 py-5"
+            className="text-body text-fomio-foreground dark:text-fomio-foreground-dark rounded-fomio-card px-3 py-4"
             placeholder="Start writing…"
             placeholderTextColor="rgba(161, 161, 170, 0.8)"
             value={body}
@@ -458,7 +418,7 @@ export function ComposeEditor({
           />
         ) : (
           <ScrollView
-            className="flex-1 rounded-fomio-card px-5 py-5 bg-fomio-card dark:bg-fomio-card-dark"
+            className="flex-1 rounded-fomio-card px-3 py-4 bg-fomio-card dark:bg-fomio-card-dark"
             showsVerticalScrollIndicator={true}
             keyboardShouldPersistTaps="handled"
           >

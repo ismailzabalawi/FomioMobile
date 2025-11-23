@@ -7,6 +7,7 @@
 
 import 'react-native-reanimated';
 import React, { useCallback, useMemo } from 'react';
+import { Platform } from 'react-native';
 import {
   BottomSheetModal,
   BottomSheetModalProps,
@@ -14,6 +15,7 @@ import {
   BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import { useTheme } from '@/components/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Type for BottomSheetModal ref - use ElementRef for type safety
 type BottomSheetModalRef = React.ElementRef<typeof BottomSheetModal>;
@@ -57,11 +59,24 @@ export const ThemedBottomSheet = React.forwardRef<BottomSheetModalRef, ThemedBot
       backdropOpacity = 0.5,
       backdropComponent,
       children,
+      topInset,
       ...props
     },
     ref
   ) => {
     const { isDark, isAmoled } = useTheme();
+    const insets = useSafeAreaInsets();
+    
+    // Calculate top inset to account for header height
+    // Header: 44px (iOS) or 48px (Android) + 8px (iOS) or 4px (Android) padding
+    const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : 48;
+    const HEADER_PADDING = Platform.OS === 'ios' ? 8 : 4;
+    const headerHeight = BASE_BAR_HEIGHT + HEADER_PADDING;
+    
+    // Use provided topInset or calculate from header + safe area
+    const calculatedTopInset = topInset !== undefined 
+      ? topInset 
+      : insets.top + headerHeight;
 
     // Render backdrop with theme-aware styling
     const renderBackdrop = useCallback(
@@ -115,6 +130,7 @@ export const ThemedBottomSheet = React.forwardRef<BottomSheetModalRef, ThemedBot
       <BottomSheetModal
         ref={ref}
         {...props}
+        topInset={calculatedTopInset}
         backdropComponent={backdropComponent || renderBackdrop}
         backgroundStyle={backgroundStyle}
         handleIndicatorStyle={handleIndicatorStyle}

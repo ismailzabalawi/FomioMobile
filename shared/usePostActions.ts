@@ -117,9 +117,18 @@ export function usePostActions(
         return true;
       } else {
         // Extract detailed error message
-        const errorMessage = response.error || 
-                            (response.errors && Array.isArray(response.errors) ? response.errors.join(', ') : 'Unknown error') ||
-                            'Failed to create comment';
+        // Prioritize errors array over generic HTTP error messages
+        let errorMessage: string;
+        if (response.errors && Array.isArray(response.errors) && response.errors.length > 0) {
+          // Use errors array if available (contains actual Discourse error messages)
+          errorMessage = response.errors.join(', ');
+        } else if (response.error && !response.error.match(/^HTTP \d{3}:?\s*$/)) {
+          // Use response.error if it's not just a generic HTTP status code
+          errorMessage = response.error;
+        } else {
+          // Fallback to generic message
+          errorMessage = 'Failed to create comment';
+        }
         console.error('❌ usePostActions.createComment failed:', errorMessage);
         
         // Preserve the original error message so it can be detected by the UI layer

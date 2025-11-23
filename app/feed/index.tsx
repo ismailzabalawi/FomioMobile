@@ -136,7 +136,11 @@ function TeretCard({ teret, onPress }: { teret: Teret; onPress: () => void }) {
 // formatDate removed - now handled by formatTimeAgo in ByteCard component
 
 // Helper to render ByteCard from Topic
-function renderTopicCard(topic: Topic, onPress: () => void, onCategoryPress?: () => void) {
+function renderTopicCard(
+  topic: any, // Raw topic from Discourse API
+  onPress: () => void,
+  onCategoryPress?: () => void
+) {
   const byte = topicSummaryToByte(topic);
   return (
     <ByteCard
@@ -276,50 +280,11 @@ export default function FeedScreen(): React.ReactElement {
             throw new Error('Failed to load topics');
           }
 
-          const currentThemeColors = getThemeColors(isDark);
-          const transformedTopics = topicsResponse.data.topic_list.topics.map((topic: any) => {
-            // Extract first image from excerpt if available
-            const excerpt = topic.excerpt || '';
-            const hasMedia = /<img|<video|<iframe/i.test(excerpt);
-            const coverImageMatch = excerpt.match(/<img[^>]+src=["']([^"']+)["']/i);
-            const coverImage = coverImageMatch ? coverImageMatch[1] : undefined;
+          const topicsData = topicsResponse.data.topic_list.topics;
 
-            return {
-            id: topic.id,
-            title: topic.title,
-              excerpt: excerpt,
-            author: {
-              username: topic.last_poster_username || 'Unknown',
-              name: topic.last_poster_username || 'Unknown',
-              avatar: '',
-            },
-            category: {
-              id: topic.category_id,
-              name: targetCategory.name,
-              color: targetCategory.color || currentThemeColors.foreground,
-              slug: targetCategory.slug,
-            },
-            tags: topic.tags || [],
-            createdAt: topic.created_at,
-            replyCount: topic.reply_count || 0,
-            likeCount: topic.like_count || 0,
-            isPinned: topic.pinned || false,
-            isClosed: topic.closed || false,
-            isArchived: topic.archived || false,
-            lastPostedAt: topic.last_posted_at,
-            lastPoster: {
-              username: topic.last_poster_username || 'Unknown',
-              name: topic.last_poster_username || 'Unknown',
-            },
-            views: topic.views || 0,
-            slug: topic.slug,
-            url: `https://meta.techrebels.info/t/${topic.slug}/${topic.id}`,
-              unreadCount: topic.unread_count || 0,
-              isBookmarked: topic.bookmarked || false,
-              hasMedia,
-              coverImage,
-            };
-          });
+          // Map topics directly - adapter will use data from API response
+          // Use raw topics directly - adapter will handle mapping
+          const transformedTopics = topicsData;
 
           setTopics(transformedTopics);
           setTerets([]);
@@ -334,6 +299,8 @@ export default function FeedScreen(): React.ReactElement {
           throw new Error('Failed to load topics');
         }
 
+        const topicsData = topicsResponse.data.topic_list.topics.slice(0, 20);
+
         // Map category names based on real TechRebels structure
         const categoryMap: { [key: number]: string } = {
           4: 'General',
@@ -344,50 +311,8 @@ export default function FeedScreen(): React.ReactElement {
           43: 'Announcements',
         };
 
-        const currentThemeColors = getThemeColors(isDark);
-        const transformedTopics = topicsResponse.data.topic_list.topics.slice(0, 20).map((topic: any) => {
-            // Extract first image from excerpt if available
-            const excerpt = topic.excerpt || '';
-            const hasMedia = /<img|<video|<iframe/i.test(excerpt);
-            const coverImageMatch = excerpt.match(/<img[^>]+src=["']([^"']+)["']/i);
-            const coverImage = coverImageMatch ? coverImageMatch[1] : undefined;
-
-            return {
-          id: topic.id,
-          title: topic.title,
-              excerpt: excerpt,
-          author: {
-            username: topic.last_poster_username || 'Unknown',
-            name: topic.last_poster_username || 'Unknown',
-            avatar: '',
-          },
-          category: {
-            id: topic.category_id,
-            name: categoryMap[topic.category_id] || 'Unknown',
-            color: currentThemeColors.foreground,
-            slug: 'unknown',
-          },
-          tags: topic.tags || [],
-          createdAt: topic.created_at,
-          replyCount: topic.reply_count || 0,
-          likeCount: topic.like_count || 0,
-          isPinned: topic.pinned || false,
-          isClosed: topic.closed || false,
-          isArchived: topic.archived || false,
-          lastPostedAt: topic.last_posted_at,
-          lastPoster: {
-            username: topic.last_poster_username || 'Unknown',
-            name: topic.last_poster_username || 'Unknown',
-          },
-          views: topic.views || 0,
-          slug: topic.slug,
-          url: `https://meta.techrebels.info/t/${topic.slug}/${topic.id}`,
-              unreadCount: topic.unread_count || 0,
-              isBookmarked: topic.bookmarked || false,
-              hasMedia,
-              coverImage,
-            };
-          });
+        // Use raw topics directly - adapter will handle mapping
+        const transformedTopics = topicsData;
 
         setTopics(transformedTopics);
         setTerets([]);
@@ -418,7 +343,7 @@ export default function FeedScreen(): React.ReactElement {
     router.push(`/feed?category=${teret.slug}`);
   }, []);
 
-  const handleBytePress = useCallback((topic: Topic) => {
+  const handleBytePress = useCallback((topic: any) => {
     logger.debug('Byte pressed', { topicId: topic.id });
     router.push(`/feed/${topic.id}`);
   }, []);

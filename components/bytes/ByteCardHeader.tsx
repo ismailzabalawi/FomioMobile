@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { CheckCircle } from 'phosphor-react-native';
 import { Avatar } from '../ui/avatar';
 import { formatTimeAgo } from '@/lib/utils/time';
 import type { Byte } from '@/types/byte';
@@ -17,7 +18,7 @@ import type { Byte } from '@/types/byte';
  */
 export function ByteCardHeader({ byte }: { byte: Byte }) {
   const router = useRouter();
-  const { author, teret } = byte;
+  const { author } = byte;
 
   const handleAvatarPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -31,12 +32,24 @@ export function ByteCardHeader({ byte }: { byte: Byte }) {
 
   const avatarSource = author.avatar ? { uri: author.avatar } : undefined;
 
+  // Check if user is verified/admin/moderator
+  const isVerified = author.verified || false;
+  const isAdmin = author.admin || false;
+  const isModerator = author.moderator || false;
+
+  // Determine badge color
+  const badgeColor = isAdmin
+    ? '#FF6B6B' // Red for admin
+    : isModerator
+    ? '#4ECDC4' // Teal for moderator
+    : '#4A6CF7'; // Blue for verified
+
   return (
-    <View className="flex-row gap-3">
+    <View className="flex-row gap-3 items-center">
       <Pressable onPress={handleAvatarPress} hitSlop={8}>
         <Avatar
           source={avatarSource}
-          size="md"
+          size="sm"
           fallback={author.name || author.username}
         />
       </Pressable>
@@ -48,19 +61,25 @@ export function ByteCardHeader({ byte }: { byte: Byte }) {
               {author.name || author.username}
             </Text>
           </Pressable>
+          {(isVerified || isAdmin || isModerator) && (
+            <CheckCircle size={16} weight="fill" color={badgeColor} />
+          )}
           <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
             @{author.username} · {formatTimeAgo(byte.createdAt)}
           </Text>
         </View>
 
-        {teret && (
-          <Text
-            className="mt-0.5 self-start px-2 py-0.5 rounded-full text-xs text-white font-medium"
-            style={{
-              backgroundColor: teret.color || '#4A6CF7',
-            }}
-          >
-            {teret.name}
+        {/* Show thread context if replying */}
+        {byte.replyTo && (
+          <Text className="text-xs text-fomio-muted dark:text-fomio-muted-dark mt-0.5">
+            Replying to @{byte.replyTo.username}
+          </Text>
+        )}
+
+        {/* Show repost context if reposted */}
+        {byte.repostedBy && (
+          <Text className="text-xs text-fomio-muted dark:text-fomio-muted-dark mt-0.5">
+            Reposted by @{byte.repostedBy.username}
           </Text>
         )}
       </View>

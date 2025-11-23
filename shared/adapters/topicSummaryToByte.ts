@@ -1,99 +1,82 @@
 import type { Byte } from '@/types/byte';
-import { extractMedia } from '@/lib/utils/media';
-
-// Declare __DEV__ for TypeScript (React Native global)
-declare const __DEV__: boolean;
-
-const FALLBACK_HTML = '<p>[Content unavailable]</p>';
+import { discourseApi } from '../discourseApi';
 
 /**
- * Topic interface from app/feed/index.tsx
+ * Adapter to transform Topic summary (from /latest.json) → Byte
+ * 
+ * Pure function - no async calls, no side effects
+ * Simple, direct mapping from Discourse API response
+ * 
+ * @param topic - Topic object from Discourse /latest.json response
  */
-interface Topic {
-  id: number;
-  title: string;
-  excerpt: string;
-  author: {
-    username: string;
-    name: string;
-    avatar: string;
-  };
-  category: {
-    id: number;
-    name: string;
-    color: string;
-    slug: string;
-  };
-  tags: string[];
-  createdAt: string;
-  replyCount: number;
-  likeCount: number;
-  isPinned: boolean;
-  isClosed: boolean;
-  isArchived: boolean;
-  lastPostedAt: string;
-  lastPoster: {
-    username: string;
-    name: string;
-  };
-  views: number;
-  slug: string;
-  url: string;
-  unreadCount?: number;
-  isBookmarked?: boolean;
-  hasMedia?: boolean;
-  coverImage?: string;
-}
+export function topicSummaryToByte(topic: any): Byte {
+  // Get author ID from posters array (original poster)
+  const authorId = topic.posters?.[0]?.user_id ?? 0;
+  
+  // Get author info from topic fields
+  // Discourse /latest.json provides: last_poster_username, last_poster_avatar_template
+  const username = topic.last_poster_username ?? 'unknown';
+  const avatarTemplate = topic.last_poster_avatar_template ?? '';
+  const avatar = avatarTemplate ? discourseApi.getAvatarUrl(avatarTemplate, 120) : '';
 
-/**
- * Adapter to transform Topic (from feed/index.tsx) → Byte
- * Uses excerpt as cooked content (HTML excerpt from /latest API)
- */
-export function topicSummaryToByte(topic: Topic): Byte {
-  // Use excerpt as cooked content, fallback to FALLBACK_HTML
-  const cooked = topic.excerpt || FALLBACK_HTML;
-  
-  // Only warn in development mode (expected for some topics without excerpts)
-  if (__DEV__ && !topic.excerpt) {
-    console.warn('topicSummaryToByte: missing excerpt for topic', topic.id);
-  }
-  
-  // Extract images from excerpt HTML
-  const media = extractMedia(cooked);
-  
-  // Add coverImage to media if available and not already included
-  if (topic.coverImage && !media.includes(topic.coverImage)) {
-    media.unshift(topic.coverImage);
-  }
-  
   // Map category to teret
-  const teret = topic.category
+  // Discourse API returns color as hex string (e.g., "FF6B6B") - add # prefix if needed
+  const categoryColor = topic.category?.color;
+  const formattedColor = categoryColor 
+    ? (categoryColor.startsWith('#') ? categoryColor : `#${categoryColor}`)
+    : undefined;
+  
+  // Only create teret if we have a valid category name
+  // This ensures the badge only shows when category data is available
+  const teret = topic.category_id && topic.category?.name
     ? {
-        id: topic.category.id,
+        id: topic.category_id,
         name: topic.category.name,
-        color: topic.category.color || undefined,
+        color: formattedColor,
       }
     : undefined;
 
+  // Debug logging to diagnose category badge issues
+  if (__DEV__) {
+    console.log('🔍 topicSummaryToByte: Teret creation', {
+      topicId: topic.id,
+      categoryId: topic.category_id,
+      hasCategory: !!topic.category,
+      categoryName: topic.category?.name,
+      teretCreated: !!teret,
+      teretName: teret?.name,
+      teretColor: teret?.color,
+    });
+  }
+
+  // Don't use excerpt - summaries should only show title, not body content
+  // Full content will be loaded when user taps to view detail page
+  const cooked = '';
+
   return {
     id: topic.id,
+    title: topic.title,
     author: {
-      id: 0, // Topic doesn't have author.id
-      name: topic.author.name || topic.author.username || 'Unknown User',
-      username: topic.author.username || 'unknown',
-      avatar: topic.author.avatar || '',
+      id: authorId,
+      username,
+      name: username, // Discourse doesn't send display name in summary
+      avatar,
     },
     teret,
-    raw: '', // Excerpts don't have raw markdown
-    cooked,
-    createdAt: topic.createdAt,
-    media: media.length > 0 ? media : undefined,
+    raw: '', // Summaries don't have raw markdown
+    cooked, // Empty for summaries - only title is shown
+    createdAt: topic.created_at || new Date().toISOString(),
+    updatedAt: topic.last_posted_at || topic.created_at || new Date().toISOString(),
+    origin: 'summary', // Always summary from /latest.json
+    media: undefined, // Summaries don't include media
     linkPreview: undefined,
     stats: {
-      likes: topic.likeCount || 0,
-      replies: topic.replyCount || 0,
+      likes: topic.like_count || 0,
+      replies: topic.reply_count || Math.max(0, (topic.posts_count || 1) - 1),
       views: topic.views,
     },
+    isLiked: false, // Summary doesn't include engagement state
+    isBookmarked: false, // Summary doesn't include bookmark state
   };
 }
 

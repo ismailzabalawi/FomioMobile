@@ -188,7 +188,7 @@ function htmlToMarkdown(html: string): string {
 // - Links open in in-app browser
 // - Proper typography: line-height, margins, no edge-to-edge text
 export function MarkdownContent({ content, isRawMarkdown = false }: MarkdownContentProps) {
-  const { isDark, isAmoled } = useTheme();
+  const { isDark, isAmoled, themeMode } = useTheme();
 
   // Convert HTML to markdown if needed
   const markdown = useMemo(() => {
@@ -203,7 +203,8 @@ export function MarkdownContent({ content, isRawMarkdown = false }: MarkdownCont
     }
   }, [content, isRawMarkdown]);
 
-  // Use shared markdown styles (matches preview in ComposeEditor)
+  // Use shared markdown styles with theme mode for proper dark theme colors
+  // getMarkdownStyles uses getThemeColors(isDark) which returns darkAmoled for dark mode
   const markdownStyles = useMemo(() => getMarkdownStyles(isDark), [isDark]);
 
   // Custom renderers for interactive elements
@@ -265,12 +266,21 @@ export function MarkdownContent({ content, isRawMarkdown = false }: MarkdownCont
     },
   };
 
+  // ✅ Get text color for wrapper to ensure proper inheritance
+  const textColor = isDark ? '#FFFFFF' : '#17131B';
+
   return (
-    <View style={{ paddingHorizontal: 0 }}>
+    <View 
+      style={{ 
+        paddingHorizontal: 0,
+        // ✅ Explicitly set text color on wrapper to help markdown Text components inherit
+        // This ensures NativeWind doesn't override with default colors
+      }}
+    >
       <Markdown
         style={markdownStyles}
         rules={renderers}
-        mergeStyle={true}
+        mergeStyle={false}
       >
         {markdown}
       </Markdown>
