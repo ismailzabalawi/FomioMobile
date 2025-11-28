@@ -15,6 +15,11 @@ export interface Byte {
     moderator?: boolean;
     groups?: Array<{ id: number; name: string; flair_url?: string }>;
   };
+  hub?: {
+    id: number;
+    name: string;
+    color?: string;
+  };
   teret?: {
     id: number;
     name: string;

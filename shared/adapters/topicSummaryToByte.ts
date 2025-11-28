@@ -19,34 +19,91 @@ export function topicSummaryToByte(topic: any): Byte {
   const avatarTemplate = topic.last_poster_avatar_template ?? '';
   const avatar = avatarTemplate ? discourseApi.getAvatarUrl(avatarTemplate, 120) : '';
 
-  // Map category to teret
+  // Map category to hub/teret badges
   // Discourse API returns color as hex string (e.g., "FF6B6B") - add # prefix if needed
   const categoryColor = topic.category?.color;
   const formattedColor = categoryColor 
     ? (categoryColor.startsWith('#') ? categoryColor : `#${categoryColor}`)
     : undefined;
   
-  // Only create teret if we have a valid category name
-  // This ensures the badge only shows when category data is available
-  const teret = topic.category_id && topic.category?.name
+  // Determine if this is a Hub (top-level) or Teret (subcategory)
+  // Use truthy check to match codebase pattern: 0/null/undefined = Hub, positive number = Teret
+  const isTeret = !!topic.category?.parent_category_id;
+  const isHub = !isTeret && topic.category_id && topic.category?.name;
+  
+  // Create Hub badge (if top-level category)
+  // Safely access topic.category.name - ensure category exists before accessing properties
+  const hub = (isHub && topic.category)
     ? {
         id: topic.category_id,
         name: topic.category.name,
         color: formattedColor,
       }
     : undefined;
+  
+  // Create Teret badge (if subcategory)
+  // Safely access topic.category.name - ensure category exists before accessing properties
+  const teret = (isTeret && topic.category_id && topic.category?.name && topic.category)
+    ? {
+        id: topic.category_id,
+        name: topic.category.name,
+        color: formattedColor,
+      }
+    : undefined;
+  
+  // Get parent hub for terets (from enriched topic data)
+  const parentHubColor = topic.parentHub?.color;
+  const formattedParentHubColor = parentHubColor 
+    ? (parentHubColor.startsWith('#') ? parentHubColor : `#${parentHubColor}`)
+    : undefined;
+  
+  const parentHub = topic.parentHub
+    ? {
+        id: topic.parentHub.id,
+        name: topic.parentHub.name,
+        color: formattedParentHubColor,
+      }
+    : undefined;
 
-  // Debug logging to diagnose category badge issues
+  // Debug logging
   if (__DEV__) {
-    console.log('🔍 topicSummaryToByte: Teret creation', {
+    const debugInfo = {
       topicId: topic.id,
       categoryId: topic.category_id,
       hasCategory: !!topic.category,
       categoryName: topic.category?.name,
+      categoryColor: topic.category?.color,
+      formattedColor,
+      hasParentCategoryId: topic.category?.parent_category_id !== undefined,
+      parentCategoryId: topic.category?.parent_category_id,
+      isHub,
+      isTeret,
+      hubCreated: !!hub,
+      hubName: hub?.name,
+      hubColor: hub?.color,
       teretCreated: !!teret,
       teretName: teret?.name,
       teretColor: teret?.color,
-    });
+      hasParentHub: !!topic.parentHub,
+      parentHubCreated: !!parentHub,
+      parentHubName: parentHub?.name,
+      parentHubColor: parentHub?.color,
+      finalHub: hub || parentHub,
+      finalHubName: (hub || parentHub)?.name,
+    };
+    
+    console.log('🔍 topicSummaryToByte: Badge creation', debugInfo);
+    
+    // Validation warnings
+    if (topic.category_id && !topic.category) {
+      console.warn(`⚠️ Topic ${topic.id} has category_id ${topic.category_id} but no category data`);
+    }
+    if (isTeret && !parentHub) {
+      console.warn(`⚠️ Topic ${topic.id} is a Teret but parent hub not found (parent_category_id: ${topic.category?.parent_category_id})`);
+    }
+    if (!isHub && !isTeret && topic.category_id) {
+      console.warn(`⚠️ Topic ${topic.id} has category_id ${topic.category_id} but is neither Hub nor Teret`);
+    }
   }
 
   // Don't use excerpt - summaries should only show title, not body content
@@ -62,7 +119,8 @@ export function topicSummaryToByte(topic: any): Byte {
       name: username, // Discourse doesn't send display name in summary
       avatar,
     },
-    teret,
+    hub: hub || parentHub, // Show hub if direct hub, or parent hub if teret
+    teret, // Show teret if subcategory
     raw: '', // Summaries don't have raw markdown
     cooked, // Empty for summaries - only title is shown
     createdAt: topic.created_at || new Date().toISOString(),

@@ -97,6 +97,7 @@ export interface Byte {
   isPinned: boolean;
   isLocked: boolean;
   isLiked: boolean;
+  isBookmarked?: boolean;
   likeCount: number;
   viewCount: number;
   tags: string[];

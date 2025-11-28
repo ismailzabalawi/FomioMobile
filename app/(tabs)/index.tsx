@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
@@ -9,10 +9,28 @@ import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useFeed, FeedItem } from '../../shared/useFeed';
 import { useAuth } from '@/shared/auth-context';
 import { getSession } from '../../lib/discourse';
+import { FeedFilterChips } from '@/components/feed/FeedFilterChips';
+import { useHubs } from '@/shared/useHubs';
+import { ByteCardSkeleton } from '@/components/bytes/ByteCardSkeleton';
+import { ArrowClockwise, Newspaper, Bell, ArrowUp } from 'phosphor-react-native';
+import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
+  const { hubs } = useHubs();
+  
+  const [selectedSort, setSelectedSort] = useState<'latest' | 'hot' | 'unread'>('latest');
+  const [selectedHubId, setSelectedHubId] = useState<number | undefined>(undefined);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
+  
+  // Memoize filters to prevent unnecessary re-renders
+  const feedFilters = useMemo(() => ({
+    hubId: selectedHubId,
+    sortBy: selectedSort,
+  }), [selectedHubId, selectedSort]);
+  
   const { 
     items, 
     isLoading: isFeedLoading, 
@@ -23,7 +41,7 @@ export default function HomeScreen(): React.ReactElement {
     refresh, 
     loadMore, 
     retry 
-  } = useFeed();
+  } = useFeed(feedFilters);
   
   const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -61,59 +79,20 @@ export default function HomeScreen(): React.ReactElement {
     primary: isDark ? '#38bdf8' : '#0ea5e9',
   };
 
-  const handleLike = (id: number): void => {
-    console.log('Like pressed for:', id);
-    // TODO: Implement like functionality with Discourse API
-  };
-
-  const handleComment = (id: number): void => {
-    console.log('Comment pressed for:', id);
-    // Navigate to ByteBlogPage with comments visible
-    router.push(`/feed/${id}?showComments=true` as any);
-  };
-
-  const handleBookmark = (id: number): void => {
-    console.log('Bookmark pressed for:', id);
-    // TODO: Implement bookmark functionality
-  };
-
-  const handleShare = (id: number): void => {
-    console.log('Share pressed for:', id);
-    // TODO: Implement share functionality
-  };
-
-  const handleMore = (id: number): void => {
-    console.log('More pressed for:', id);
-    // TODO: Show more options menu
-  };
-
-  const handleBytePress = (byteId: number): void => {
-    console.log('Navigating to byte:', byteId);
+  const handleBytePress = useCallback((byteId: number): void => {
     router.push(`/feed/${byteId}` as any);
-  };
+  }, []);
 
-  const handleTeretPress = (teretName: string): void => {
-    console.log('Teret pressed:', teretName);
-    // TODO: Navigate to teret/category screen
-  };
-
-  const handleTagPress = (tag: string): void => {
-    console.log('Tag pressed:', tag);
-    // TODO: Navigate to tag search screen
-  };
-
-  const renderFeedItem = ({ item }: { item: FeedItem }): React.ReactElement => {
-    // Items from useFeed are already Byte objects, but we need to ensure they're properly formatted
-    // Since useFeed now returns summary bytes directly, we can use them as-is
-    const byte = item as any; // FeedItem is already Byte
-    
+  const renderFeedItem = useCallback(({ item }: { item: FeedItem }): React.ReactElement => {
     return (
       <ByteCard
-        byte={byte}
-        onPress={() => handleBytePress(item.id)}
+        byte={item}
+        onPress={() => handleBytePress(Number(item.id))}
       />
     );
-  };
+  }, [handleBytePress]);
+
+  const keyExtractor = useCallback((item: FeedItem) => item.id.toString(), []);
 
   const renderFooter = () => {
     if (!hasMore) {
@@ -140,6 +119,21 @@ export default function HomeScreen(): React.ReactElement {
     return null;
   };
 
+  const handleRetry = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    retry();
+  }, [retry]);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    setShowScrollToTop(offsetY > 500);
+  }, []);
+
+  const handleScrollToTop = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
+
   const renderError = () => {
     if (!hasError) return null;
     
@@ -148,12 +142,75 @@ export default function HomeScreen(): React.ReactElement {
         <Text style={[styles.errorText, { color: colors.error }]}>
           {errorMessage || 'Failed to load posts'}
         </Text>
-        <Text 
-          style={[styles.retryText, { color: colors.text }]}
-          onPress={retry}
+        <TouchableOpacity 
+          style={styles.retryButton}
+          onPress={handleRetry}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading posts"
         >
-          Tap to retry
+          <ArrowClockwise size={16} color={colors.text} weight="regular" />
+          <Text style={[styles.retryText, { color: colors.text }]}>
+            Retry
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderErrorBanner = () => {
+    if (!hasError || items.length === 0) return null;
+    
+    return (
+      <View style={[styles.errorBanner, { backgroundColor: colors.error + '10', borderBottomColor: colors.error + '20' }]}>
+        <Text style={[styles.errorBannerText, { color: colors.error }]}>
+          {errorMessage || 'Failed to refresh'}
         </Text>
+        <TouchableOpacity 
+          onPress={handleRetry}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Retry"
+        >
+          <ArrowClockwise size={16} color={colors.error} weight="regular" />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderEmptyState = () => {
+    if (hasError || items.length > 0 || isFeedLoading) return null;
+    
+    let message = 'No posts yet';
+    let icon = Newspaper;
+    
+    if (selectedHubId) {
+      message = 'No posts in this category yet';
+    } else if (selectedSort === 'unread') {
+      message = 'No unread posts';
+      icon = Bell;
+    }
+    
+    return (
+      <View style={styles.emptyContainer}>
+        {React.createElement(icon, { size: 48, color: colors.secondary, weight: 'regular' })}
+        <Text style={[styles.emptyText, { color: colors.text }]}>
+          {message}
+        </Text>
+        <Text style={[styles.emptySubtext, { color: colors.secondary }]}>
+          {selectedHubId ? 'Try a different category' : 'Try a different filter'}
+        </Text>
+        <TouchableOpacity
+          style={[styles.emptyButton, { backgroundColor: colors.primary }]}
+          onPress={refresh}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Refresh feed"
+        >
+          <Text style={[styles.emptyButtonText, { color: '#ffffff' }]}>
+            Refresh
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -185,22 +242,41 @@ export default function HomeScreen(): React.ReactElement {
   if (isFeedLoading && items.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.text} />
-          <Text style={[styles.loadingText, { color: colors.text }]}>
-            Loading posts from Discourse...
-          </Text>
-        </View>
+        <FeedFilterChips
+          activeSort={selectedSort}
+          onSortChange={setSelectedSort}
+          activeHubId={selectedHubId}
+          onHubChange={setSelectedHubId}
+          hubs={hubs}
+          isAuthenticated={isAuthenticated}
+        />
+        <FlatList
+          data={Array(5).fill(null)}
+          renderItem={() => <ByteCardSkeleton />}
+          keyExtractor={(_, index) => `skeleton-${index}`}
+          contentContainerStyle={styles.feedContainer}
+          showsVerticalScrollIndicator={false}
+        />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <FeedFilterChips
+        activeSort={selectedSort}
+        onSortChange={setSelectedSort}
+        activeHubId={selectedHubId}
+        onHubChange={setSelectedHubId}
+        hubs={hubs}
+        isAuthenticated={isAuthenticated}
+      />
+      {renderErrorBanner()}
       <FlatList
+        ref={flatListRef}
         data={items}
         renderItem={renderFeedItem}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={keyExtractor}
         contentContainerStyle={styles.feedContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -211,11 +287,29 @@ export default function HomeScreen(): React.ReactElement {
             colors={[colors.text]}
           />
         }
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         onEndReached={loadMore}
-        onEndReachedThreshold={0.1}
+        onEndReachedThreshold={0.5}
+        initialNumToRender={10}
+        maxToRenderPerBatch={5}
+        windowSize={10}
+        removeClippedSubviews={false}
+        updateCellsBatchingPeriod={50}
         ListFooterComponent={renderFooter}
-        ListEmptyComponent={renderError}
+        ListEmptyComponent={hasError ? renderError : renderEmptyState}
       />
+      {showScrollToTop && (
+        <TouchableOpacity
+          style={[styles.scrollToTopButton, { backgroundColor: colors.primary }]}
+          onPress={handleScrollToTop}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Scroll to top"
+        >
+          <ArrowUp size={20} color="#ffffff" weight="regular" />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -223,12 +317,6 @@ export default function HomeScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  feedList: {
-    flex: 1,
-  },
-  feedContent: {
-    paddingVertical: 8,
   },
   loadingContainer: {
     flex: 1,
@@ -258,7 +346,26 @@ const styles = StyleSheet.create({
   },
   retryText: {
     fontSize: 14,
-    textDecorationLine: 'underline',
+    marginLeft: 6,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  errorBannerText: {
+    fontSize: 14,
+    flex: 1,
   },
   feedContainer: {
     paddingVertical: 8,
@@ -272,5 +379,49 @@ const styles = StyleSheet.create({
   connectButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  emptyButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  emptyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  scrollToTopButton: {
+    position: 'absolute',
+    bottom: 80,
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
 }); 

@@ -22,6 +22,22 @@ export function ByteCardFooter({ byte }: { byte: Byte }) {
   const { themeMode, isAmoled } = useTheme();
   const colors = getThemeColors(themeMode, isAmoled);
   
+  // Debug logging - disabled by default to prevent performance issues
+  // Enable by setting ENABLE_FOOTER_DEBUG = true
+  const ENABLE_FOOTER_DEBUG = __DEV__ && false; // Set to true to enable debug logging
+  if (ENABLE_FOOTER_DEBUG) {
+    console.log('🔍 [ByteCardFooter] Rendering badges:', {
+      byteId: byte.id,
+      hasHub: !!byte.hub,
+      hubName: byte.hub?.name,
+      hubColor: byte.hub?.color,
+      hasTeret: !!byte.teret,
+      teretName: byte.teret?.name,
+      teretColor: byte.teret?.color,
+      willRender: !!(byte.hub || byte.teret),
+    });
+  }
+  
   const {
     isLiked,
     isBookmarked,
@@ -76,16 +92,32 @@ export function ByteCardFooter({ byte }: { byte: Byte }) {
         />
       </View>
       
-      {/* Category badge in right corner */}
-      {byte.teret && byte.teret.name && (
-        <Text
-          className="px-2 py-0.5 rounded-full text-xs text-white font-medium"
-          style={{
-            backgroundColor: byte.teret.color || '#4A6CF7',
-          }}
-        >
-          {byte.teret.name}
-        </Text>
+      {/* Category badges in right corner: Hub (left) + Teret (right) */}
+      {(byte.hub || byte.teret) && (
+        <View className="flex-row items-center gap-2">
+          {/* Hub badge (left) */}
+          {byte.hub && byte.hub.name && (
+            <Text
+              className="px-2 py-0.5 rounded-full text-xs text-white font-medium"
+              style={{
+                backgroundColor: byte.hub.color || '#6B7280', // Default gray for hubs
+              }}
+            >
+              {byte.hub.name}
+            </Text>
+          )}
+          {/* Teret badge (right) */}
+          {byte.teret && byte.teret.name && (
+            <Text
+              className="px-2 py-0.5 rounded-full text-xs text-white font-medium"
+              style={{
+                backgroundColor: byte.teret.color || '#4A6CF7',
+              }}
+            >
+              {byte.teret.name}
+            </Text>
+          )}
+        </View>
       )}
     </View>
   );

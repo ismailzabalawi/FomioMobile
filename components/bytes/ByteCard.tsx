@@ -31,6 +31,18 @@ export function ByteCard({
   showSeparator = true,
   onPress,
 }: ByteCardProps) {
+  // Guard against invalid bytes
+  if (!byte || !byte.id || !byte.title) {
+    if (__DEV__) {
+      console.warn('⚠️ [ByteCard] Invalid byte prop:', { 
+        hasByte: !!byte, 
+        hasId: !!byte?.id, 
+        hasTitle: !!byte?.title 
+      });
+    }
+    return null;
+  }
+
   const { onCardPress } = useByteCardActions(byte);
 
   const handlePress = () => {
@@ -49,8 +61,10 @@ export function ByteCard({
       accessible
       accessibilityRole="button"
       accessibilityLabel={`Byte by ${byte.author.name}`}
+      style={{ width: '100%' }}
     >
-      <View className="flex-1" style={{ minWidth: 0 }}>
+      <View style={{ width: '100%', minWidth: 0 }}>
+        {/* Remove flex-1 - FlatList items should use natural height */}
         {/* Title first */}
         {byte.title && (
           <Text className="text-title font-bold text-fomio-foreground dark:text-fomio-foreground-dark mb-3">
