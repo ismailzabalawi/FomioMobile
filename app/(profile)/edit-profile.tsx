@@ -262,6 +262,8 @@ export default function EditProfileScreen(): React.ReactElement {
     canGoBack: true,
     withSafeTop: false,
     tone: "bg",
+    compact: true,
+    titleFontSize: 20,
   }, []);
 
   useScreenBackBehavior({

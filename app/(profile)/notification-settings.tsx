@@ -153,6 +153,8 @@ export default function NotificationSettingsScreen(): React.ReactElement {
     canGoBack: true,
     withSafeTop: false,
     tone: "bg",
+    compact: true,
+    titleFontSize: 20,
   }, []);
 
   const colors = {

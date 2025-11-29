@@ -9,6 +9,9 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Pressable, Keyboard } from 'react-native';
+
+// Accessibility: Larger hitSlop for better touch targets
+const DEFAULT_HIT_SLOP = Platform.OS === 'ios' ? 16 : 20;
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
@@ -27,8 +30,7 @@ import {
   MediaItem,
   HelpSheet,
 } from '@/components/compose';
-import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
-import { useScreenBackBehavior } from '@/shared/hooks/useScreenBackBehavior';
+import { useComposeHeader } from '@/shared/hooks/useComposeHeader';
 import { useSafeNavigation } from '@/shared/hooks/useSafeNavigation';
 import { TeretPickerSheet } from '@/components/terets/TeretPickerSheet';
 
@@ -143,67 +145,55 @@ export default function ComposeScreen(): React.ReactElement {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
 
-  // Configure header with help icon and mode toggle
-  useScreenHeader({
-    title: "Create Byte",
-    withSafeTop: false,
-    tone: "card",
-    canGoBack: true,
-    rightActions: [
-      <Pressable
-        key="mode-toggle"
-        onPress={() => handleModeChange(editorMode === 'write' ? 'preview' : 'write')}
-        hitSlop={12}
-        className="px-3 py-1.5 rounded-full active:opacity-70"
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={editorMode === 'write' ? "Switch to preview mode" : "Switch to write mode"}
+  const headerActions = useMemo(() => [
+    <Pressable
+      key="mode-toggle"
+      onPress={() => handleModeChange(editorMode === 'write' ? 'preview' : 'write')}
+      hitSlop={DEFAULT_HIT_SLOP}
+      className="px-3 py-1.5 rounded-full active:opacity-70"
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={editorMode === 'write' ? "Switch to preview mode" : "Switch to write mode"}
+      accessibilityHint={editorMode === 'write' ? "Preview your post before publishing" : "Return to editing mode"}
+      testID="header-mode-toggle"
+    >
+      <Text
+        className={
+          editorMode === 'write'
+            ? 'text-caption font-semibold text-fomio-accent dark:text-fomio-accent-dark'
+            : 'text-caption text-fomio-muted dark:text-fomio-muted-dark'
+        }
       >
-        <Text
-          className={
-            editorMode === 'write'
-              ? 'text-caption font-semibold text-fomio-accent dark:text-fomio-accent-dark'
-              : 'text-caption text-fomio-muted dark:text-fomio-muted-dark'
-          }
-        >
-          {editorMode === 'write' ? 'Preview' : 'Write'}
-        </Text>
-      </Pressable>,
-      <Pressable
-        key="help-tip"
-        onPress={() => {
-          setShowHelpTip(prev => !prev);
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        }}
-        hitSlop={12}
-        className="p-2 rounded-full active:opacity-70"
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={showHelpTip ? "Hide help tip" : "Show help tip"}
-      >
-        <Question 
-          size={20} 
-          color={isDark ? '#A1A1AA' : '#6B6B72'} 
-          weight="regular" 
-        />
-      </Pressable>,
-    ],
-    subHeader: showHelpTip ? (
-      <View className="px-4 py-2">
-        <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
-          Pro tip:{' '}
-          <Text className="font-mono">
-            /help
-          </Text>{' '}
-          shows all slash commands.
-        </Text>
-      </View>
-    ) : undefined,
-  }, [showHelpTip, isDark, editorMode, handleModeChange]);
+        {editorMode === 'write' ? 'Preview' : 'Write'}
+      </Text>
+    </Pressable>,
+    <Pressable
+      key="help-tip"
+      onPress={() => {
+        setShowHelpTip(prev => !prev);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }}
+      hitSlop={DEFAULT_HIT_SLOP}
+      className="p-2 rounded-full active:opacity-70"
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={showHelpTip ? "Hide help tip" : "Show help tip"}
+      accessibilityHint="Show or hide tips for using slash commands"
+      testID="header-help-button"
+    >
+      <Question 
+        size={20} 
+        color={isDark ? '#A1A1AA' : '#6B6B72'} 
+        weight="regular" 
+      />
+    </Pressable>,
+  ], [handleModeChange, editorMode, isDark, showHelpTip]);
 
-  useScreenBackBehavior({
-    onBackPress: handleCancel,
-  }, [handleCancel]);
+  // Configure header with help icon and mode toggle
+  useComposeHeader({
+    rightActions: headerActions,
+    onCancel: handleCancel,
+  });
 
   const handlePost = useCallback(async (): Promise<void> => {
     // Clear previous errors
@@ -526,6 +516,19 @@ export default function ComposeScreen(): React.ReactElement {
               </Button>
                 </View>
               )}
+
+          {/* Help tip - moved from subHeader to screen body */}
+          {showHelpTip && (
+            <View className="mx-4 mt-2 p-3 rounded-fomio-card bg-fomio-muted/20 dark:bg-fomio-muted-dark/20">
+              <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
+                Pro tip:{' '}
+                <Text className="font-mono">
+                  /help
+                </Text>{' '}
+                shows all slash commands.
+              </Text>
+            </View>
+          )}
 
           {/* General Error Message */}
           {errors.general && (

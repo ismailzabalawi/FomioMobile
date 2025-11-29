@@ -1,9 +1,12 @@
 import React from 'react';
-import { Pressable, Share, Alert } from 'react-native';
+import { Pressable, Share, Alert, Platform } from 'react-native';
 import { Share as ShareIcon } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
 import * as Haptics from 'expo-haptics';
+
+// Accessibility: Larger hitSlop for better touch targets
+const DEFAULT_HIT_SLOP = Platform.OS === 'ios' ? 16 : 20;
 
 export interface ShareButtonProps {
   title: string;
@@ -38,10 +41,13 @@ export function ShareButton({ title, url, onPress }: ShareButtonProps) {
   return (
     <Pressable
       onPress={handlePress}
-      hitSlop={8}
+      hitSlop={DEFAULT_HIT_SLOP}
       className="p-2 rounded-full active:opacity-70"
+      accessible
       accessibilityRole="button"
       accessibilityLabel="Share"
+      accessibilityHint={`Share ${title}`}
+      testID="header-share-button"
     >
       <ShareIcon size={20} color={colors.foreground} weight="bold" />
     </Pressable>

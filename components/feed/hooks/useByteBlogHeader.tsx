@@ -1,36 +1,47 @@
-import { useMemo } from 'react';
-import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import React, { useMemo } from 'react';
+import { useDetailHeader } from '@/shared/hooks/useDetailHeader';
 import { TopicData } from '@/shared/useTopic';
-import { ShareButton } from '../ShareButton';
 import { OverflowMenu } from '../OverflowMenu';
 import { StatusChipsRow } from '../StatusChipsRow';
 
 /**
  * Hook for managing header configuration in ByteBlogPage
- * Handles header actions, sub-header, and screen header setup
+ * Handles header actions and screen header setup
  */
 export function useByteBlogHeader(
   topic: TopicData | null,
-  isDark: boolean,
+  _isDark: boolean,
   onShare?: () => void,
   retry?: () => void
 ) {
-  // Check if author has Staff badge
+  // Determine if author has Staff badge
   const isStaff = useMemo(() => {
-    return topic?.authorBadges?.some(badge => badge.name === 'Staff') || false;
+    return topic?.authorBadges?.some((badge) => badge.name === 'Staff') ?? false;
   }, [topic]);
 
-  // Configure header actions (share button and overflow menu)
+  // Status chips (replaces prior subheader; now sits in the right action area)
+  const statusChips = useMemo(() => {
+    if (!topic) return undefined;
+    return (
+      <StatusChipsRow
+        key="status-chips"
+        isPinned={topic.isPinned}
+        isLocked={topic.isClosed}
+        isArchived={topic.isArchived}
+        isStaff={isStaff}
+      />
+    );
+  }, [topic, isStaff]);
+
+  // Configure header actions (status chips + overflow menu)
   const headerActions = useMemo(() => {
     if (!topic) return undefined;
-    return [
-      <ShareButton 
-        key="share" 
-        title={topic.title || ''} 
-        url={topic.url || ''} 
-        onPress={onShare}
-      />,
-      <OverflowMenu 
+    const actions: React.ReactNode[] = [];
+    if (statusChips) {
+      actions.push(statusChips);
+    }
+    actions.push(
+      <OverflowMenu
         key="menu"
         topic={topic}
         onWatch={onShare}
@@ -40,32 +51,13 @@ export function useByteBlogHeader(
         onShare={onShare}
         onRefresh={retry}
       />
-    ];
-  }, [topic, onShare, retry]);
-
-  // Configure header sub-header (status chips)
-  const headerSubHeader = useMemo(() => {
-    if (!topic) return undefined;
-    return (
-      <StatusChipsRow
-        isPinned={topic.isPinned}
-        isLocked={topic.isClosed}
-        isArchived={topic.isArchived}
-        isStaff={isStaff}
-      />
     );
-  }, [topic, isStaff]);
+    return actions;
+  }, [topic, statusChips, onShare, retry]);
 
-  // Set up screen header
-  useScreenHeader({
+  // Set up screen header using detail header preset
+  useDetailHeader({
     title: topic?.title ?? "Byte",
-    canGoBack: true,
-    tone: "bg",
-    withSafeTop: false,
-    titleFontSize: 24,
-    statusBarStyle: isDark ? 'light' : 'dark',
-    extendToStatusBar: true,
     rightActions: headerActions,
-    subHeader: headerSubHeader,
-  }, [topic, isDark, isStaff, headerActions, headerSubHeader]);
+  });
 }

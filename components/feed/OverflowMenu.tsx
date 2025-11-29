@@ -1,6 +1,6 @@
 import 'react-native-reanimated';
 import React, { useRef, useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Pressable, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, Alert, Platform } from 'react-native';
 import { ThemedBottomSheet, BottomSheetModalRef } from '@/components/ui/bottom-sheet';
 import { DotsThreeVertical, Bell, BellSlash, PushPin, Lock, Archive, Flag, Link, Share as ShareIcon } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
@@ -9,6 +9,9 @@ import { TopicData } from '../../shared/useTopic';
 import { discourseApi } from '../../shared/discourseApi';
 import * as Haptics from 'expo-haptics';
 import { Clipboard, Linking, Share } from 'react-native';
+
+// Accessibility: Larger hitSlop for better touch targets
+const DEFAULT_HIT_SLOP = Platform.OS === 'ios' ? 16 : 20;
 
 const notificationLabels: Record<number, string> = {
   0: 'Muted',
@@ -169,10 +172,13 @@ export function OverflowMenu({
     <>
       <Pressable
         onPress={handleOpen}
-        hitSlop={8}
+        hitSlop={DEFAULT_HIT_SLOP}
         className="p-2 rounded-full active:opacity-70"
+        accessible
         accessibilityRole="button"
         accessibilityLabel="More options"
+        accessibilityHint="Open menu with more topic options"
+        testID="header-overflow-menu"
       >
         <DotsThreeVertical size={20} color={colors.foreground} weight="bold" />
       </Pressable>

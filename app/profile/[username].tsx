@@ -208,6 +208,8 @@ export default function PublicProfileScreen(): React.ReactElement {
     withSafeTop: false,
     tone: "bg",
     rightActions: [menuButton],
+    compact: true,
+    titleFontSize: 20,
   }, [user, menuButton]);
 
   // Show loading state

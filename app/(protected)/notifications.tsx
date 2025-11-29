@@ -202,6 +202,8 @@ export default function NotificationsScreen(): React.ReactElement {
     canGoBack: false,
     withSafeTop: false,
     tone: "bg",
+    compact: true,
+    titleFontSize: 20,
   }, []);
 
   const onRefresh = async () => {

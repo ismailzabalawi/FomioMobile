@@ -5,14 +5,14 @@ import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
 import { ByteCard } from '@/components/bytes/ByteCard';
 import { topicSummaryToByte } from '@/shared/adapters/topicSummaryToByte';
-import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { useFeedHeader } from '@/shared/hooks/useFeedHeader';
 import { useFeed, FeedItem } from '../../shared/useFeed';
 import { useAuth } from '@/shared/auth-context';
 import { getSession } from '../../lib/discourse';
 import { FeedFilterChips } from '@/components/feed/FeedFilterChips';
 import { useHubs } from '@/shared/useHubs';
 import { ByteCardSkeleton } from '@/components/bytes/ByteCardSkeleton';
-import { ArrowClockwise, Newspaper, Bell, ArrowUp } from 'phosphor-react-native';
+import { ArrowClockwise, Newspaper, Bell, ArrowUp, SlidersHorizontal } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen(): React.ReactElement {
@@ -23,8 +23,18 @@ export default function HomeScreen(): React.ReactElement {
   const [selectedSort, setSelectedSort] = useState<'latest' | 'hot' | 'unread'>('latest');
   const [selectedHubId, setSelectedHubId] = useState<number | undefined>(undefined);
   const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const [filtersVisible, setFiltersVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  
+
+  const colors = useMemo(() => ({
+    background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
+    text: isDark ? '#f4f4f5' : '#1e293b',
+    secondary: isDark ? '#a1a1aa' : '#64748b',
+    border: isDark ? '#334155' : '#e2e8f0',
+    error: isDark ? '#ef4444' : '#dc2626',
+    primary: isDark ? '#38bdf8' : '#0ea5e9',
+  }), [isAmoled, isDark]);
+
   // Memoize filters to prevent unnecessary re-renders
   const feedFilters = useMemo(() => ({
     hubId: selectedHubId,
@@ -45,13 +55,35 @@ export default function HomeScreen(): React.ReactElement {
   
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // Configure header
-  useScreenHeader({
-    title: "Fomio",
-    canGoBack: false,
-    withSafeTop: false,
-    tone: "bg",
+  const toggleFilters = useCallback(() => {
+    setFiltersVisible((prev) => !prev);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
+
+  const headerActions = useMemo(() => [
+    <TouchableOpacity
+      key="filters-toggle"
+      onPress={toggleFilters}
+      className="flex-row items-center gap-1 px-3 py-1.5 rounded-full active:opacity-80"
+      style={{
+        backgroundColor: filtersVisible ? `${colors.primary}1A` : 'transparent',
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={filtersVisible ? "Hide feed filters" : "Show feed filters"}
+      accessibilityState={{ expanded: filtersVisible }}
+    >
+      <SlidersHorizontal size={18} color={filtersVisible ? colors.primary : colors.text} weight="bold" />
+      <Text style={{ color: filtersVisible ? colors.primary : colors.text, fontWeight: '600', fontSize: 13 }}>
+        Filters
+      </Text>
+    </TouchableOpacity>
+  ], [toggleFilters, filtersVisible, colors.primary, colors.text]);
+
+  // Configure header with a filters toggle action
+  useFeedHeader({
+    title: "Fomio",
+    rightActions: headerActions,
+  });
   
   // Load user session if authenticated
   useEffect(() => {
@@ -70,15 +102,6 @@ export default function HomeScreen(): React.ReactElement {
     }
   }, [isAuthenticated, isAuthLoading, user]);
   
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
-    text: isDark ? '#f4f4f5' : '#1e293b',
-    secondary: isDark ? '#a1a1aa' : '#64748b',
-    border: isDark ? '#334155' : '#e2e8f0',
-    error: isDark ? '#ef4444' : '#dc2626',
-    primary: isDark ? '#38bdf8' : '#0ea5e9',
-  };
-
   const handleBytePress = useCallback((byteId: number): void => {
     router.push(`/feed/${byteId}` as any);
   }, []);
@@ -242,14 +265,16 @@ export default function HomeScreen(): React.ReactElement {
   if (isFeedLoading && items.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <FeedFilterChips
-          activeSort={selectedSort}
-          onSortChange={setSelectedSort}
-          activeHubId={selectedHubId}
-          onHubChange={setSelectedHubId}
-          hubs={hubs}
-          isAuthenticated={isAuthenticated}
-        />
+        {filtersVisible && (
+          <FeedFilterChips
+            activeSort={selectedSort}
+            onSortChange={setSelectedSort}
+            activeHubId={selectedHubId}
+            onHubChange={setSelectedHubId}
+            hubs={hubs}
+            isAuthenticated={isAuthenticated}
+          />
+        )}
         <FlatList
           data={Array(5).fill(null)}
           renderItem={() => <ByteCardSkeleton />}
@@ -263,14 +288,16 @@ export default function HomeScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <FeedFilterChips
-        activeSort={selectedSort}
-        onSortChange={setSelectedSort}
-        activeHubId={selectedHubId}
-        onHubChange={setSelectedHubId}
-        hubs={hubs}
-        isAuthenticated={isAuthenticated}
-      />
+      {filtersVisible && (
+        <FeedFilterChips
+          activeSort={selectedSort}
+          onSortChange={setSelectedSort}
+          activeHubId={selectedHubId}
+          onHubChange={setSelectedHubId}
+          hubs={hubs}
+          isAuthenticated={isAuthenticated}
+        />
+      )}
       {renderErrorBanner()}
       <FlatList
         ref={flatListRef}

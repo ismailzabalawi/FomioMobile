@@ -70,8 +70,11 @@ export function useByteBlogScroll(topic: TopicData | null) {
   );
 
   // Header-aware scroll handler that also updates header scroll state
+  // Header scroll state updates immediately, but read tracking is debounced
   const { onScroll: headerAwareScroll, unregister: unregisterHeaderScroll } = useMemo(
-    () => registerScrollHandler(handleScroll),
+    () => registerScrollHandler(handleScroll, {
+      debounce: 1000, // Debounce read tracking, but header state updates immediately
+    }),
     [registerScrollHandler, handleScroll]
   );
 

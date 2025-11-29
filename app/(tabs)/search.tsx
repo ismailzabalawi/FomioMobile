@@ -385,6 +385,8 @@ export default function SearchScreen(): React.ReactElement {
     canGoBack: searchQuery.trim() ? true : false,
     withSafeTop: false,
     tone: "bg",
+    compact: true,
+    titleFontSize: 20,
   }, [searchQuery]);
   
   const colors = {

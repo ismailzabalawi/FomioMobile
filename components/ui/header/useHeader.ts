@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
-import { useHeaderState, useHeaderDispatch, HeaderState } from './HeaderProvider';
+import { useHeaderState, useHeaderDispatch, HeaderState, ScrollHandlerOptions } from './HeaderProvider';
 
 export interface UseHeaderReturn {
   header: HeaderState;
@@ -10,17 +10,20 @@ export interface UseHeaderReturn {
   setSubtitle: (subtitle: string) => void;
   setTone: (tone: 'bg' | 'card' | 'transparent') => void;
   setProgress: (progress: number | undefined) => void;
-  setSubHeader: (subHeader: React.ReactNode | undefined) => void;
   setActions: (rightActions: React.ReactNode[] | undefined) => void;
   setBackBehavior: (config: { canGoBack?: boolean; onBackPress?: () => void }) => void;
+  setMeasuredHeight: (height: number) => void;
   registerScrollHandler: (
-    handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
+    handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void,
+    options?: ScrollHandlerOptions
   ) => { onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void; unregister: () => void };
+  /** Current scroll state - true when scrolled past threshold */
+  isScrolled: boolean;
 }
 
 export function useHeader(): UseHeaderReturn {
   const { header } = useHeaderState();
-  const { setHeader: setHeaderDispatch, resetHeader: resetHeaderDispatch, registerScrollHandler: registerScrollHandlerDispatch } = useHeaderDispatch();
+  const { setHeader: setHeaderDispatch, resetHeader: resetHeaderDispatch, registerScrollHandler: registerScrollHandlerDispatch, setMeasuredHeight: setMeasuredHeightDispatch } = useHeaderDispatch();
 
   const setHeader = useCallback(
     (partial: Partial<HeaderState>) => {
@@ -61,13 +64,6 @@ export function useHeader(): UseHeaderReturn {
     [setHeader]
   );
 
-  const setSubHeader = useCallback(
-    (subHeader: React.ReactNode | undefined) => {
-      setHeader({ subHeader });
-    },
-    [setHeader]
-  );
-
   const setActions = useCallback(
     (rightActions: React.ReactNode[] | undefined) => {
       setHeader({ rightActions });
@@ -82,9 +78,19 @@ export function useHeader(): UseHeaderReturn {
     [setHeader]
   );
 
+  const setMeasuredHeight = useCallback(
+    (height: number) => {
+      setMeasuredHeightDispatch(height);
+    },
+    [setMeasuredHeightDispatch]
+  );
+
   const registerScrollHandler = useCallback(
-    (handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void) => {
-      return registerScrollHandlerDispatch(handler);
+    (
+      handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void,
+      options?: ScrollHandlerOptions
+    ) => {
+      return registerScrollHandlerDispatch(handler, options);
     },
     [registerScrollHandlerDispatch]
   );
@@ -97,9 +103,10 @@ export function useHeader(): UseHeaderReturn {
     setSubtitle,
     setTone,
     setProgress,
-    setSubHeader,
     setActions,
     setBackBehavior,
+    setMeasuredHeight,
     registerScrollHandler,
+    isScrolled: header.isScrolled ?? false,
   };
 }

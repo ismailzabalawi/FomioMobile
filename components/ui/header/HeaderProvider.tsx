@@ -10,7 +10,6 @@ export interface HeaderState {
   onBackPress?: () => void;
   leftNode?: ReactNode;
   rightActions?: ReactNode[];
-  subHeader?: ReactNode;
   tone?: 'bg' | 'card' | 'transparent';
   elevated?: boolean;
   isScrolled?: boolean;
@@ -25,11 +24,25 @@ export interface HeaderState {
   extendToStatusBar?: boolean;
   scrollThreshold?: number;
   largeTitle?: boolean;
+  headerHeight?: number;
+  iconColor?: string;
+  transparentBackdrop?: 'blur' | 'gradient' | 'none';
+  compact?: boolean;
+}
+
+// Scroll handler options
+export interface ScrollHandlerOptions {
+  /** Throttle delay in ms (limits how often handler is called) */
+  throttle?: number;
+  /** Debounce delay in ms (delays handler until scroll stops) */
+  debounce?: number;
+  /** Custom scroll threshold (overrides header scrollThreshold) */
+  threshold?: number;
 }
 
 // Default header values
 const DEFAULT_HEADER_STATE: Required<
-  Omit<HeaderState, 'title' | 'subtitle' | 'onBackPress' | 'leftNode' | 'rightActions' | 'subHeader' | 'progress'>
+  Omit<HeaderState, 'title' | 'subtitle' | 'onBackPress' | 'leftNode' | 'rightActions' | 'progress' | 'headerHeight' | 'iconColor'>
 > = {
   ...APP_HEADER_DEFAULTS,
   scrollThreshold: 24, // Quick settle like X/Twitter when nudging the feed
@@ -44,8 +57,10 @@ interface HeaderStateContextValue {
 interface HeaderDispatchContextValue {
   setHeader: (partial: Partial<HeaderState>) => void;
   resetHeader: () => void;
+  setMeasuredHeight: (height: number) => void;
   registerScrollHandler: (
-    handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void
+    handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void,
+    options?: ScrollHandlerOptions
   ) => { onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void; unregister: () => void };
 }
 
@@ -69,40 +84,91 @@ export function HeaderProvider({ children }: HeaderProviderProps) {
     setHeaderState({});
   }, []);
 
-  // Capture scrollThreshold value to prevent registerScrollHandler from being recreated
-  // when headerState changes for unrelated properties (like rightActions)
-  const scrollThresholdValue = headerState.scrollThreshold ?? DEFAULT_HEADER_STATE.scrollThreshold;
-
-  // Register scroll handler and return unregister function
+  // Register scroll handler with throttling/debouncing support
   const registerScrollHandler = useCallback(
-    (handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void) => {
+    (
+      handler: (event: NativeSyntheticEvent<NativeScrollEvent>) => void,
+      options?: ScrollHandlerOptions
+    ) => {
       let isRegistered = true;
+      let lastCallTime = 0;
+      let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+      
+      const scrollThreshold = options?.threshold ?? (headerState.scrollThreshold ?? DEFAULT_HEADER_STATE.scrollThreshold);
+      const throttleDelay = options?.throttle;
+      const debounceDelay = options?.debounce;
 
       // Create wrapped handler that updates isScrolled state and calls the original handler
       const wrappedHandler = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (!isRegistered) return;
 
-        const offsetY = event.nativeEvent.contentOffset.y;
-        const isScrolled = offsetY > scrollThresholdValue;
+        // ✅ FIXED: Extract nativeEvent data synchronously before any async operations
+        // React Native pools synthetic events for performance, so we must copy the data
+        // before passing to setTimeout/debounce, otherwise event.nativeEvent will be nullified
+        const nativeEventData = event.nativeEvent;
+        const extractedEvent = {
+          nativeEvent: {
+            contentOffset: { ...nativeEventData.contentOffset },
+            contentSize: { ...nativeEventData.contentSize },
+            layoutMeasurement: { ...nativeEventData.layoutMeasurement },
+            zoomScale: nativeEventData.zoomScale,
+            contentInset: nativeEventData.contentInset ? { ...nativeEventData.contentInset } : undefined,
+          },
+        } as NativeSyntheticEvent<NativeScrollEvent>;
 
-        // Update scroll state
+        const offsetY = nativeEventData.contentOffset.y;
+        const isScrolled = offsetY > scrollThreshold;
+
+        // Update scroll state immediately (not throttled/debounced for responsive UI)
         setHeaderState((prev) => {
           if (prev.isScrolled === isScrolled) return prev;
           return { ...prev, isScrolled };
         });
 
-        handler(event);
+        // Apply throttling/debouncing to the user's handler
+        const executeHandler = () => {
+          if (!isRegistered) return;
+          handler(extractedEvent);
+        };
+
+        if (debounceDelay) {
+          // Debounce: delay execution until scroll stops
+          if (debounceTimeout) {
+            clearTimeout(debounceTimeout);
+          }
+          debounceTimeout = setTimeout(executeHandler, debounceDelay);
+        } else if (throttleDelay) {
+          // Throttle: limit execution frequency
+          const now = Date.now();
+          if (now - lastCallTime >= throttleDelay) {
+            lastCallTime = now;
+            executeHandler();
+          }
+        } else {
+          // No throttling/debouncing: execute immediately
+          executeHandler();
+        }
       };
 
       return {
         onScroll: wrappedHandler,
         unregister: () => {
           isRegistered = false;
+          if (debounceTimeout) {
+            clearTimeout(debounceTimeout);
+          }
         },
       };
     },
-    [scrollThresholdValue]
+    [headerState.scrollThreshold]
   );
+
+  const setMeasuredHeight = useCallback((height: number) => {
+    setHeaderState((prev) => {
+      if (prev.headerHeight === height) return prev;
+      return { ...prev, headerHeight: height };
+    });
+  }, []);
 
   // Memoize context values to prevent unnecessary re-renders
   const stateValue = useMemo(
@@ -117,8 +183,9 @@ export function HeaderProvider({ children }: HeaderProviderProps) {
       setHeader,
       resetHeader,
       registerScrollHandler,
+      setMeasuredHeight,
     }),
-    [setHeader, resetHeader, registerScrollHandler]
+    [setHeader, resetHeader, registerScrollHandler, setMeasuredHeight]
   );
 
   return (

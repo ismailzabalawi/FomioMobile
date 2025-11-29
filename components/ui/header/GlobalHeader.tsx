@@ -10,8 +10,8 @@ const DEFAULT_HEADER_STATE: Required<
     | 'onBackPress'
     | 'leftNode'
     | 'rightActions'
-    | 'subHeader'
     | 'progress'
+    | 'iconColor'
     | 'testID'
   >
 > = APP_HEADER_DEFAULTS;
@@ -32,7 +32,6 @@ export function GlobalHeader() {
       onBackPress: header.onBackPress,
       leftNode: header.leftNode,
       rightActions: header.rightActions,
-      subHeader: header.subHeader,
       tone: header.tone ?? DEFAULT_HEADER_STATE.tone,
       elevated: header.elevated ?? DEFAULT_HEADER_STATE.elevated,
       isScrolled: header.isScrolled ?? DEFAULT_HEADER_STATE.isScrolled,
@@ -46,6 +45,8 @@ export function GlobalHeader() {
       statusBarStyle: header.statusBarStyle ?? DEFAULT_HEADER_STATE.statusBarStyle,
       extendToStatusBar: header.extendToStatusBar ?? DEFAULT_HEADER_STATE.extendToStatusBar,
       largeTitle: header.largeTitle ?? DEFAULT_HEADER_STATE.largeTitle,
+      iconColor: header.iconColor,
+      transparentBackdrop: header.transparentBackdrop ?? DEFAULT_HEADER_STATE.transparentBackdrop,
       testID: 'global-header',
     };
   }, [header]);

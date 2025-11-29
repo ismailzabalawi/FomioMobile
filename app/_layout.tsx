@@ -18,6 +18,7 @@ import * as Linking from 'expo-linking';
 import { Platform, View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderProvider, GlobalHeader } from '@/components/ui/header';
+import { useHeader } from '@/components/ui/header';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -72,13 +73,6 @@ export default function RootLayout(): React.ReactElement | null {
 function RootLayoutNav(): React.ReactElement {
   const { navigationTheme } = useTheme();
   const insets = useSafeAreaInsets();
-
-  // Calculate total header height to push content down
-  // Header bar: 44px (iOS) or 48px (Android)
-  // Plus internal padding: 8px (iOS) or 4px (Android)
-  const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : 48;
-  const HEADER_PADDING = Platform.OS === 'ios' ? 8 : 4;
-  const headerHeight = BASE_BAR_HEIGHT + HEADER_PADDING;
 
   // Set up deep link listener for Android auth redirects
   useEffect(() => {
@@ -244,30 +238,56 @@ function RootLayoutNav(): React.ReactElement {
   return (
     <HeaderProvider>
       <NavigationThemeProvider value={navigationTheme}>
-        <View style={styles.container}>
-          {/* GlobalHeader positioned after status bar */}
-          <View style={[styles.headerContainer, { top: insets.top }]}>
-            <GlobalHeader />
-          </View>
-          {/* Add padding to push content below header */}
-          <View style={{ paddingTop: headerHeight, flex: 1 }}>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                presentation: 'card',
-              }}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="(auth)" />
-              <Stack.Screen name="(protected)" />
-              <Stack.Screen name="(profile)" />
-              <Stack.Screen name="feed" />
-            </Stack>
-          </View>
-        </View>
+        <RootLayoutContent insets={insets} />
       </NavigationThemeProvider>
     </HeaderProvider>
+  );
+}
+
+function RootLayoutContent({ insets }: { insets: { top: number } }): React.ReactElement {
+  const { header } = useHeader();
+
+  // Use measured header height, fallback to calculated default
+  const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 40 : 44;
+  const HEADER_PADDING = Platform.OS === 'ios' ? 4 : 2;
+  const baseHeaderHeight = BASE_BAR_HEIGHT + HEADER_PADDING;
+  const measuredHeaderHeight = header.headerHeight ?? baseHeaderHeight;
+
+  // When extendToStatusBar is true, header extends into status bar area
+  // So we don't need to offset by insets.top
+  const headerTop = header.extendToStatusBar ? 0 : insets.top;
+
+  // Calculate content padding: when extendToStatusBar is true, the header's measured height
+  // includes the status bar area padding, but we only want to push content by the actual header bar height
+  // So we subtract insets.top from the measured height when extendToStatusBar is true
+  // When extendToStatusBar is false, we need to add headerTop to account for the header's offset
+  const contentPaddingTop = header.extendToStatusBar && measuredHeaderHeight > baseHeaderHeight
+    ? measuredHeaderHeight - insets.top
+    : measuredHeaderHeight + headerTop;
+
+  return (
+    <View style={styles.container}>
+      {/* GlobalHeader positioned after status bar */}
+      <View style={[styles.headerContainer, { top: headerTop }]}>
+        <GlobalHeader />
+      </View>
+      {/* Add padding to push content below header */}
+      <View style={{ paddingTop: contentPaddingTop, flex: 1 }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            presentation: 'card',
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(protected)" />
+          <Stack.Screen name="(profile)" />
+          <Stack.Screen name="feed" />
+        </Stack>
+      </View>
+    </View>
   );
 }
 
