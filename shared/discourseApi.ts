@@ -37,6 +37,19 @@ const SECURITY_CONFIG = {
   MOCK_DATA: process.env.EXPO_PUBLIC_ENABLE_MOCK_DATA === 'true',
 };
 
+// Flag to track if auth is in progress (prevents clearing API keys on 401/403 during auth flow)
+let isAuthInProgress = false;
+
+/**
+ * Set the auth-in-progress flag
+ * Call this with true when starting auth flow, false when complete
+ * Prevents race condition where 401/403 from parallel requests clears the API key being stored
+ */
+export function setAuthInProgress(inProgress: boolean): void {
+  isAuthInProgress = inProgress;
+  console.log(`🔐 Auth in progress flag set to: ${inProgress}`);
+}
+
 // Rate limiting configuration
 const RATE_LIMIT_CONFIG = {
   MAX_REQUESTS_PER_MINUTE: 60,
@@ -510,7 +523,8 @@ class DiscourseApiService {
             }
             
             // Clear User API Key only if it's a real authentication failure (not CSRF or permission error on GET)
-            if (shouldClearKeys) {
+            // Also don't clear if auth is currently in progress (to prevent race condition)
+            if (shouldClearKeys && !isAuthInProgress) {
               try {
                 const UserApiKeyManager = require('./userApiKeyManager').UserApiKeyManager;
                 await UserApiKeyManager.clearApiKey();
@@ -518,6 +532,8 @@ class DiscourseApiService {
               } catch (error) {
                 console.warn('Failed to clear User API Key', error);
               }
+            } else if (shouldClearKeys && isAuthInProgress) {
+              console.log('⚠️ Got 401/403 but auth is in progress, not clearing API key');
             }
             
             return {
@@ -2542,6 +2558,88 @@ class DiscourseApiService {
       order: 'created',
       period: 'all',
     });
+  }
+
+  // User Activity Endpoints
+  async getUserActivity(
+    username: string,
+    activityType: 'all' | 'topics' | 'replies' | 'read' | 'likes' | 'bookmarks' | 'solved' | 'votes',
+    page: number = 0
+  ): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    const offset = page * 20;
+    const endpoint = `/u/${encodeURIComponent(username)}/activity/${activityType}.json`;
+    
+    try {
+      const queryParams = offset > 0 ? `?offset=${offset}` : '';
+      return await this.makeRequest<any>(`${endpoint}${queryParams}`);
+    } catch (error) {
+      return { success: false, error: 'Network error fetching user activity' };
+    }
+  }
+
+  async getUserDrafts(): Promise<DiscourseApiResponse<any>> {
+    try {
+      return await this.makeRequest<any>('/draft.json');
+    } catch (error) {
+      return { success: false, error: 'Network error fetching drafts' };
+    }
+  }
+
+  async getUserReadTopics(username: string, page: number = 0): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    return this.getUserActivity(username, 'read', page);
+  }
+
+  async getUserLikedPosts(username: string, page: number = 0): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    return this.getUserActivity(username, 'likes', page);
+  }
+
+  async getUserBookmarkedTopics(username: string, page: number = 0): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    return this.getUserActivity(username, 'bookmarks', page);
+  }
+
+  async getUserSolvedTopics(username: string, page: number = 0): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    // Try native endpoint first, fallback to search
+    const activityResponse = await this.getUserActivity(username, 'solved', page);
+    if (activityResponse.success) {
+      return activityResponse;
+    }
+
+    // Fallback to search query
+    const searchQuery = `in:solved author:${username}`;
+    return this.search(searchQuery, {
+      type: 'topic',
+      limit: 20,
+      order: 'created',
+      period: 'all',
+    });
+  }
+
+  async getUserVotes(username: string, page: number = 0): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    return this.getUserActivity(username, 'votes', page);
   }
 
   // Moderation Actions

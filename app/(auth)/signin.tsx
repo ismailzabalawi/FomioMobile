@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 
 export default function SignInScreen() {
   const { isDark } = useTheme();
@@ -100,24 +101,19 @@ export default function SignInScreen() {
     router.back();
   };
 
+  // Configure header
+  useScreenHeader({
+    title: "Sign In",
+    canGoBack: true,
+    onBackPress: handleBack,
+    withSafeTop: false,
+    tone: "bg",
+    compact: true,
+    titleFontSize: 20,
+  }, [isDark]);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-        <TouchableOpacity
-          onPress={handleBack}
-          style={styles.backButton}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          accessibilityHint="Go back to previous screen"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={[styles.backButtonText, { color: colors.primary }]}>←</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Sign In</Text>
-        <View style={styles.placeholder} />
-      </View>
-
       <View style={styles.content}>
         <View style={styles.form}>
           {error ? (
@@ -184,25 +180,6 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  placeholder: {
-    width: 40,
   },
   content: {
     flex: 1,

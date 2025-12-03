@@ -204,7 +204,7 @@ export default function NotificationsScreen(): React.ReactElement {
     tone: "bg",
     compact: true,
     titleFontSize: 20,
-  }, []);
+  }, [isDark]);
 
   const onRefresh = async () => {
     setRefreshing(true);

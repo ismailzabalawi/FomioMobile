@@ -400,7 +400,7 @@ export default function NotificationsScreen(): React.ReactElement {
     tone: "bg",
     compact: true,
     titleFontSize: 20,
-  }, []);
+  }, [isDark]);
 
   // Get setActions from useHeader for dynamic updates
   const { setActions } = useHeader();

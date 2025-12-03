@@ -1,9 +1,10 @@
-// Hook to fetch user's topics (Bytes) using Discourse search API
-// Uses author:username filter to get all topics created by the user
+// Hook to fetch user's topics (Bytes) using Discourse activity API
+// Uses /u/{username}/activity/topics.json endpoint
 
 import { useState, useEffect, useCallback } from 'react';
 import { discourseApi } from './discourseApi';
 import { PostItem } from '@/components/profile/ProfilePostList';
+import { discourseTopicToPostItem } from './adapters/byteToPostItem';
 
 export interface UseUserPostsReturn {
   posts: PostItem[];
@@ -32,39 +33,57 @@ export function useUserPosts(username: string): UseUserPostsReturn {
       setErrorMessage(undefined);
 
       try {
-        // Use search API with author filter
-        const searchQuery = `author:${username}`;
-        const response = await discourseApi.search(searchQuery, {
-          type: 'topic',
-          limit: 20,
-          order: 'created',
-          period: 'all',
-        });
+        // Use Discourse activity endpoint for user topics
+        const response = await discourseApi.getUserActivity(username, 'topics', page);
 
         if (!response.success || !response.data) {
           throw new Error(response.error || 'Failed to load posts');
         }
 
-        // Map search results to PostItem format
-        const bytes = response.data.bytes || [];
-        const mappedPosts: PostItem[] = bytes.map((byte: any) => ({
-          id: byte.id,
-          title: byte.title,
-          hubName: byte.hubName || 'Uncategorized',
-          teretName: byte.teretName,
-          author: {
-            name: byte.author?.name || 'Unknown',
-            avatar: byte.author?.avatarUrl || '',
-          },
-          replyCount: byte.stats?.replyCount || 0,
-          likeCount: byte.stats?.likeCount || 0,
-          createdAt: byte.createdAt,
-          lastPostedAt: byte.lastPostedAt,
-          isBookmarked: byte.isBookmarked,
-          hasMedia: byte.hasMedia,
-          coverImage: byte.coverImage,
-          slug: byte.slug || `t/${byte.id}`,
-        }));
+        // Log response structure for debugging
+        console.log('📊 User Topics Response:', {
+          hasData: !!response.data,
+          keys: response.data ? Object.keys(response.data) : [],
+          hasUserActions: !!(response.data?.user_actions),
+          userActionsCount: response.data?.user_actions?.length || 0,
+          hasTopicList: !!(response.data?.topic_list),
+          topicListCount: response.data?.topic_list?.topics?.length || 0,
+        });
+
+        // Discourse activity endpoint returns user_actions array or topic_list
+        // For topics, extract topics from user_actions
+        const userActions = response.data.user_actions || [];
+        const topicsList = response.data.topic_list?.topics || [];
+        
+        // Extract topics from user_actions (action_type 4 = created topic, 5 = replied)
+        // For topics tab, we want topics the user created
+        const topics: any[] = [];
+        
+        // First, check if we have topic_list (cleaner format)
+        if (topicsList.length > 0) {
+          topics.push(...topicsList);
+        } else if (userActions.length > 0) {
+          // Extract topics from user_actions
+          userActions.forEach((action: any) => {
+            // action_type 4 = created topic
+            if (action.action_type === 4 && action.topic) {
+              topics.push(action.topic);
+            } else if (action.topic && !action.target_topic_id) {
+              // If it has a topic and isn't a reply action, it's a topic creation
+              topics.push(action.topic);
+            } else if (!action.action_type && action.id) {
+              // Sometimes the action itself is the topic
+              topics.push(action);
+            }
+          });
+        }
+        
+        console.log('📝 Extracted topics:', topics.length);
+
+        // Transform topics to PostItem format
+        const mappedPosts: PostItem[] = topics.map((topic: any) => 
+          discourseTopicToPostItem(topic, discourseApi)
+        ).filter(Boolean);
 
         if (append) {
           setPosts((prev) => [...prev, ...mappedPosts]);

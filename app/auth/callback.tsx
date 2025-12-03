@@ -2,9 +2,10 @@ import React, { useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
+import * as SecureStore from 'expo-secure-store';
 import { logger } from '../../shared/logger';
 import { useAuth } from '@/shared/auth-context';
-import { discourseApi } from '../../shared/discourseApi';
+import { discourseApi, setAuthInProgress } from '../../shared/discourseApi';
 import { UserApiKeyManager } from '../../shared/userApiKeyManager';
 import { hasUserApiKey } from '../../lib/auth';
 import { parseURLParameters } from '../../lib/auth-utils';
@@ -44,6 +45,9 @@ export default function AuthCallbackScreen() {
     hasProcessedRef.current = true;
     
     async function handleCallback() {
+      // Set flag to prevent 401/403 from parallel requests clearing the API key
+      setAuthInProgress(true);
+      
       try {
         logger.info('AuthCallbackScreen: Processing callback...', {
           platform: Platform.OS,
@@ -131,19 +135,9 @@ export default function AuthCallbackScreen() {
             // Clear nonce after successful verification (prevents reuse)
             await UserApiKeyManager.clearNonce();
 
-            // Get or generate client ID
-            const clientId = await UserApiKeyManager.getOrGenerateClientId();
-
-            // Store API key securely in new unified storage
+            // Store API key securely - just the raw key, not JSON
+            // authHeaders() expects a raw string at this key
             await SecureStore.setItemAsync("fomio_user_api_key", decrypted.key);
-            
-            // Store API key in UserApiKeyManager for backward compatibility
-            await UserApiKeyManager.storeApiKey({
-              key: decrypted.key,
-              clientId,
-              oneTimePassword: decrypted.one_time_password,
-              createdAt: Date.now(),
-            });
 
             // Store one-time password if provided
             if (decrypted.one_time_password) {
@@ -205,6 +199,8 @@ export default function AuthCallbackScreen() {
           
           // Clear potentially invalid API key
           try {
+            await SecureStore.deleteItemAsync("fomio_user_api_key");
+            await SecureStore.deleteItemAsync("fomio_user_api_username");
             await UserApiKeyManager.clearApiKey();
           } catch (clearError) {
             logger.warn('AuthCallbackScreen: Failed to clear API key', clearError);
@@ -217,12 +213,17 @@ export default function AuthCallbackScreen() {
         
         // Clear potentially invalid API key on error
         try {
+          await SecureStore.deleteItemAsync("fomio_user_api_key");
+          await SecureStore.deleteItemAsync("fomio_user_api_username");
           await UserApiKeyManager.clearApiKey();
         } catch (clearError) {
           logger.warn('AuthCallbackScreen: Failed to clear API key on error', clearError);
         }
         
         router.replace('/(auth)/signin');
+      } finally {
+        // Always clear the auth-in-progress flag when done
+        setAuthInProgress(false);
       }
     }
     

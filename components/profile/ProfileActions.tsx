@@ -8,6 +8,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { PencilSimple, Envelope, Share, Flag, Prohibit } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
+import { useAuth } from '@/shared/auth-context';
 import { router } from 'expo-router';
 
 export interface ProfileActionsProps {
@@ -24,6 +25,7 @@ export function ProfileActions({
   onBlock,
 }: ProfileActionsProps) {
   const { isDark, isAmoled } = useTheme();
+  const { isAuthenticated } = useAuth();
 
   const handleEditProfile = () => {
     router.push('/(profile)/edit-profile' as any);
@@ -66,7 +68,8 @@ export function ProfileActions({
   // PublicProfile mode
   return (
     <View className="px-4 py-3 flex-row gap-2 flex-wrap">
-      {/* Message - Coming soon */}
+      {/* Message - Coming soon - only show if authenticated */}
+      {isAuthenticated && (
       <TouchableOpacity
         disabled
         className="flex-1 min-w-[100px] py-2.5 px-3 rounded-xl border items-center justify-center"
@@ -97,6 +100,7 @@ export function ProfileActions({
           Coming soon
         </Text>
       </TouchableOpacity>
+      )}
 
       {/* Share - Coming soon */}
       <TouchableOpacity
@@ -130,7 +134,8 @@ export function ProfileActions({
         </Text>
       </TouchableOpacity>
 
-      {/* Report */}
+      {/* Report - only show if authenticated */}
+      {isAuthenticated && onReport && (
       <TouchableOpacity
         onPress={onReport}
         className="flex-1 min-w-[100px] py-2.5 px-3 rounded-xl border items-center justify-center"
@@ -154,8 +159,10 @@ export function ProfileActions({
           Report
         </Text>
       </TouchableOpacity>
+      )}
 
-      {/* Block */}
+      {/* Block - only show if authenticated */}
+      {isAuthenticated && onBlock && (
       <TouchableOpacity
         onPress={onBlock}
         className="flex-1 min-w-[100px] py-2.5 px-3 rounded-xl border items-center justify-center"
@@ -179,6 +186,7 @@ export function ProfileActions({
           Block
         </Text>
       </TouchableOpacity>
+      )}
     </View>
   );
 }

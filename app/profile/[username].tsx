@@ -5,77 +5,60 @@ import React, { useMemo } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  RefreshControl,
   TouchableOpacity,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
-import Animated from 'react-native-reanimated';
-import { DotsThreeVertical, Flag, Prohibit } from 'phosphor-react-native';
+import { DotsThreeVertical } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useSafeNavigation } from '@/shared/hooks/useSafeNavigation';
-import { useHeader } from '@/components/ui/header';
 import { useDiscourseUser } from '@/shared/useDiscourseUser';
 import { useAuth } from '@/shared/auth-context';
-import { useUserPosts } from '@/shared/useUserPosts';
-import { useUserReplies } from '@/shared/useUserReplies';
-import { useUserMedia } from '@/shared/useUserMedia';
 import { discourseApi } from '@/shared/discourseApi';
-import {
-  ProfileHeader,
-  ProfileBio,
-  ProfileStats,
-  ProfileActions,
-  ProfileBadgeStrip,
-  ProfileSectionTitle,
-  ProfilePostList,
-  ProfileMediaGrid,
-  ProfileDangerActions,
-} from '@/components/profile';
-import { router, useLocalSearchParams } from 'expo-router';
+import { ProfileTabView } from '@/components/profile';
+import { useLocalSearchParams } from 'expo-router';
+import { ProfileSkeleton } from '@/components/profile/ProfileSkeleton';
+import { useToast } from '@/shared/form-validation';
 
 export default function PublicProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { username: targetUsername } = useLocalSearchParams<{ username: string }>();
   const { isAuthenticated } = useAuth();
+  const { showSuccess, showError } = useToast();
+  
+  // Early validation - return error if no username provided
+  if (!targetUsername) {
+    return (
+      <ScreenContainer variant="bg">
+        <View className="flex-1 items-center justify-center px-4">
+          <View className="items-center max-w-sm">
+            <Text
+              className="text-lg font-semibold mb-2 text-center"
+              style={{ color: isDark ? '#f9fafb' : '#111827' }}
+            >
+              Invalid profile URL
+            </Text>
+            <Text
+              className="text-sm text-center"
+              style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
+            >
+              Please provide a valid username to view the profile.
+            </Text>
+          </View>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
   const { user, loading: userLoading, error: userError, refreshUser } =
     useDiscourseUser(targetUsername);
+  
+  // Get current user to determine if this is own profile
+  const { user: currentUser } = useDiscourseUser();
+  const isOwnProfile = currentUser?.username === targetUsername;
 
-  // Get user's username for data fetching
-  const username = user?.username || targetUsername;
-
-  const { posts, isLoading: postsLoading, hasMore: hasMorePosts, loadMore: loadMorePosts, refresh: refreshPosts } =
-    useUserPosts(username);
-  const {
-    replies,
-    isLoading: repliesLoading,
-    hasMore: hasMoreReplies,
-    loadMore: loadMoreReplies,
-    refresh: refreshReplies,
-  } = useUserReplies(username);
-  const { media, isLoading: mediaLoading } = useUserMedia(username);
-
-  const [refreshing, setRefreshing] = React.useState(false);
   const { safeBack } = useSafeNavigation();
-  const { setActions } = useHeader();
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        refreshUser(),
-        refreshPosts(),
-        refreshReplies(),
-      ]);
-    } catch (error) {
-      console.error('Failed to refresh profile:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   const handleReport = async () => {
     if (!user?.username) return;
@@ -95,12 +78,12 @@ export default function PublicProfileScreen(): React.ReactElement {
                 'User reported from mobile app'
               );
               if (response.success) {
-                Alert.alert('Reported', 'Thank you for your report.');
+                showSuccess('Reported', 'Thank you for your report.');
               } else {
-                Alert.alert('Error', response.error || 'Failed to report user');
+                showError('Report failed', response.error || 'Failed to report user');
               }
             } catch (error) {
-              Alert.alert('Error', 'Failed to report user');
+              showError('Report failed', 'Failed to report user');
             }
           },
         },
@@ -123,13 +106,13 @@ export default function PublicProfileScreen(): React.ReactElement {
             try {
               const response = await discourseApi.blockUser(user.username);
               if (response.success) {
-                Alert.alert('Blocked', `${user.username} has been blocked.`);
+                showSuccess('Blocked', `${user.username} has been blocked.`);
                 safeBack();
               } else {
-                Alert.alert('Error', response.error || 'Failed to block user');
+                showError('Block failed', response.error || 'Failed to block user');
               }
             } catch (error) {
-              Alert.alert('Error', 'Failed to block user');
+              showError('Block failed', 'Failed to block user');
             }
           },
         },
@@ -143,12 +126,12 @@ export default function PublicProfileScreen(): React.ReactElement {
     try {
       const response = await discourseApi.muteUser(user.username);
       if (response.success) {
-        Alert.alert('Muted', `${user.username} has been muted.`);
+        showSuccess('Muted', `${user.username} has been muted.`);
       } else {
-        Alert.alert('Error', response.error || 'Failed to mute user');
+        showError('Mute failed', response.error || 'Failed to mute user');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to mute user');
+      showError('Mute failed', 'Failed to mute user');
     }
   };
 
@@ -158,12 +141,12 @@ export default function PublicProfileScreen(): React.ReactElement {
     try {
       const response = await discourseApi.ignoreUser(user.username);
       if (response.success) {
-        Alert.alert('Ignored', `${user.username} has been ignored.`);
+        showSuccess('Ignored', `${user.username} has been ignored.`);
       } else {
-        Alert.alert('Error', response.error || 'Failed to ignore user');
+        showError('Ignore failed', response.error || 'Failed to ignore user');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to ignore user');
+      showError('Ignore failed', 'Failed to ignore user');
     }
   };
 
@@ -210,60 +193,64 @@ export default function PublicProfileScreen(): React.ReactElement {
     rightActions: [menuButton],
     compact: true,
     titleFontSize: 20,
-  }, [user, menuButton]);
+  }, [user, menuButton, isDark]);
 
   // Show loading state
   if (userLoading && !user) {
     return (
       <ScreenContainer variant="bg">
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator
-            size="large"
-            color={isDark ? '#3b82f6' : '#2563eb'}
-          />
-        </View>
+        <ProfileSkeleton />
       </ScreenContainer>
     );
   }
 
   // Show error state
-  if (userError || !user) {
+  if (userError || (!user && !userLoading && targetUsername)) {
+    const isNotFound = userError?.includes('404') || userError?.includes('not found');
+    const errorTitle = isNotFound ? 'User not found' : 'Failed to load profile';
+    const errorMessage = isNotFound
+      ? `The user "${targetUsername}" doesn't exist or their profile is private.`
+      : userError || 'Please check your connection and try again.';
+
     return (
       <ScreenContainer variant="bg">
         <View className="flex-1 items-center justify-center px-4">
-          <View className="items-center">
+          <View className="items-center max-w-sm">
             <View
-              className="p-6 rounded-xl mb-4 max-w-sm"
+              className="p-6 rounded-xl mb-4"
               style={{
                 backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
               }}
             >
               <View className="items-center">
-                <View
-                  className="w-16 h-16 rounded-full items-center justify-center mb-4"
-                  style={{
-                    backgroundColor: isDark ? '#374151' : '#e5e7eb',
-                  }}
+                {/* Icon or emoji */}
+                <Text className="text-4xl mb-4">👤</Text>
+                
+                <Text
+                  className="text-lg font-semibold mb-2 text-center"
+                  style={{ color: isDark ? '#f9fafb' : '#111827' }}
                 >
-                  <ActivityIndicator
-                    size="large"
-                    color={isDark ? '#ef4444' : '#dc2626'}
-                  />
-                </View>
+                  {errorTitle}
+                </Text>
+                
+                <Text
+                  className="text-sm text-center mb-6"
+                  style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
+                >
+                  {errorMessage}
+                </Text>
+                
                 <TouchableOpacity
                   onPress={refreshUser}
-                  className="px-6 py-3 rounded-xl border"
+                  className="px-6 py-3 rounded-xl"
                   style={{
-                    backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-                    borderColor: isDark ? '#374151' : '#e5e7eb',
+                    backgroundColor: isDark ? '#3b82f6' : '#2563eb',
                   }}
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading profile"
                 >
-                  <View className="flex-row items-center gap-2">
-                    <ActivityIndicator
-                      size="small"
-                      color={isDark ? '#3b82f6' : '#2563eb'}
-                    />
-                  </View>
+                  <Text className="text-white font-semibold">Retry</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -275,74 +262,13 @@ export default function PublicProfileScreen(): React.ReactElement {
 
   return (
     <ScreenContainer variant="bg">
-      {/* Scrollable Content */}
-      <Animated.ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={isDark ? '#3b82f6' : '#2563eb'}
-          />
-        }
-      >
-        {/* Profile Header */}
-        <ProfileHeader user={user} isPublic={true} />
-
-        {/* Bio */}
-        <ProfileBio bio={user.bio_raw} />
-
-        {/* Stats */}
-        <ProfileStats user={user} />
-
-        {/* Actions */}
-        <ProfileActions
-          mode="publicProfile"
-          username={user.username}
-          onReport={handleReport}
-          onBlock={handleBlock}
-        />
-
-        {/* Badge Strip */}
-        <ProfileBadgeStrip />
-
-        {/* Bytes Section */}
-        <ProfileSectionTitle title="Bytes" />
-        <ProfilePostList
-          posts={posts}
-          isLoading={postsLoading}
-          hasMore={hasMorePosts}
-          onLoadMore={loadMorePosts}
-          filter="posts"
-        />
-
-        {/* Media Section */}
-        <ProfileSectionTitle title="Media" />
-        <ProfileMediaGrid media={media} isLoading={mediaLoading} />
-
-        {/* Replies Section */}
-        <ProfileSectionTitle title="Replies" />
-        <ProfilePostList
-          posts={replies}
-          isLoading={repliesLoading}
-          hasMore={hasMoreReplies}
-          onLoadMore={loadMoreReplies}
-          filter="replies"
-        />
-
-        {/* Danger Zone */}
-        {isAuthenticated && (
-          <ProfileDangerActions
-            username={user.username}
-            onReport={handleReport}
-            onMute={handleMute}
-            onIgnore={handleIgnore}
-          />
-        )}
-
-        {/* Bottom padding */}
-        <View className="h-8" />
-      </Animated.ScrollView>
+      <ProfileTabView
+        user={user}
+        isOwnProfile={isOwnProfile}
+        isAuthenticated={isAuthenticated}
+        onReport={handleReport}
+        onBlock={handleBlock}
+      />
     </ScreenContainer>
   );
 }

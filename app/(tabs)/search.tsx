@@ -24,6 +24,7 @@ import { ByteCard } from '@/components/bytes/ByteCard';
 import { searchResultToByte } from '@/shared/adapters/searchResultToByte';
 import { useSearch } from '../../shared/useSearch';
 import { router } from 'expo-router';
+import { goToProfile } from '@/shared/navigation/profile';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 // formatDate removed - now handled by formatTimeAgo in ByteCard component
@@ -267,13 +268,18 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery, err
           <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
             Users ({users.length})
           </Text>
-          {users.map((result) => (
+          {users.map((result) => {
+            const username = result.author?.username || result.username;
+            return (
             <TouchableOpacity
               key={`user-${result.id}`}
               style={[styles.userCard, { backgroundColor: colors.background, borderColor: colors.border }]}
               onPress={() => {
-                // Navigate to user profile (you can implement this later)
-                console.log('Navigate to user:', result.author?.username);
+                  if (username) {
+                    goToProfile(username);
+                  } else {
+                    console.warn('User result missing username:', result);
+                  }
               }}
             >
               <View style={styles.userCardHeader}>
@@ -299,7 +305,8 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery, err
                 </Text>
               )}
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </View>
       )}
     </ScrollView>
@@ -387,7 +394,7 @@ export default function SearchScreen(): React.ReactElement {
     tone: "bg",
     compact: true,
     titleFontSize: 20,
-  }, [searchQuery]);
+  }, [searchQuery, isDark]);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),

@@ -16,4 +16,8 @@ export { ProfilePostList } from './ProfilePostList';
 export type { ProfilePostListProps, PostItem } from './ProfilePostList';
 export { ProfileMediaGrid } from './ProfileMediaGrid';
 export type { ProfileMediaGridProps, MediaItem } from './ProfileMediaGrid';
+export { ProfileTabView } from './ProfileTabView';
+export type { ProfileTabViewProps } from './ProfileTabView';
+export { ProfileTabBar } from './ProfileTabBar';
+export type { ProfileTabBarProps, TabItem } from './ProfileTabBar';
 

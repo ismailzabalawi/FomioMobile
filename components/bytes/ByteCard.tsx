@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useCallback } from 'react';
 import { Pressable, View, Text } from 'react-native';
 import type { Byte } from '@/types/byte';
 import { ByteCardHeader } from './ByteCardHeader';
@@ -44,8 +44,17 @@ export function ByteCard({
   }
 
   const { onCardPress } = useByteCardActions(byte);
+  
+  // Track if header area was pressed to prevent parent Pressable from handling
+  const headerPressedRef = useRef(false);
 
   const handlePress = () => {
+    // If header was pressed, skip card navigation
+    if (headerPressedRef.current) {
+      headerPressedRef.current = false;
+      return;
+    }
+    
     if (onPress) {
       onPress();
     } else {
@@ -53,9 +62,23 @@ export function ByteCard({
     }
   };
 
+  const handlePressIn = () => {
+    // Reset flag on press start to allow new presses
+    headerPressedRef.current = false;
+  };
+
+  const handleHeaderPress = useCallback(() => {
+    headerPressedRef.current = true;
+    // Reset after navigation completes
+    setTimeout(() => {
+      headerPressedRef.current = false;
+    }, 200);
+  }, []);
+
   return (
     <Pressable
       onPress={handlePress}
+      onPressIn={handlePressIn}
       className="px-4 pt-4 active:opacity-90"
       android_ripple={{ color: 'rgba(0,0,0,0.1)', foreground: true }}
       accessible
@@ -73,7 +96,7 @@ export function ByteCard({
         )}
         
         {/* Author row: avatar | name | username */}
-        <ByteCardHeader byte={byte} />
+        <ByteCardHeader byte={byte} onHeaderPress={handleHeaderPress} />
         
         {/* Content, media, footer */}
         <ByteCardContent byte={byte} />

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 
 const onboardingSteps = [
   {
@@ -48,22 +49,32 @@ export default function OnboardingScreen() {
     router.replace('/(tabs)');
   };
 
+  // Skip button for header
+  const skipButton = useMemo(() => (
+    <TouchableOpacity
+      onPress={handleSkip}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel="Skip"
+      accessibilityHint="Skip onboarding and go to main app"
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    >
+      <Text style={{ color: colors.secondary, fontSize: 16 }}>Skip</Text>
+    </TouchableOpacity>
+  ), [handleSkip, colors.secondary]);
+
+  // Configure header
+  useScreenHeader({
+    title: "",
+    canGoBack: false,
+    rightActions: [skipButton],
+    withSafeTop: false,
+    tone: "bg",
+    compact: true,
+  }, [isDark, skipButton]);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={handleSkip}
-          style={styles.skipButton}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Skip"
-          accessibilityHint="Skip onboarding and go to sign up"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={[styles.skipButtonText, { color: colors.secondary }]}>Skip</Text>
-        </TouchableOpacity>
-      </View>
-
       <View style={styles.content}>
         <View style={styles.stepContainer}>
           <Text style={styles.emoji}>{onboardingSteps[currentStep].emoji}</Text>
@@ -107,17 +118,6 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 20,
-  },
-  skipButton: {
-    padding: 8,
-  },
-  skipButtonText: {
-    fontSize: 16,
   },
   content: {
     flex: 1,

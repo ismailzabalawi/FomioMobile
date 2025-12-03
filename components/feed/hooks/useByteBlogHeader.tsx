@@ -1,19 +1,26 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
+import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { useDetailHeader } from '@/shared/hooks/useDetailHeader';
+import { useHeader } from '@/components/ui/header';
 import { TopicData } from '@/shared/useTopic';
 import { OverflowMenu } from '../OverflowMenu';
 import { StatusChipsRow } from '../StatusChipsRow';
 
 /**
  * Hook for managing header configuration in ByteBlogPage
- * Handles header actions and screen header setup
+ * Handles header actions, screen header setup, and scroll-aware behavior
+ * Returns a scroll handler that should be attached to the ScrollView/FlatList
  */
 export function useByteBlogHeader(
   topic: TopicData | null,
   _isDark: boolean,
   onShare?: () => void,
   retry?: () => void
-) {
+): {
+  onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+} {
+  const { registerScrollHandler } = useHeader();
+
   // Determine if author has Staff badge
   const isStaff = useMemo(() => {
     return topic?.authorBadges?.some((badge) => badge.name === 'Staff') ?? false;
@@ -60,4 +67,21 @@ export function useByteBlogHeader(
     title: topic?.title ?? "Byte",
     rightActions: headerActions,
   });
+
+  // Register scroll handler for automatic scroll-aware header behavior
+  // This updates the header's isScrolled state automatically
+  const { onScroll } = useMemo(
+    () => registerScrollHandler(
+      (_event) => {
+        // HeaderProvider automatically updates isScrolled state based on scroll threshold
+        // No custom handler needed - the registration itself enables scroll-aware behavior
+      },
+      {
+        threshold: 24, // Match default feed pattern
+      }
+    ),
+    [registerScrollHandler]
+  );
+
+  return { onScroll };
 }

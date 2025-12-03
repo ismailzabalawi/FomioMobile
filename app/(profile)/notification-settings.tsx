@@ -155,7 +155,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
     tone: "bg",
     compact: true,
     titleFontSize: 20,
-  }, []);
+  }, [isDark]);
 
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),

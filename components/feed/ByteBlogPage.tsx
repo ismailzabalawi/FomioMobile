@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
@@ -8,7 +8,6 @@ import * as Haptics from 'expo-haptics';
 import { useTopic, TopicData } from '../../shared/useTopic';
 import { usePostActions } from '../../shared/usePostActions';
 import { useScreenBackBehavior } from '@/shared/hooks/useScreenBackBehavior';
-import { useByteBlogScroll } from './hooks/useByteBlogScroll';
 import { useByteBlogHeader } from './hooks/useByteBlogHeader';
 import { useByteBlogComments } from './hooks/useByteBlogComments';
 import { StickyActionBar } from './StickyActionBar';
@@ -40,8 +39,9 @@ export function ByteBlogPage({
   const { user, isAuthenticated } = useAuth();
   const { topic, isLoading, hasError, errorMessage, retry, refetch } = useTopic(topicId);
   
-  // Scroll handling hook
-  const { flatListRef, scrollOffsetRef, onScroll: headerAwareScroll, handleScrollToIndexFailed } = useByteBlogScroll(topic);
+  // FlatList ref for scrolling
+  const flatListRef = React.useRef<FlatList>(null);
+  const scrollOffsetRef = React.useRef<number>(0);
   
   // Extract first post ID for like/bookmark actions
   const firstPostId = topic?.posts?.[0]?.id || 0;
@@ -167,8 +167,21 @@ export function ByteBlogPage({
   }, [toggleBookmark, onBookmark, topic, currentIsBookmarked]);
 
 
-  // Configure header
-  useByteBlogHeader(topic, isDark, onShare, retry);
+  // Configure header and get scroll handler for automatic scroll-aware behavior
+  const { onScroll: headerAwareScroll } = useByteBlogHeader(topic, isDark, onShare, retry);
+
+  // Track scroll position for comments scroll offset and call header-aware scroll
+  const handleScrollWithTracking = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      // Store scroll position for comment scrolling
+      if (event?.nativeEvent) {
+        scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+      }
+      // Call header-aware scroll handler (handles scroll state automatically)
+      headerAwareScroll(event);
+    },
+    [headerAwareScroll]
+  );
 
   useScreenBackBehavior({}, []);
 
@@ -257,9 +270,18 @@ export function ByteBlogPage({
             data={flatListData}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
-            onScroll={headerAwareScroll}
+            onScroll={handleScrollWithTracking}
             scrollEventThrottle={16}
-            onScrollToIndexFailed={handleScrollToIndexFailed}
+            onScrollToIndexFailed={(info) => {
+              // Handle scrollToIndex failures safely
+              const offset = info.index * info.averageItemLength;
+              setTimeout(() => {
+                flatListRef.current?.scrollToOffset({
+                  offset: Math.max(0, offset),
+                  animated: true,
+                });
+              }, 100);
+            }}
             contentContainerStyle={{ 
               paddingBottom: 12,
               backgroundColor: isAmoled ? '#000000' : (isDark ? '#000000' : '#F7F7F8')

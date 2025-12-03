@@ -8,10 +8,12 @@
 // - Uses NativeWind semantic tokens
 
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { Calendar, Eye } from 'phosphor-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
+import { useHeader } from '@/components/ui/header';
 import { Avatar } from '../ui/avatar';
 import { discourseApi, DiscourseUser } from '@/shared/discourseApi';
 import { cn } from '@/lib/utils/cn';
@@ -23,6 +25,20 @@ export interface ProfileHeaderProps {
 
 export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
   const { isDark, isAmoled } = useTheme();
+  const { header } = useHeader();
+  const insets = useSafeAreaInsets();
+  
+  // Calculate header height to add appropriate top padding
+  const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 40 : 44;
+  const HEADER_PADDING = Platform.OS === 'ios' ? 4 : 2;
+  const baseHeaderHeight = BASE_BAR_HEIGHT + HEADER_PADDING;
+  const measuredHeaderHeight = header.headerHeight ?? baseHeaderHeight;
+  
+  // When extendToStatusBar is true, header includes status bar area
+  // ProfileHeader needs padding to account for the global header
+  const headerTopPadding = header.extendToStatusBar 
+    ? measuredHeaderHeight 
+    : measuredHeaderHeight + insets.top;
   
   const avatarUrl = user.avatar_template
     ? discourseApi.getAvatarUrl(user.avatar_template, 72)
@@ -61,7 +77,7 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
     : null;
 
   return (
-    <View className="px-4 pt-6 pb-4">
+    <View className="px-4 pb-4" style={{ paddingTop: headerTopPadding + 24 }}>
       {/* Avatar */}
       <View className="mb-4">
         {avatarUrl ? (

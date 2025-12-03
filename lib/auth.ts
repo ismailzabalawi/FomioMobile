@@ -35,29 +35,20 @@ function getRedirectUri(): string {
   }
   
   // Use makeRedirectUri to ensure proper scheme handling
-  // native parameter forces the fomio:// scheme even in development
+  // Following Discourse's official pattern: discourse://auth_redirect -> fomio://auth_redirect
   const baseUri = makeRedirectUri({
     preferLocalhost: false,
-    native: 'fomio://auth/callback',
+    native: 'fomio://auth_redirect',
   });
   
-  // makeRedirectUri might return with or without path, ensure we have /auth/callback
+  // makeRedirectUri might return with or without path, ensure we have the correct format
   if (baseUri.includes('fomio://')) {
     // If it already has the correct scheme, use it
     return baseUri;
   }
   
-  // Fallback: construct manually if makeRedirectUri doesn't work as expected
-  try {
-    const Platform = require('react-native').Platform;
-    if (Platform.OS === 'ios') {
-      return 'fomio:///auth/callback';
-    }
-  } catch {
-    // Fallback
-  }
-  
-  return 'fomio://auth/callback';
+  // Fallback: use Discourse's official pattern
+  return 'fomio://auth_redirect';
 }
 
 /**
@@ -309,55 +300,77 @@ export async function signIn(): Promise<boolean> {
 export async function authHeaders(): Promise<Record<string, string>> {
   try {
     // Read from new unified storage keys
-    const key = await SecureStore.getItemAsync("fomio_user_api_key");
-    const user = await SecureStore.getItemAsync("fomio_user_api_username");
+    let key = await SecureStore.getItemAsync("fomio_user_api_key");
+    let user = await SecureStore.getItemAsync("fomio_user_api_username");
 
-    if (!key || !user) {
+    // If key looks like JSON (from UserApiKeyManager), extract the actual key
+    if (key && key.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(key);
+        key = parsed.key || key;
+        if (!user && parsed.username) {
+          user = parsed.username;
+        }
+      } catch {
+        // Not JSON, use as-is
+      }
+    }
+
+    if (!key) {
       // Fallback to legacy storage for backward compatibility
       const legacyKey = await SecureStore.getItemAsync(STORAGE_KEY);
       if (legacyKey) {
-        // Try to get username from UserApiKeyManager or stored auth
-        let legacyUsername: string | null = null;
+        key = legacyKey;
         
-        const apiKeyData = await UserApiKeyManager.getApiKey();
-        if (apiKeyData?.username) {
-          legacyUsername = apiKeyData.username;
-        } else {
-          try {
-            const storedAuth = await SecureStore.getItemAsync('auth-token-v1');
-            if (storedAuth) {
-              const parsed = JSON.parse(storedAuth);
-              legacyUsername = parsed.username || null;
+        // Try to get username from UserApiKeyManager or stored auth
+        if (!user) {
+          const apiKeyData = await UserApiKeyManager.getApiKey();
+          if (apiKeyData?.username) {
+            user = apiKeyData.username;
+          } else {
+            try {
+              const storedAuth = await SecureStore.getItemAsync('auth-token-v1');
+              if (storedAuth) {
+                const parsed = JSON.parse(storedAuth);
+                user = parsed.username || null;
+              }
+            } catch {
+              // Ignore errors reading stored auth
             }
-          } catch {
-            // Ignore errors reading stored auth
           }
         }
 
-        if (legacyKey && legacyUsername) {
+        if (legacyKey) {
           // Migrate to new keys
           await SecureStore.setItemAsync("fomio_user_api_key", legacyKey);
-          await SecureStore.setItemAsync("fomio_user_api_username", legacyUsername);
-          
-          return {
-            "User-Api-Key": legacyKey,
-            "Api-Username": legacyUsername,
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-          };
+          if (user) {
+            await SecureStore.setItemAsync("fomio_user_api_username", user);
+          }
         }
       }
-      
-      console.warn("⚠️ Missing User-Api-Key or Api-Username");
+    }
+
+    if (!key) {
+      console.warn("⚠️ Missing User-Api-Key");
+      console.log("⚠️ User API Key not found, request may fail");
       return {};
     }
 
-    return {
+    // Return headers - username is optional for GET requests
+    // Api-Username is required for write operations, but GET requests work with just User-Api-Key
+    const headers: Record<string, string> = {
       "User-Api-Key": key,
-      "Api-Username": user,
       "Accept": "application/json",
       "Content-Type": "application/json",
     };
+
+    if (user) {
+      headers["Api-Username"] = user;
+    } else {
+      console.log("⚠️ Api-Username not available yet, some operations may fail");
+    }
+
+    return headers;
   } catch (error) {
     logger.error('Failed to get auth headers', error);
     return {};

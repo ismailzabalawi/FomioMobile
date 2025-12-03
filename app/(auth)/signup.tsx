@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 import { useTheme } from '@/components/theme';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 
 const config = Constants.expoConfig?.extra || {};
 const BASE_URL = config.DISCOURSE_BASE_URL || 'https://meta.techrebels.info';
@@ -42,24 +43,19 @@ export default function SignUpScreen() {
     router.back();
   };
 
+  // Configure header
+  useScreenHeader({
+    title: "Create Account",
+    canGoBack: true,
+    onBackPress: handleBack,
+    withSafeTop: false,
+    tone: "bg",
+    compact: true,
+    titleFontSize: 20,
+  }, [isDark]);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-        <TouchableOpacity
-          onPress={handleBack}
-          style={styles.backButton}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          accessibilityHint="Go back to previous screen"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={[styles.backButtonText, { color: colors.primary }]}>←</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Create Account</Text>
-        <View style={styles.placeholder} />
-      </View>
-
       <View style={styles.content}>
         <View style={styles.form}>
           <View style={styles.infoContainer}>
@@ -111,25 +107,6 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  placeholder: {
-    width: 40,
   },
   content: {
     flex: 1,

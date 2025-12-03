@@ -15,10 +15,11 @@ import { attachIntentReplay } from '@/shared/intent-replay';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
 import * as Linking from 'expo-linking';
-import { Platform, View, StyleSheet } from 'react-native';
+import { Platform, View, StyleSheet, AppState, AppStateStatus } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderProvider, GlobalHeader } from '@/components/ui/header';
 import { useHeader } from '@/components/ui/header';
+import { ToastContainer } from '@/components/shared/ToastContainer';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -79,10 +80,15 @@ function RootLayoutNav(): React.ReactElement {
     if (Platform.OS === 'android') {
       // Handle deep links while app is running
       const subscription = Linking.addEventListener('url', ({ url }) => {
-        logger.info('Deep link received via Linking listener', { url, platform: Platform.OS });
+        logger.info('Deep link received via Linking listener', { 
+          url, 
+          platform: Platform.OS,
+          urlLength: url.length,
+          hasPayload: url.includes('payload='),
+        });
         
         // Check if this is an auth callback deep link
-        // Support both fomio://auth/callback and fomio://auth_redirect formats
+        // Support both fomio://auth/callback and fomio://auth_redirect formats (Discourse's official pattern)
         if (
           url.includes('fomio://auth/callback') || 
           url.includes('fomio:///auth/callback') ||
@@ -97,13 +103,18 @@ function RootLayoutNav(): React.ReactElement {
           
           if (payload) {
             // Navigate with payload as direct param
-            logger.info('Payload extracted from deep link, navigating to callback screen');
+            logger.info('Payload extracted from deep link, navigating to callback screen', {
+              payloadLength: payload.length,
+              hasPayload: true,
+            });
             router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}` as any);
           } else {
             // Fallback: pass full URL
-            logger.warn('No payload found in deep link, passing full URL');
+            logger.warn('No payload found in deep link, passing full URL', { url });
             router.replace(`/auth/callback?url=${encodeURIComponent(url)}` as any);
           }
+        } else {
+          logger.info('Deep link received but not an auth callback, ignoring', { url });
         }
       });
 
@@ -111,7 +122,7 @@ function RootLayoutNav(): React.ReactElement {
       Linking.getInitialURL().then((url) => {
         if (url) {
           logger.info('Initial deep link URL detected', { url, platform: Platform.OS });
-          // Support both fomio://auth/callback and fomio://auth_redirect formats
+          // Support both fomio://auth/callback and fomio://auth_redirect formats (Discourse's official pattern)
           if (
             url.includes('fomio://auth/callback') || 
             url.includes('fomio:///auth/callback') ||
@@ -125,16 +136,70 @@ function RootLayoutNav(): React.ReactElement {
             const payload = urlParams.get('payload');
             
             if (payload) {
+              logger.info('Payload extracted from initial deep link, navigating to callback screen', {
+                payloadLength: payload.length,
+                hasPayload: true,
+              });
               router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}` as any);
             } else {
+              logger.warn('No payload found in initial deep link, passing full URL', { url });
               router.replace(`/auth/callback?url=${encodeURIComponent(url)}` as any);
             }
+          } else {
+            logger.info('Initial deep link is not an auth callback, ignoring', { url });
+          }
+        } else {
+          logger.info('No initial deep link URL found');
+        }
+      }).catch((error) => {
+        logger.error('Error getting initial URL', error);
+      });
+
+      // Handle app state changes - when app comes back to foreground after authorization
+      const appStateSubscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
+        if (nextAppState === 'active') {
+          // When app becomes active, check for pending deep links
+          logger.info('App became active, checking for pending deep links...');
+          try {
+            const url = await Linking.getInitialURL();
+            if (url) {
+              logger.info('Found pending deep link when app became active', { url });
+              // Handle the deep link
+              if (
+                url.includes('fomio://auth/callback') || 
+                url.includes('fomio:///auth/callback') ||
+                url.includes('fomio://auth_redirect') ||
+                url.includes('fomio:///auth_redirect')
+              ) {
+                logger.info('Auth callback deep link found on app state change', { url });
+                const urlParams = new URLSearchParams(url.split('?')[1] || '');
+                const payload = urlParams.get('payload');
+                
+                if (payload) {
+                  logger.info('Payload extracted from app state change deep link', {
+                    payloadLength: payload.length,
+                    hasPayload: true,
+                  });
+                  router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}` as any);
+                } else {
+                  logger.warn('No payload found in app state change deep link, passing full URL', { url });
+                  router.replace(`/auth/callback?url=${encodeURIComponent(url)}` as any);
+                }
+              } else {
+                logger.info('Deep link found on app state change but not an auth callback', { url });
+              }
+            } else {
+              logger.info('No pending deep link found when app became active');
+            }
+          } catch (error) {
+            logger.error('Error checking for deep links on app state change', error);
           }
         }
       });
 
       return () => {
         subscription.remove();
+        appStateSubscription.remove();
       };
     }
   }, []);
@@ -271,6 +336,8 @@ function RootLayoutContent({ insets }: { insets: { top: number } }): React.React
       <View style={[styles.headerContainer, { top: headerTop }]}>
         <GlobalHeader />
       </View>
+      {/* ToastContainer positioned below header */}
+      <ToastContainer />
       {/* Add padding to push content below header */}
       <View style={{ paddingTop: contentPaddingTop, flex: 1 }}>
         <Stack

@@ -51,8 +51,10 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
 
   // Load user data
   const refreshUser = useCallback(async () => {
-    if (!isAuthenticated) {
-      console.log('⚠️ refreshUser: Not authenticated, skipping');
+    // If username is provided, allow fetching public profile without auth
+    // Only require auth when fetching current user (no username provided)
+    if (!username && !isAuthenticated) {
+      console.log('⚠️ refreshUser: Not authenticated and no username, skipping');
       return;
     }
     
@@ -69,8 +71,10 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
       });
       
       if (username) {
+        // Public profile - no auth required
         response = await discourseApi.getUserProfile(username);
       } else {
+        // Current user - requires auth
         response = await discourseApi.getCurrentUser();
       }
       

@@ -35,8 +35,14 @@
               "pathPattern": ".*auth_redirect.*"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
+      ],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "ios": {
@@ -45,15 +51,27 @@
       "infoPlist": {
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["fomio"]
+            "CFBundleURLSchemes": [
+              "fomio"
+            ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "fomio"
+            ]
           }
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "extra": {
       "DISCOURSE_BASE_URL": "https://meta.techrebels.info",
       "APPLICATION_NAME": "Fomio Mobile",
-      "APPLICATION_ID": "com.fomio.mobile"
+      "APPLICATION_ID": "com.fomio.mobile",
+      "router": {},
+      "eas": {
+        "projectId": "88338da6-ac18-4cd0-8a88-ef823e77028d"
+      }
     },
     "userInterfaceStyle": "automatic",
     "splash": {
@@ -73,6 +91,7 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "owner": "ismailzabalawi"
   }
 }

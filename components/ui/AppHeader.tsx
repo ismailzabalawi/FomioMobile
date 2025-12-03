@@ -101,7 +101,7 @@ export const APP_HEADER_DEFAULTS: Required<
   subtitleNumberOfLines: 1,
   titleFontSize: 22,
   statusBarStyle: 'auto',
-  extendToStatusBar: true,
+  extendToStatusBar: false,
   largeTitle: false,
   transparentBackdrop: 'blur',
   compact: false,
@@ -382,6 +382,7 @@ export const AppHeader = memo(function AppHeader({
     <>
       {/* StatusBar - Expo's component handles updates automatically */}
       <StatusBar
+        key={`status-bar-${resolvedStatusBarStyle}-${backgroundColor}`}
         style={resolvedStatusBarStyle}
         backgroundColor={Platform.OS === 'android' && tone !== 'transparent' ? backgroundColor : undefined}
         translucent={Platform.OS === 'android' && extendToStatusBar}

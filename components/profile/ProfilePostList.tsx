@@ -5,6 +5,7 @@
 // - Redirects to ByteBlogPage on tap
 // - Handles empty state ("No posts yet")
 // - Accepts filter prop: 'posts' | 'replies'
+// - renderAsList prop to render as View list (for nested scroll contexts)
 
 import React, { useCallback } from 'react';
 import { View, Text, FlatList, ActivityIndicator } from 'react-native';
@@ -12,7 +13,6 @@ import { useTheme } from '@/components/theme';
 import { ByteCard } from '@/components/bytes/ByteCard';
 import { postItemToByte } from '@/shared/adapters/postItemToByte';
 import { router } from 'expo-router';
-import { discourseApi } from '@/shared/discourseApi';
 
 export interface PostItem {
   id: number;
@@ -40,6 +40,8 @@ export interface ProfilePostListProps {
   onLoadMore?: () => void;
   filter: 'posts' | 'replies';
   emptyMessage?: string;
+  /** When true, renders as View list instead of FlatList (for nested scroll contexts) */
+  renderAsList?: boolean;
 }
 
 // formatDate removed - now handled by formatTimeAgo in ByteCard component
@@ -51,6 +53,7 @@ export function ProfilePostList({
   onLoadMore,
   filter,
   emptyMessage,
+  renderAsList = false,
 }: ProfilePostListProps) {
   const { isDark } = useTheme();
 
@@ -58,17 +61,23 @@ export function ProfilePostList({
     router.push(`/feed/${postId}` as any);
   }, []);
 
-  const renderItem = useCallback(
-    ({ item }: { item: PostItem }) => {
+  const renderPostItem = useCallback(
+    (item: PostItem) => {
       const byte = postItemToByte(item);
       return (
         <ByteCard
+          key={item.id}
           byte={byte}
           onPress={() => handlePress(item.id)}
         />
       );
     },
     [handlePress]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: PostItem }) => renderPostItem(item),
+    [renderPostItem]
   );
 
   const renderEmpty = () => {
@@ -106,6 +115,20 @@ export function ProfilePostList({
     return null;
   };
 
+  // Render as View list for nested scroll contexts (e.g., inside Tabs.ScrollView)
+  if (renderAsList) {
+    if (posts.length === 0) {
+      return renderEmpty();
+    }
+
+    return (
+      <View>
+        {posts.map(renderPostItem)}
+        {renderFooter()}
+      </View>
+    );
+  }
+
   return (
     <FlatList
       data={posts}
@@ -115,7 +138,6 @@ export function ProfilePostList({
       ListFooterComponent={renderFooter}
       onEndReached={hasMore && !isLoading ? onLoadMore : undefined}
       onEndReachedThreshold={0.5}
-      scrollEnabled={false} // Parent ScrollView handles scrolling
       showsVerticalScrollIndicator={false}
     />
   );

@@ -56,7 +56,7 @@ export default function SettingsScreen(): React.ReactElement {
     tone: "bg",
     compact: true,
     titleFontSize: 20,
-  }, []);
+  }, [isDark]);
 
   // Memoize theme colors - dark mode always uses AMOLED
   const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);

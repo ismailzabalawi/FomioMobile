@@ -1,6 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-import Constants from 'expo-constants';
 import { logger } from './logger';
 import { generateRsaKeypair, decryptPayloadBase64ToUtf8 } from '../lib/crypto';
 
@@ -16,27 +15,10 @@ function loadQuickCrypto(): any {
   
   QuickCryptoLoadAttempted = true;
   
-  // Check if we're in Expo Go (where react-native-quick-crypto is not supported)
-  // Expo Go doesn't support native modules, so we skip loading react-native-quick-crypto
-  // Check multiple ways to detect Expo Go
-  const isExpoGo = 
-    Constants.executionEnvironment === 'storeClient' ||
-    (typeof Constants.expoConfig !== 'undefined' && !(Constants.expoConfig as any)?.isDetached) ||
-    (typeof global !== 'undefined' && (global as any).__expo !== undefined) ||
-    (typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative' && 
-     typeof (global as any).__expo !== 'undefined');
-  
-  if (isExpoGo) {
-    logger.info('UserApiKeyManager: Detected Expo Go environment, skipping react-native-quick-crypto, will use node-forge fallback');
-    QuickCrypto = null;
-    return null;
-  }
-  
+  // Try to load react-native-quick-crypto first
+  // In development builds and production, this should work
+  // Only fall back if the module actually fails to load
   try {
-    // Try to load react-native-quick-crypto
-    // In React Native/Expo, we should always try to load it
-    // Note: This requires native code and may not be available in Expo Go
-    // We'll gracefully fall back to node-forge if it's not available
     let cryptoModule: any;
     
     try {
@@ -51,7 +33,7 @@ function loadQuickCrypto(): any {
           requireErrorMsg.includes('not supported in Expo Go') ||
           requireErrorMsg.includes('Expo Go')) {
         // Module not available - this is fine, we'll use fallbacks
-        // Don't log this as an error since it's expected in Expo Go
+        logger.info('UserApiKeyManager: react-native-quick-crypto not available, will use node-forge fallback');
         QuickCrypto = null;
         return null;
       }
@@ -60,6 +42,7 @@ function loadQuickCrypto(): any {
     
     // Check if module is undefined or null
     if (!cryptoModule || cryptoModule === undefined) {
+      logger.info('UserApiKeyManager: react-native-quick-crypto module is undefined, will use node-forge fallback');
       QuickCrypto = null;
       return null;
     }
@@ -77,7 +60,7 @@ function loadQuickCrypto(): any {
       QuickCrypto = cryptoModule;
       logger.info('UserApiKeyManager: react-native-quick-crypto module loaded, checking webcrypto API');
     } else {
-      logger.warn('UserApiKeyManager: react-native-quick-crypto loaded but structure unexpected');
+      logger.warn('UserApiKeyManager: react-native-quick-crypto loaded but structure unexpected, will use node-forge fallback');
       QuickCrypto = null;
     }
   } catch (error: any) {
@@ -180,9 +163,11 @@ export class UserApiKeyManager {
         const publicKey = await quickCrypto.webcrypto.subtle.exportKey('spki', keyPair.publicKey);
 
         logger.info('UserApiKeyManager: RSA key pair generated successfully with react-native-quick-crypto');
+        const privateKeyBase64 = this.arrayBufferToBase64(privateKey);
+        const publicKeyBase64 = this.arrayBufferToBase64(publicKey);
         return {
-          privateKey: this.arrayBufferToBase64(privateKey),
-          publicKey: this.arrayBufferToBase64(publicKey),
+          privateKey: this.base64DerToPem(privateKeyBase64, 'PRIVATE'),
+          publicKey: this.base64DerToPem(publicKeyBase64, 'PUBLIC'),
         };
       } catch (error: any) {
         logger.error('UserApiKeyManager: QuickCrypto RSA generation failed', {
@@ -224,9 +209,11 @@ export class UserApiKeyManager {
         const publicKey = await webCrypto.subtle.exportKey('spki', keyPair.publicKey);
 
         logger.info('UserApiKeyManager: RSA key pair generated successfully with Web Crypto API');
+        const privateKeyBase64 = this.arrayBufferToBase64(privateKey);
+        const publicKeyBase64 = this.arrayBufferToBase64(publicKey);
         return {
-          privateKey: this.arrayBufferToBase64(privateKey),
-          publicKey: this.arrayBufferToBase64(publicKey),
+          privateKey: this.base64DerToPem(privateKeyBase64, 'PRIVATE'),
+          publicKey: this.base64DerToPem(publicKeyBase64, 'PUBLIC'),
         };
       } catch (error: any) {
         logger.error('UserApiKeyManager: Web Crypto API failed', {
@@ -262,6 +249,41 @@ export class UserApiKeyManager {
         'If using Expo, try: npx expo prebuild --clean'
       );
     }
+  }
+
+  /**
+   * Convert Base64 DER format to PEM format
+   * Discourse API requires PEM format for public keys
+   * @param base64 - Base64-encoded DER key
+   * @param keyType - 'PUBLIC' or 'PRIVATE'
+   * @returns PEM-formatted key string
+   */
+  private static base64DerToPem(base64: string, keyType: 'PUBLIC' | 'PRIVATE' = 'PUBLIC'): string {
+    // Split base64 into 64-character lines (PEM format standard)
+    const lines: string[] = [];
+    for (let i = 0; i < base64.length; i += 64) {
+      lines.push(base64.substring(i, i + 64));
+    }
+    
+    const header = keyType === 'PUBLIC' ? '-----BEGIN PUBLIC KEY-----' : '-----BEGIN PRIVATE KEY-----';
+    const footer = keyType === 'PUBLIC' ? '-----END PUBLIC KEY-----' : '-----END PRIVATE KEY-----';
+    
+    return `${header}\n${lines.join('\n')}\n${footer}`;
+  }
+
+  /**
+   * Convert PEM format to Base64 DER format
+   * Web Crypto API requires DER format (base64 without headers)
+   * @param pem - PEM-formatted key string
+   * @returns Base64-encoded DER key (without headers)
+   */
+  private static pemToBase64Der(pem: string): string {
+    // Remove PEM headers and newlines, extract just the base64 content
+    return pem
+      .replace(/-----BEGIN (PUBLIC|PRIVATE) KEY-----/g, '')
+      .replace(/-----END (PUBLIC|PRIVATE) KEY-----/g, '')
+      .replace(/\s/g, '') // Remove all whitespace including newlines
+      .trim();
   }
 
   /**
@@ -548,7 +570,11 @@ export class UserApiKeyManager {
       if (quickCrypto && quickCrypto.webcrypto && quickCrypto.webcrypto.subtle) {
         try {
           logger.info('UserApiKeyManager: Attempting decryption with react-native-quick-crypto');
-          const keyData = this.base64ToArrayBuffer(privateKey);
+          // Convert PEM to base64 DER if needed
+          const privateKeyDer = privateKey.includes('-----BEGIN') 
+            ? this.pemToBase64Der(privateKey) 
+            : privateKey;
+          const keyData = this.base64ToArrayBuffer(privateKeyDer);
           const cryptoKey = await quickCrypto.webcrypto.subtle.importKey(
             'pkcs8',
             keyData,
@@ -591,7 +617,11 @@ export class UserApiKeyManager {
       if (webCrypto && webCrypto.subtle) {
         try {
           logger.info('UserApiKeyManager: Attempting decryption with Web Crypto API');
-          const keyData = this.base64ToArrayBuffer(privateKey);
+          // Convert PEM to base64 DER if needed
+          const privateKeyDer = privateKey.includes('-----BEGIN') 
+            ? this.pemToBase64Der(privateKey) 
+            : privateKey;
+          const keyData = this.base64ToArrayBuffer(privateKeyDer);
           const cryptoKey = await webCrypto.subtle.importKey(
             'pkcs8',
             keyData,

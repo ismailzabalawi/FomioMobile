@@ -6,6 +6,7 @@ import { useTheme } from '@/components/theme';
 import { signIn } from '../../lib/auth';
 import { useAuth } from '@/shared/auth-context';
 import { logger } from '../../shared/logger';
+import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 
 export default function AuthorizeScreen() {
   const { isDark } = useTheme();
@@ -90,6 +91,17 @@ export default function AuthorizeScreen() {
     router.replace('/(auth)/authorize' as any);
   };
 
+  // Configure header
+  useScreenHeader({
+    title: "Authorize Fomio",
+    canGoBack: true,
+    onBackPress: handleBack,
+    withSafeTop: false,
+    tone: "bg",
+    compact: true,
+    titleFontSize: 20,
+  }, [isDark]);
+
   // Show loading state while checking auth
   if (isLoading) {
     return (
@@ -108,23 +120,6 @@ export default function AuthorizeScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity
-          onPress={handleBack}
-          style={styles.backButton}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          accessibilityHint="Go back to previous screen"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={[styles.backButtonText, { color: colors.primary }]}>←</Text>
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>
-          Authorize Fomio
-        </Text>
-        <View style={styles.placeholder} />
-      </View>
 
       {error && (
         <View style={[styles.errorContainer, { backgroundColor: `${colors.error}10`, borderColor: colors.error }]}>
@@ -191,27 +186,6 @@ export default function AuthorizeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-  },
-  backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  placeholder: {
-    width: 40,
   },
   errorContainer: {
     padding: 16,

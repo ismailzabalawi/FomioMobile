@@ -1,11 +1,15 @@
 import React, { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import { CheckCircle } from 'phosphor-react-native';
 import { Avatar } from '../ui/avatar';
 import { formatTimeAgo } from '@/lib/utils/time';
+import { goToProfile } from '@/shared/navigation/profile';
 import type { Byte } from '@/types/byte';
+
+export interface ByteCardHeaderProps {
+  byte: Byte;
+  onHeaderPress?: () => void; // Callback to notify parent that header area was pressed
+}
 
 /**
  * ByteCardHeader - Author identity + metadata + teret badge
@@ -16,19 +20,26 @@ import type { Byte } from '@/types/byte';
  * - Teret badge: colored pill below metadata (if exists)
  * - Spacing: 3px gap between avatar and content
  */
-export function ByteCardHeader({ byte }: { byte: Byte }) {
-  const router = useRouter();
+export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
   const { author } = byte;
 
-  const handleAvatarPress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    router.push(`/profile/${author.username}`);
-  }, [router, author.username]);
+  const handleAvatarPress = useCallback((e?: any) => {
+    // Notify parent that header handled the press (prevents parent Pressable from firing)
+    // Call this FIRST before navigation to ensure parent doesn't handle the event
+    if (onHeaderPress) {
+      onHeaderPress();
+    }
+    goToProfile(author.username);
+  }, [author.username, onHeaderPress]);
 
-  const handleNamePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    router.push(`/profile/${author.username}`);
-  }, [router, author.username]);
+  const handleNamePress = useCallback((e?: any) => {
+    // Notify parent that header handled the press (prevents parent Pressable from firing)
+    // Call this FIRST before navigation to ensure parent doesn't handle the event
+    if (onHeaderPress) {
+      onHeaderPress();
+    }
+    goToProfile(author.username);
+  }, [author.username, onHeaderPress]);
 
   const avatarSource = author.avatar ? { uri: author.avatar } : undefined;
 
@@ -46,7 +57,7 @@ export function ByteCardHeader({ byte }: { byte: Byte }) {
 
   return (
     <View className="flex-row gap-3 items-center">
-      <Pressable onPress={handleAvatarPress} hitSlop={8}>
+      <Pressable onPress={author.username ? handleAvatarPress : undefined} hitSlop={8}>
         <Avatar
           source={avatarSource}
           size="sm"
@@ -56,7 +67,7 @@ export function ByteCardHeader({ byte }: { byte: Byte }) {
 
       <View className="flex-1" style={{ minWidth: 0 }}>
         <View className="flex-row items-center gap-x-1 flex-wrap">
-          <Pressable onPress={handleNamePress} hitSlop={4}>
+          <Pressable onPress={author.username ? handleNamePress : undefined} hitSlop={4}>
             <Text className="text-body font-semibold text-fomio-foreground dark:text-fomio-foreground-dark">
               {author.name || author.username}
             </Text>

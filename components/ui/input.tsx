@@ -61,9 +61,14 @@ export interface InputProps {
   inputStyle?: TextStyle;
   onFocus?: () => void;
   onBlur?: () => void;
+  onSubmitEditing?: () => void;
+  returnKeyType?: 'done' | 'go' | 'next' | 'search' | 'send';
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  accessibilityLiveRegion?: 'none' | 'polite' | 'assertive';
 }
 
-export function Input({
+export const Input = React.forwardRef<TextInput, InputProps>(({
   placeholder,
   value,
   onChangeText,
@@ -79,7 +84,12 @@ export function Input({
   inputStyle,
   onFocus,
   onBlur,
-}: InputProps) {
+  onSubmitEditing,
+  returnKeyType,
+  accessibilityLabel,
+  accessibilityHint,
+  accessibilityLiveRegion,
+}, ref) => {
   const { isDark } = useTheme();
 
   const isEditable = editable && !disabled;
@@ -106,6 +116,7 @@ export function Input({
   return (
     <View style={containerStyle}>
       <TextInput
+        ref={ref}
         style={textInputStyle}
         placeholder={placeholder}
         placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
@@ -120,10 +131,15 @@ export function Input({
         numberOfLines={numberOfLines}
         onFocus={onFocus}
         onBlur={onBlur}
+        onSubmitEditing={onSubmitEditing}
+        returnKeyType={returnKeyType}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
+        accessibilityLiveRegion={accessibilityLiveRegion}
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

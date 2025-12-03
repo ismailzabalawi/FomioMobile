@@ -84,8 +84,8 @@ export default function TabLayout(): React.ReactElement {
       borderRadius: 20, // Rounded top corners for floating effect
       marginHorizontal: 4, // Reduced for more spread
       marginBottom: 0, // No margin - sit at bottom
-      height: 44 + insets.bottom, // Further reduced height
-      paddingBottom: insets.bottom, // Only safe area, no extra padding
+      height: 44 + insets.bottom, // Height includes safe area
+      paddingBottom: 0, // Extend into safe area (no padding)
       paddingTop: 2, // Minimal top padding
       paddingLeft: Math.max(insets.left, 4), // Reduced for more spread
       paddingRight: Math.max(insets.right, 4), // Reduced for more spread
