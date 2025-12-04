@@ -7,6 +7,7 @@ const FALLBACK_HTML = '<p>[Content unavailable]</p>';
  */
 export interface PostItem {
   id: number;
+  postId?: number; // Unique post ID for replies (different from topic id)
   title: string;
   hubName: string;
   teretName?: string;
@@ -54,6 +55,7 @@ export function postItemToByte(item: PostItem): Byte {
 
   return {
     id: item.id,
+    title: item.title || 'Untitled', // Required for ByteCard validation
     author: {
       id: 0, // PostItem doesn't have author.id
       name: item.author.name || 'Unknown User',

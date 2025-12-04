@@ -7,8 +7,9 @@
 // - Lazy loading tabs
 
 import React, { useMemo, useCallback } from 'react';
-import { View } from 'react-native';
+import { View, Platform, useWindowDimensions } from 'react-native';
 import { Tabs } from 'react-native-collapsible-tab-view';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   List, 
   Article, 
@@ -22,6 +23,7 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { DiscourseUser } from '@/shared/discourseApi';
+import { useHeader } from '@/components/ui/header';
 import { ProfileHeader, ProfileBio, ProfileStats, ProfileActions } from './';
 import { ProfileTabBar, TabItem } from './ProfileTabBar';
 import { cn } from '@/lib/utils/cn';
@@ -90,6 +92,24 @@ export function ProfileTabView({
   votingEnabled = false,
 }: ProfileTabViewProps) {
   const { isDark, isAmoled } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { header } = useHeader();
+  const { width: screenWidth } = useWindowDimensions();
+
+  // Calculate safe width accounting for horizontal safe area insets
+  const safeWidth = screenWidth - insets.left - insets.right;
+
+  // Calculate app header height to prevent tab bar from going under it
+  const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 40 : 44;
+  const HEADER_PADDING = Platform.OS === 'ios' ? 4 : 2;
+  const baseHeaderHeight = BASE_BAR_HEIGHT + HEADER_PADDING;
+  const measuredHeaderHeight = header.headerHeight ?? baseHeaderHeight;
+  
+  // When extendToStatusBar is true, header includes status bar area
+  // We need to account for the full header height including status bar
+  const containerHeaderHeight = header.extendToStatusBar
+    ? measuredHeaderHeight
+    : measuredHeaderHeight + insets.top;
 
   const visibleTabs = useMemo(
     () => getVisibleTabs(isOwnProfile, isAuthenticated, votingEnabled),
@@ -110,6 +130,7 @@ export function ProfileTabView({
               ? 'bg-fomio-card-dark'
               : 'bg-fomio-card'
         )}
+        style={{ width: '100%', overflow: 'hidden' }}
       >
         <ProfileHeader user={user} isPublic={!isOwnProfile} />
         <ProfileBio bio={user.bio_raw} />
@@ -127,15 +148,30 @@ export function ProfileTabView({
   const renderTabBar = useCallback(
     (props: any) => {
       return (
-        <ProfileTabBar
-          tabs={visibleTabs}
-          index={props.index}
-          setIndex={props.setIndex}
-          tabNames={props.tabNames}
-        />
+        <View
+          className={cn(
+            isAmoled
+              ? 'bg-fomio-bg-dark'
+              : isDark
+                ? 'bg-fomio-card-dark'
+                : 'bg-fomio-bg'
+          )}
+          style={{
+            paddingTop: containerHeaderHeight,
+            width: '100%',
+            overflow: 'hidden',
+          }}
+        >
+          <ProfileTabBar
+            tabs={visibleTabs}
+            indexSharedValue={props.index}
+            onTabPress={props.onTabPress}
+            tabNames={props.tabNames}
+          />
+        </View>
       );
     },
-    [visibleTabs]
+    [visibleTabs, containerHeaderHeight, isAmoled, isDark]
   );
 
   if (!user) {
@@ -159,6 +195,11 @@ export function ProfileTabView({
             ? 'bg-fomio-card-dark'
             : 'bg-fomio-bg'
       )}
+      style={{ 
+        width: safeWidth,
+        maxWidth: safeWidth,
+        overflow: 'hidden',
+      }}
     >
       <Tabs.Container
         renderHeader={renderHeader}
@@ -166,6 +207,8 @@ export function ProfileTabView({
         renderTabBar={renderTabBar}
         initialTabName={visibleTabs[0]?.key}
         lazy
+        snapThreshold={0.2}
+        width={safeWidth}
       >
         {visibleTabs.map((tab) => {
           const renderTabContent = () => {
@@ -249,8 +292,14 @@ export function ProfileTabView({
 
           return (
             <Tabs.Tab name={tab.key} key={tab.key}>
-              <Tabs.ScrollView nestedScrollEnabled>
-                {renderTabContent()}
+              <Tabs.ScrollView 
+                nestedScrollEnabled
+                contentContainerStyle={{ width: '100%' }}
+                style={{ width: '100%' }}
+              >
+                <View style={{ width: '100%' }}>
+                  {renderTabContent()}
+                </View>
               </Tabs.ScrollView>
             </Tabs.Tab>
           );

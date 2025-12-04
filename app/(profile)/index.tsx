@@ -4,7 +4,6 @@
 import React, { useMemo, useCallback } from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
@@ -17,7 +16,7 @@ import { useTheme } from '@/components/theme';
 import { useHeader } from '@/components/ui/header';
 import { useDiscourseUser } from '@/shared/useDiscourseUser';
 import { useAuth } from '@/shared/auth-context';
-import { ProfileTabView } from '@/components/profile';
+import { ProfileTabView, ProfileMessageCard } from '@/components/profile';
 import { ProfileSkeleton } from '@/components/profile/ProfileSkeleton';
 import { getThemeColors } from '@/shared/theme-constants';
 
@@ -32,10 +31,35 @@ export default function ProfileScreen(): React.ReactElement {
   // Memoize theme colors - dark mode always uses AMOLED
   const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
 
-  const handleSettings = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
-    router.push('/(profile)/settings' as any);
+  // Helper to safely trigger haptics (guarded to prevent errors on simulators/unsupported devices)
+  const triggerHaptics = useCallback(async () => {
+    try {
+      await Haptics.selectionAsync();
+    } catch {
+      // Silently ignore haptic errors (simulators, unsupported devices)
+    }
   }, []);
+
+  // Refresh user data on focus to keep header/actions and data fresh
+  useFocusEffect(
+    React.useCallback(() => {
+      if (isAuthenticated) {
+        refreshUser();
+      }
+    }, [isAuthenticated, refreshUser])
+  );
+
+  const handleSettings = useCallback(async () => {
+    await triggerHaptics();
+    // Type-safe route: expo-router will validate this route at compile time
+    router.push('/(profile)/settings');
+  }, [triggerHaptics]);
+
+  const handleSignIn = useCallback(async () => {
+    await triggerHaptics();
+    // Type-safe route: expo-router will validate this route at compile time
+    router.push('/(auth)/signin');
+  }, [triggerHaptics]);
 
   // Settings menu button - MUST be memoized to prevent infinite loops
   const settingsButton = useMemo(() => (
@@ -46,6 +70,7 @@ export default function ProfileScreen(): React.ReactElement {
       accessible
       accessibilityRole="button"
       accessibilityLabel="Open settings"
+      accessibilityHint="Navigate to profile settings page"
     >
       <Gear size={24} color={colors.foreground} weight="regular" />
     </TouchableOpacity>
@@ -66,13 +91,19 @@ export default function ProfileScreen(): React.ReactElement {
       return () => {
         resetHeader();
       };
-    }, [setHeader, resetHeader, setActions, settingsButton, isDark])
+    }, [setHeader, resetHeader, setActions, settingsButton])
   );
+
+  // Unified safe area edges for all states to prevent background jumps
+  const safeAreaEdges = ['top', 'bottom', 'left', 'right'] as const;
 
   // Show loading state
   if (authLoading || (isAuthenticated && userLoading && !user)) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
+      <SafeAreaView 
+        style={[styles.container, { backgroundColor: colors.background }]} 
+        edges={safeAreaEdges}
+      >
         <ProfileSkeleton />
       </SafeAreaView>
     );
@@ -81,38 +112,22 @@ export default function ProfileScreen(): React.ReactElement {
   // Show error state
   if (userError && isAuthenticated) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
-        <View className="flex-1 items-center justify-center px-4">
-          <View className="items-center max-w-sm">
-            <View
-              className="p-6 rounded-xl mb-4"
-              style={{ backgroundColor: colors.card }}
-            >
-              <View className="items-center">
-                <Text className="text-4xl mb-4">😕</Text>
-                <Text
-                  className="text-lg font-semibold mb-2 text-center"
-                  style={{ color: colors.foreground }}
-                >
-                  Failed to load profile
-                </Text>
-                <Text
-                  className="text-sm text-center mb-6"
-                  style={{ color: colors.mutedForeground }}
-                >
-                  {userError || 'Please check your connection and try again.'}
-                </Text>
-                <TouchableOpacity
-                  onPress={refreshUser}
-                  className="px-6 py-3 rounded-xl"
-                  style={{ backgroundColor: colors.accent }}
-                >
-                  <Text className="text-white font-semibold">Retry</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
+      <SafeAreaView 
+        style={[styles.container, { backgroundColor: colors.background }]} 
+        edges={safeAreaEdges}
+      >
+        <ProfileMessageCard
+          icon="😕"
+          title="Failed to load profile"
+          body={userError || 'Please check your connection and try again.'}
+          primaryAction={{
+            label: 'Retry',
+            onPress: refreshUser,
+            accessibilityHint: 'Retry loading your profile data',
+          }}
+          themeMode={themeMode}
+          isDark={isDark}
+        />
       </SafeAreaView>
     );
   }
@@ -120,50 +135,32 @@ export default function ProfileScreen(): React.ReactElement {
   // Show auth prompt if not authenticated
   if (!isAuthenticated) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
-        <View className="flex-1 items-center justify-center px-4">
-          <View className="items-center max-w-sm">
-            <View
-              className="p-6 rounded-xl mb-4"
-              style={{ backgroundColor: colors.card }}
-            >
-              <View className="items-center">
-                <View
-                  className="w-20 h-20 rounded-full items-center justify-center mb-4"
-                  style={{ backgroundColor: colors.muted }}
-                >
-                  <SignIn size={40} color={colors.mutedForeground} weight="regular" />
-                </View>
-                <Text
-                  className="text-xl font-semibold mb-2 text-center"
-                  style={{ color: colors.foreground }}
-                >
-                  Sign in to view your profile
-                </Text>
-                <Text
-                  className="text-sm text-center mb-6"
-                  style={{ color: colors.mutedForeground }}
-                >
-                  Access your activity, drafts, bookmarks, and more.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => router.push('/(auth)/signin' as any)}
-                  className="px-8 py-3 rounded-xl"
-                  style={{ backgroundColor: colors.accent }}
-                >
-                  <Text className="text-white font-semibold text-base">Sign In</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
+      <SafeAreaView 
+        style={[styles.container, { backgroundColor: colors.background }]} 
+        edges={safeAreaEdges}
+      >
+        <ProfileMessageCard
+          icon={<SignIn size={40} color={colors.mutedForeground} weight="regular" />}
+          title="Sign in to view your profile"
+          body="Access your activity, drafts, bookmarks, and more."
+          primaryAction={{
+            label: 'Sign In',
+            onPress: handleSignIn,
+            accessibilityHint: 'Navigate to sign in page',
+          }}
+          themeMode={themeMode}
+          isDark={isDark}
+        />
       </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
+      <SafeAreaView 
+        style={[styles.container, { backgroundColor: colors.background }]} 
+        edges={safeAreaEdges}
+      >
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color={colors.accent} />
         </View>
@@ -172,7 +169,10 @@ export default function ProfileScreen(): React.ReactElement {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
+    <SafeAreaView 
+      style={[styles.container, { backgroundColor: colors.background }]} 
+      edges={safeAreaEdges}
+    >
       <ProfileTabView
         user={user}
         isOwnProfile={true}
@@ -185,5 +185,7 @@ export default function ProfileScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    overflow: 'hidden',
   },
 });

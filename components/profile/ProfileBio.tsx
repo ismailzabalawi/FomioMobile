@@ -25,11 +25,12 @@ export function ProfileBio({ bio }: ProfileBioProps) {
   const shouldShowExpand = bio.length > 150; // Approximate 3 lines
 
   return (
-    <View className="px-4 pb-4">
+    <View className="px-4 pb-4" style={{ width: '100%', overflow: 'hidden' }}>
       <View
         style={{
           maxHeight: isExpanded || !shouldShowExpand ? undefined : 60,
           overflow: 'hidden',
+          width: '100%',
         }}
       >
         <MarkdownContent content={bio} isRawMarkdown={true} />

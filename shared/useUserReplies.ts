@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { discourseApi } from './discourseApi';
 import { PostItem } from '@/components/profile/ProfilePostList';
-import { discourseTopicToPostItem } from './adapters/byteToPostItem';
+import { discourseTopicToPostItem, userActionToPostItem } from './adapters/byteToPostItem';
 
 export interface UseUserRepliesReturn {
   replies: PostItem[];
@@ -48,42 +48,52 @@ export function useUserReplies(username: string): UseUserRepliesReturn {
           userActionsCount: response.data?.user_actions?.length || 0,
           hasTopicList: !!(response.data?.topic_list),
           topicListCount: response.data?.topic_list?.topics?.length || 0,
+          hasTopics: !!(response.data?.topics),
+          topicsCount: response.data?.topics?.length || 0,
         });
 
-        // Discourse activity endpoint returns user_actions array
-        // For replies, extract topics from user_actions where action_type = 5 (replied)
-        const userActions = response.data.user_actions || [];
-        const topicsList = response.data.topic_list?.topics || [];
+        // Handle multiple possible response structures from Discourse API
+        // Endpoint: /user_actions.json?username={username}&filter=5 returns user_actions format
+        const responseData = response.data || {};
         
-        // Extract topics from user_actions
-        // action_type 5 = replied to topic
-        const topics: any[] = [];
+        let topics: any[] = [];
         
-        // First, check if we have topic_list
-        if (topicsList.length > 0) {
-          topics.push(...topicsList);
-        } else if (userActions.length > 0) {
-          // Extract topics from user_actions where user replied
-          userActions.forEach((action: any) => {
-            // action_type 5 = replied
-            if (action.action_type === 5 && action.topic) {
-              topics.push(action.topic);
-            } else if (action.target_topic_id && action.topic) {
-              // If it has a target_topic_id, it's a reply action
-              topics.push(action.topic);
-            } else if (!action.action_type && action.id && action.post_number > 1) {
-              // Sometimes the action itself is a reply post
-              topics.push(action);
-            }
-          });
+        // Structure 1: user_actions array (standard format from /user_actions.json?filter=5)
+        if (responseData.user_actions && Array.isArray(responseData.user_actions)) {
+          // Extract topics from user_actions where action_type = 5 (replied)
+          // User actions have topic data embedded directly in the action object
+          topics = responseData.user_actions
+            .filter((action: any) => action.action_type === 5)
+            .map((action: any) => {
+              // User actions have topic data embedded directly
+              // If there's a nested topic, use it; otherwise use the action itself
+              return action.topic || action;
+            });
+          console.log('✅ Found replies in user_actions (filtered action_type=5):', topics.length);
+        }
+        // Structure 2: topic_list.topics (fallback)
+        else if (responseData.topic_list?.topics && Array.isArray(responseData.topic_list.topics)) {
+          topics = responseData.topic_list.topics;
+          console.log('✅ Found replies in topic_list.topics:', topics.length);
+        }
+        // Structure 3: Direct topics array (fallback)
+        else if (responseData.topics && Array.isArray(responseData.topics)) {
+          topics = responseData.topics;
+          console.log('✅ Found replies in direct topics array:', topics.length);
         }
         
-        console.log('💬 Extracted replies:', topics.length);
+        console.log('💬 Extracted replies:', topics.length, {
+          structure: responseData.user_actions ? 'user_actions' : responseData.topic_list ? 'topic_list' : 'unknown',
+        });
 
         // Transform topics to PostItem format
-        const mappedReplies: PostItem[] = topics.map((topic: any) => 
-          discourseTopicToPostItem(topic, discourseApi)
-        ).filter(Boolean);
+        // Replies from user_actions format need userActionToPostItem adapter
+        const isUserActionsFormat = responseData.user_actions && !responseData.topic_list;
+        const mappedReplies: PostItem[] = topics.map((topic: any) => {
+          return isUserActionsFormat 
+            ? userActionToPostItem(topic, discourseApi)
+            : discourseTopicToPostItem(topic, discourseApi);
+        }).filter(Boolean);
 
         if (append) {
           setReplies((prev) => [...prev, ...mappedReplies]);

@@ -60,12 +60,22 @@ export function commentToPostItem(comment: Comment): PostItem {
  * Used for activity endpoints that return raw Discourse data
  */
 export function discourseTopicToPostItem(topic: any, discourseApiInstance: typeof discourseApi): PostItem {
-  const topicId = typeof topic.id === 'string' ? parseInt(topic.id, 10) : topic.id;
+  // Handle both topic objects and user_action objects
+  // user_actions have topic_id instead of id
+  const topicId = topic.topic_id 
+    ? (typeof topic.topic_id === 'string' ? parseInt(topic.topic_id, 10) : topic.topic_id)
+    : (typeof topic.id === 'string' ? parseInt(topic.id, 10) : topic.id);
+  
+  // Extract post_id for unique identification (especially for replies)
+  const postId = topic.post_id 
+    ? (typeof topic.post_id === 'string' ? parseInt(topic.post_id, 10) : topic.post_id)
+    : undefined;
   
   // Extract author info - Discourse topics can have author in multiple places:
   // 1. topic.user (from activity endpoints)
   // 2. topic.posters array (from topic list endpoints)
-  // 3. topic.username (fallback)
+  // 3. topic.username (from user_actions)
+  // 4. topic.acting_username (from user_actions)
   let authorName = 'Unknown';
   let authorAvatar = '';
   
@@ -87,9 +97,12 @@ export function discourseTopicToPostItem(topic: any, discourseApiInstance: typeo
         ? discourseApiInstance.getAvatarUrl(creator.user.avatar_template, 120)
         : '';
     }
-  } else if (topic.username) {
-    // Fallback
-    authorName = topic.username;
+  } else if (topic.username || topic.acting_username) {
+    // From user_actions - username is directly on the action
+    authorName = topic.name || topic.username || topic.acting_username || 'Unknown';
+    authorAvatar = topic.avatar_template || topic.acting_avatar_template
+      ? discourseApiInstance.getAvatarUrl(topic.avatar_template || topic.acting_avatar_template, 120)
+      : '';
   }
   
   // Extract category info
@@ -98,6 +111,7 @@ export function discourseTopicToPostItem(topic: any, discourseApiInstance: typeo
   
   return {
     id: topicId,
+    postId, // Unique post ID for replies (to avoid duplicate keys)
     title: topic.title || topic.fancy_title || 'Untitled',
     hubName: categoryName,
     teretName: topic.category?.slug,
@@ -110,9 +124,49 @@ export function discourseTopicToPostItem(topic: any, discourseApiInstance: typeo
     createdAt: topic.created_at || topic.created_at_ago || new Date().toISOString(),
     lastPostedAt: topic.last_posted_at || topic.last_posted_at_ago || topic.created_at,
     isBookmarked: topic.bookmarked || false,
-    hasMedia: !!(topic.image_url || topic.thumbnails || topic.excerpt?.match(/<img/)),
+    hasMedia: !!(topic.image_url || topic.thumbnails || (topic.excerpt && topic.excerpt.match(/<img/))),
     coverImage: topic.image_url || undefined,
     slug: topic.slug ? `t/${topic.slug}/${topicId}` : `t/${topicId}`,
+  };
+}
+
+/**
+ * Transform user_action object from /user_actions.json endpoint to PostItem format
+ * User actions have topic data embedded directly in the action object
+ * Based on reverse-engineered endpoint: /user_actions.json?username=soma&filter=4,5
+ */
+export function userActionToPostItem(action: any, discourseApiInstance: typeof discourseApi): PostItem {
+  // User actions have topic_id instead of id
+  const topicId = typeof action.topic_id === 'string' ? parseInt(action.topic_id, 10) : action.topic_id;
+  
+  // Extract post_id for unique identification (especially for replies)
+  const postId = action.post_id 
+    ? (typeof action.post_id === 'string' ? parseInt(action.post_id, 10) : action.post_id)
+    : undefined;
+  
+  // Extract author from action object
+  const authorName = action.name || action.username || action.acting_username || 'Unknown';
+  const authorAvatar = (action.avatar_template || action.acting_avatar_template)
+    ? discourseApiInstance.getAvatarUrl(action.avatar_template || action.acting_avatar_template, 120)
+    : '';
+  
+  return {
+    id: topicId,
+    postId, // Unique post ID for replies (to avoid duplicate keys)
+    title: action.title || 'Untitled',
+    hubName: action.category_id ? 'Uncategorized' : 'Uncategorized', // Category name not in user_action
+    author: {
+      name: authorName,
+      avatar: authorAvatar,
+    },
+    replyCount: 0, // Not available in user_action
+    likeCount: 0, // Not available in user_action
+    createdAt: action.created_at || new Date().toISOString(),
+    lastPostedAt: action.created_at,
+    isBookmarked: false,
+    hasMedia: !!(action.excerpt && action.excerpt.match(/<img/)),
+    coverImage: undefined,
+    slug: action.slug ? `t/${action.slug}/${topicId}` : `t/${topicId}`,
   };
 }
 

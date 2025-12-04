@@ -2566,26 +2566,154 @@ class DiscourseApiService {
     activityType: 'all' | 'topics' | 'replies' | 'read' | 'likes' | 'bookmarks' | 'solved' | 'votes',
     page: number = 0
   ): Promise<DiscourseApiResponse<any>> {
-    if (!SecurityValidator.validateUsername(username)) {
-      return { success: false, error: 'Invalid username format' };
+    // More permissive username validation for Discourse
+    if (!username || username.trim().length < 1) {
+      console.warn('⚠️ getUserActivity: Username is required');
+      return { success: false, error: 'Username is required' };
+    }
+
+    // Check if endpoint requires authentication
+    const requiresAuth = ['read', 'drafts', 'likes', 'bookmarks', 'votes'].includes(activityType);
+    if (requiresAuth) {
+      const isAuth = await this.isAuthenticated();
+      if (!isAuth) {
+        console.warn('⚠️ getUserActivity: Authentication required for activity type:', activityType);
+        return { 
+          success: false, 
+          error: 'Authentication required for this activity type',
+          status: 401,
+        };
+      }
     }
 
     const offset = page * 20;
-    const endpoint = `/u/${encodeURIComponent(username)}/activity/${activityType}.json`;
+    let endpoint = '';
+    let queryParams = '';
+
+    // Map activity types to correct endpoint formats based on reverse-engineered endpoints
+    switch (activityType) {
+      case 'all':
+        // All: /user_actions.json?offset=0&username=soma&filter=4,5
+        endpoint = '/user_actions.json';
+        queryParams = `?offset=${offset}&username=${encodeURIComponent(username)}&filter=4,5`;
+        break;
+
+      case 'topics':
+        // Topics: /topics/created-by/soma.json
+        endpoint = `/topics/created-by/${encodeURIComponent(username)}.json`;
+        if (page > 0) {
+          queryParams = `?page=${page}`;
+        }
+        break;
+
+      case 'replies':
+        // Replies: /user_actions.json?offset=0&username=soma&filter=5
+        endpoint = '/user_actions.json';
+        queryParams = `?offset=${offset}&username=${encodeURIComponent(username)}&filter=5`;
+        break;
+
+      case 'read':
+        // Read: /read.json (no username, returns current user's read topics)
+        endpoint = '/read.json';
+        if (page > 0) {
+          queryParams = `?offset=${offset}`;
+        }
+        break;
+
+      case 'likes':
+        // Likes: /user_actions.json?offset=1&username=soma&filter=1
+        endpoint = '/user_actions.json';
+        queryParams = `?offset=${offset}&username=${encodeURIComponent(username)}&filter=1`;
+        break;
+
+      case 'bookmarks':
+        // Bookmarked: /u/Soma/bookmarks.json?q=&acting_username=
+        endpoint = `/u/${encodeURIComponent(username)}/bookmarks.json`;
+        queryParams = '?q=&acting_username=';
+        if (page > 0) {
+          queryParams += `&offset=${offset}`;
+        }
+        break;
+
+      case 'solved':
+        // Solved: /solution/by_user.json?username=Soma&offset=0&limit=20
+        endpoint = '/solution/by_user.json';
+        queryParams = `?username=${encodeURIComponent(username)}&offset=${offset}&limit=20`;
+        break;
+
+      case 'votes':
+        // Votes: /topics/voted-by/soma.json
+        endpoint = `/topics/voted-by/${encodeURIComponent(username)}.json`;
+        if (page > 0) {
+          queryParams = `?offset=${offset}`;
+        }
+        break;
+
+      default:
+        return { success: false, error: `Unknown activity type: ${activityType}` };
+    }
+
+    const fullUrl = `${this.config.baseUrl}${endpoint}${queryParams}`;
+    
+    console.log('�� getUserActivity:', {
+      username,
+      activityType,
+      page,
+      offset,
+      endpoint,
+      queryParams,
+      fullUrl,
+      requiresAuth,
+    });
     
     try {
-      const queryParams = offset > 0 ? `?offset=${offset}` : '';
-      return await this.makeRequest<any>(`${endpoint}${queryParams}`);
+      const response = await this.makeRequest<any>(`${endpoint}${queryParams}`);
+      
+      // Log the actual response structure for debugging
+      console.log('📊 getUserActivity Response:', {
+        success: response.success,
+        hasData: !!response.data,
+        dataKeys: response.data ? Object.keys(response.data) : [],
+        status: response.status,
+        error: response.error,
+        responseStructure: {
+          hasUserActions: !!response.data?.user_actions,
+          userActionsCount: response.data?.user_actions?.length || 0,
+          hasTopicList: !!response.data?.topic_list,
+          hasTopics: !!response.data?.topics,
+          hasActivities: !!response.data?.activities,
+          topicListCount: response.data?.topic_list?.topics?.length || 0,
+          topicsCount: response.data?.topics?.length || 0,
+        },
+      });
+      
+      return response;
     } catch (error) {
-      return { success: false, error: 'Network error fetching user activity' };
+      console.error('❌ getUserActivity Error:', {
+        username,
+        activityType,
+        endpoint,
+        queryParams,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Network error fetching user activity' 
+      };
     }
   }
 
-  async getUserDrafts(): Promise<DiscourseApiResponse<any>> {
+  async getUserDrafts(page: number = 0): Promise<DiscourseApiResponse<any>> {
     try {
-      return await this.makeRequest<any>('/draft.json');
+      const offset = page * 30;
+      const queryParams = `?offset=${offset}&limit=30`;
+      return await this.makeRequest<any>(`/drafts.json${queryParams}`);
     } catch (error) {
-      return { success: false, error: 'Network error fetching drafts' };
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Network error fetching drafts' 
+      };
     }
   }
 

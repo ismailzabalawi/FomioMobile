@@ -37,7 +37,7 @@ export function ProfileActions({
 
   if (mode === 'myProfile') {
     return (
-      <View className="px-4 py-3 flex-row gap-3">
+      <View className="px-4 py-3 flex-row gap-3" style={{ width: '100%', overflow: 'hidden' }}>
         <TouchableOpacity
           onPress={handleEditProfile}
           className="flex-1 py-3 px-4 rounded-xl border items-center justify-center"
@@ -67,7 +67,7 @@ export function ProfileActions({
 
   // PublicProfile mode
   return (
-    <View className="px-4 py-3 flex-row gap-2 flex-wrap">
+    <View className="px-4 py-3 flex-row gap-2 flex-wrap" style={{ width: '100%', overflow: 'hidden' }}>
       {/* Message - Coming soon - only show if authenticated */}
       {isAuthenticated && (
       <TouchableOpacity

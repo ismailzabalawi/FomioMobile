@@ -20,4 +20,6 @@ export { ProfileTabView } from './ProfileTabView';
 export type { ProfileTabViewProps } from './ProfileTabView';
 export { ProfileTabBar } from './ProfileTabBar';
 export type { ProfileTabBarProps, TabItem } from './ProfileTabBar';
+export { ProfileMessageCard } from './ProfileMessageCard';
+export type { ProfileMessageCardProps } from './ProfileMessageCard';
 

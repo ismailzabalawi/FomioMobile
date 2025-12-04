@@ -10,7 +10,7 @@ export { discourseByteToByte } from './discourseByteToByte';
 export { postItemToByte } from './postItemToByte';
 export type { PostItem } from './postItemToByte';
 export { searchResultToByte } from './searchResultToByte';
-export { byteToPostItem, commentToPostItem, discourseTopicToPostItem } from './byteToPostItem';
+export { byteToPostItem, commentToPostItem, discourseTopicToPostItem, userActionToPostItem } from './byteToPostItem';
 
 // Universal factory adapter
 export { toByte } from './toByte';

@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { discourseApi } from './discourseApi';
 import { PostItem } from '@/components/profile/ProfilePostList';
-import { discourseTopicToPostItem } from './adapters/byteToPostItem';
+import { discourseTopicToPostItem, userActionToPostItem } from './adapters/byteToPostItem';
 
 export interface UseUserPostsReturn {
   posts: PostItem[];
@@ -48,42 +48,53 @@ export function useUserPosts(username: string): UseUserPostsReturn {
           userActionsCount: response.data?.user_actions?.length || 0,
           hasTopicList: !!(response.data?.topic_list),
           topicListCount: response.data?.topic_list?.topics?.length || 0,
+          hasTopics: !!(response.data?.topics),
+          topicsCount: response.data?.topics?.length || 0,
         });
 
-        // Discourse activity endpoint returns user_actions array or topic_list
-        // For topics, extract topics from user_actions
-        const userActions = response.data.user_actions || [];
-        const topicsList = response.data.topic_list?.topics || [];
+        // Handle multiple possible response structures from Discourse API
+        // Endpoint: /topics/created-by/{username}.json returns topic_list format
+        const responseData = response.data || {};
         
-        // Extract topics from user_actions (action_type 4 = created topic, 5 = replied)
-        // For topics tab, we want topics the user created
-        const topics: any[] = [];
+        let topics: any[] = [];
         
-        // First, check if we have topic_list (cleaner format)
-        if (topicsList.length > 0) {
-          topics.push(...topicsList);
-        } else if (userActions.length > 0) {
-          // Extract topics from user_actions
-          userActions.forEach((action: any) => {
-            // action_type 4 = created topic
-            if (action.action_type === 4 && action.topic) {
-              topics.push(action.topic);
-            } else if (action.topic && !action.target_topic_id) {
-              // If it has a topic and isn't a reply action, it's a topic creation
-              topics.push(action.topic);
-            } else if (!action.action_type && action.id) {
-              // Sometimes the action itself is the topic
-              topics.push(action);
-            }
-          });
+        // Structure 1: topic_list.topics (standard format from /topics/created-by/{username}.json)
+        if (responseData.topic_list?.topics && Array.isArray(responseData.topic_list.topics)) {
+          topics = responseData.topic_list.topics;
+          console.log('✅ Found topics in topic_list.topics:', topics.length);
+        }
+        // Structure 2: Direct topics array (fallback)
+        else if (responseData.topics && Array.isArray(responseData.topics)) {
+          topics = responseData.topics;
+          console.log('✅ Found topics in direct topics array:', topics.length);
+        }
+        // Structure 3: user_actions array (from /user_actions.json?filter=4)
+        else if (responseData.user_actions && Array.isArray(responseData.user_actions)) {
+          // Extract topics from user_actions where action_type = 4 (created topic)
+          topics = responseData.user_actions
+            .filter((action: any) => action.action_type === 4)
+            .map((action: any) => {
+              // User actions have topic data embedded directly
+              // If there's a nested topic, use it; otherwise use the action itself
+              return action.topic || action;
+            });
+          console.log('✅ Found topics in user_actions (filtered action_type=4):', topics.length);
         }
         
-        console.log('📝 Extracted topics:', topics.length);
+        console.log('📝 Extracted topics:', topics.length, {
+          structure: responseData.topic_list ? 'topic_list' : responseData.user_actions ? 'user_actions' : 'unknown',
+        });
 
         // Transform topics to PostItem format
-        const mappedPosts: PostItem[] = topics.map((topic: any) => 
-          discourseTopicToPostItem(topic, discourseApi)
-        ).filter(Boolean);
+        // Use appropriate adapter based on response structure
+        const isUserActionsFormat = responseData.user_actions && !responseData.topic_list;
+        const mappedPosts: PostItem[] = topics.map((topic: any) => {
+          // If it's from user_actions format, use userActionToPostItem
+          // Otherwise use discourseTopicToPostItem for standard topic format
+          return isUserActionsFormat 
+            ? userActionToPostItem(topic, discourseApi)
+            : discourseTopicToPostItem(topic, discourseApi);
+        }).filter(Boolean);
 
         if (append) {
           setPosts((prev) => [...prev, ...mappedPosts]);

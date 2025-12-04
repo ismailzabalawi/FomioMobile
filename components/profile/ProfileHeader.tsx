@@ -77,7 +77,7 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
     : null;
 
   return (
-    <View className="px-4 pb-4" style={{ paddingTop: headerTopPadding + 24 }}>
+    <View className="px-4 pb-4" style={{ paddingTop: headerTopPadding + 24, width: '100%', overflow: 'hidden' }}>
       {/* Avatar */}
       <View className="mb-4">
         {avatarUrl ? (

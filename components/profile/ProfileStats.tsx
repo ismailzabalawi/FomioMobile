@@ -52,8 +52,8 @@ export function ProfileStats({ user }: ProfileStatsProps) {
   ].filter((stat) => stat.value !== '0' || stat.label === 'Trust'); // Always show trust level
 
   return (
-    <View className="px-4 py-3">
-      <View className="flex-row items-center flex-wrap gap-2">
+    <View className="px-4 py-3" style={{ width: '100%', overflow: 'hidden' }}>
+      <View className="flex-row items-center flex-wrap gap-2" style={{ width: '100%' }}>
         {stats.map((stat, index) => (
           <React.Fragment key={stat.label}>
             <Text

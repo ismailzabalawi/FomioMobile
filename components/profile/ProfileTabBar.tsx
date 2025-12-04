@@ -11,8 +11,11 @@ import { View, Text, Pressable, useWindowDimensions } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedReaction,
   withTiming,
   interpolate,
+  SharedValue,
+  runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { 
@@ -40,8 +43,8 @@ export interface ProfileTabBarProps {
   activeIndex?: number;
   onTabChange?: (index: number) => void;
   // CollapsibleTabView tab bar props
-  index?: number;
-  setIndex?: (index: number) => void;
+  indexSharedValue?: SharedValue<number>;
+  onTabPress?: (tabName: string) => void;
   tabNames?: readonly string[];
 }
 
@@ -64,16 +67,34 @@ export function ProfileTabBar({
   tabs,
   activeIndex: activeIndexProp,
   onTabChange: onTabChangeProp,
-  index,
-  setIndex,
+  indexSharedValue,
+  onTabPress,
   tabNames,
 }: ProfileTabBarProps) {
   const { isDark, isAmoled } = useTheme();
   const { width } = useWindowDimensions();
   
-  // Use CollapsibleTabView props if available, otherwise use direct props
-  const activeIndex = index ?? activeIndexProp ?? 0;
-  const handleTabChange = setIndex ?? onTabChangeProp ?? (() => {});
+  // Track current index - either from SharedValue or prop
+  const [currentIndex, setCurrentIndex] = React.useState(() => {
+    if (indexSharedValue) {
+      return Math.round(indexSharedValue.value);
+    }
+    return activeIndexProp ?? 0;
+  });
+  
+  // Sync SharedValue changes to state
+  useAnimatedReaction(
+    () => indexSharedValue?.value,
+    (value) => {
+      if (value !== undefined) {
+        runOnJS(setCurrentIndex)(Math.round(value));
+      }
+    },
+    [indexSharedValue]
+  );
+  
+  // Use current index (from SharedValue) or fallback to prop
+  const activeIndex = indexSharedValue !== undefined ? currentIndex : (activeIndexProp ?? 0);
   
   // Use tabNames if provided (from CollapsibleTabView), otherwise use tabs
   const effectiveTabs = useMemo(() => 
@@ -90,7 +111,7 @@ export function ProfileTabBar({
   
   // Initialize shared value with a stable initial value (0)
   // Always update it via useEffect to avoid reading during render
-  const indicatorPosition = useSharedValue(0);
+  const indicatorPosition = useSharedValue(activeIndex);
   const isInitialMount = useRef(true);
 
   // Update indicator position when activeIndex changes
@@ -108,11 +129,21 @@ export function ProfileTabBar({
   }, [activeIndex, indicatorPosition]);
 
   const handleTabPress = useCallback(
-    (index: number) => {
+    (tabIndex: number) => {
       Haptics.selectionAsync().catch(() => {});
-      handleTabChange(index);
+      
+      const tab = effectiveTabs[tabIndex];
+      if (!tab) return;
+      
+      // Use onTabPress with tab name for proper tab switching in collapsible-tab-view
+      if (onTabPress) {
+        onTabPress(tab.key);
+      } else if (onTabChangeProp) {
+        // Fallback to custom handler with index
+        onTabChangeProp(tabIndex);
+      }
     },
-    [handleTabChange]
+    [onTabPress, onTabChangeProp, effectiveTabs]
   );
 
   // Pre-compute interpolation ranges to avoid computing during render
@@ -139,6 +170,10 @@ export function ProfileTabBar({
           ? 'bg-fomio-card-dark border-fomio-border-soft-dark'
           : 'bg-fomio-bg border-fomio-border-soft'
       )}
+      style={{
+        width: '100%',
+        overflow: 'hidden',
+      }}
     >
       {effectiveTabs.map((tab, index) => {
         const isActive = index === activeIndex;
@@ -150,13 +185,13 @@ export function ProfileTabBar({
             onPress={() => handleTabPress(index)}
             className="flex-1 items-center justify-center"
             style={{ minHeight: 56, paddingVertical: 8 }}
-            hitSlop={8}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessible
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
             accessibilityLabel={tab.title}
           >
-            <View className="items-center justify-center">
+            <View className="items-center justify-center" pointerEvents="none">
               <IconComponent
                 size={22}
                 color={
@@ -210,6 +245,7 @@ export function ProfileTabBar({
           },
           indicatorStyle,
         ]}
+        pointerEvents="none"
       />
     </View>
   );

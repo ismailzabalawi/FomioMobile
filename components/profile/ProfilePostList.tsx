@@ -16,6 +16,7 @@ import { router } from 'expo-router';
 
 export interface PostItem {
   id: number;
+  postId?: number; // Unique post ID for replies (different from topic id)
   title: string;
   hubName: string;
   teretName?: string;
@@ -64,9 +65,12 @@ export function ProfilePostList({
   const renderPostItem = useCallback(
     (item: PostItem) => {
       const byte = postItemToByte(item);
+      // Use postId for replies (to avoid duplicate keys when multiple replies are to the same topic)
+      // Fall back to id for topics
+      const uniqueKey = item.postId || item.id;
       return (
         <ByteCard
-          key={item.id}
+          key={uniqueKey}
           byte={byte}
           onPress={() => handlePress(item.id)}
         />
@@ -122,7 +126,7 @@ export function ProfilePostList({
     }
 
     return (
-      <View>
+      <View style={{ width: '100%', overflow: 'hidden' }}>
         {posts.map(renderPostItem)}
         {renderFooter()}
       </View>
@@ -133,7 +137,7 @@ export function ProfilePostList({
     <FlatList
       data={posts}
       renderItem={renderItem}
-      keyExtractor={(item) => item.id.toString()}
+      keyExtractor={(item) => (item.postId || item.id).toString()}
       ListEmptyComponent={renderEmpty}
       ListFooterComponent={renderFooter}
       onEndReached={hasMore && !isLoading ? onLoadMore : undefined}
