@@ -1,5 +1,5 @@
 import 'react-native-reanimated';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
@@ -20,6 +20,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderProvider, GlobalHeader } from '@/components/ui/header';
 import { useHeader } from '@/components/ui/header';
 import { ToastContainer } from '@/components/shared/ToastContainer';
+
+// Global flag to prevent duplicate deep link initialization across remounts (foldable screen changes)
+let deepLinkInitialized = false;
+
+// Note: FoldingFeatureProvider from @logicwind/react-native-fold-detection is disabled
+// because the native modules are not compatible with Expo Go and have been excluded from autolinking.
+// The useFoldableLayout hook uses a width-based heuristic fallback that works without native modules.
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -74,10 +81,21 @@ export default function RootLayout(): React.ReactElement | null {
 function RootLayoutNav(): React.ReactElement {
   const { navigationTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const isInitializedRef = useRef(false);
 
   // Set up deep link listener for Android auth redirects
+  // Uses global flag + ref to prevent duplicate initialization on foldable screen changes
   useEffect(() => {
+    // Skip if already initialized globally (prevents conflicts on foldable remounts)
+    if (deepLinkInitialized || isInitializedRef.current) {
+      logger.info('Deep link handler already initialized, skipping duplicate setup');
+      return;
+    }
+    
     if (Platform.OS === 'android') {
+      deepLinkInitialized = true;
+      isInitializedRef.current = true;
+      
       // Handle deep links while app is running
       const subscription = Linking.addEventListener('url', ({ url }) => {
         logger.info('Deep link received via Linking listener', { 
@@ -118,7 +136,7 @@ function RootLayoutNav(): React.ReactElement {
         }
       });
 
-      // Handle initial URL (cold start)
+      // Handle initial URL (cold start) - only on first mount
       Linking.getInitialURL().then((url) => {
         if (url) {
           logger.info('Initial deep link URL detected', { url, platform: Platform.OS });
@@ -200,6 +218,7 @@ function RootLayoutNav(): React.ReactElement {
       return () => {
         subscription.remove();
         appStateSubscription.remove();
+        // Don't reset global flag on cleanup - prevents re-initialization on foldable changes
       };
     }
   }, []);

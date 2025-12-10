@@ -3,7 +3,7 @@
     "name": "FomioMobile",
     "slug": "FomioMobile",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "fomio",
     "android": {
@@ -12,6 +12,9 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "allowBackup": false,
+      "softwareKeyboardLayoutMode": "pan",
+      "windowSoftInputMode": "adjustResize",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -87,7 +90,8 @@
     "plugins": [
       "expo-router",
       "expo-notifications",
-      "expo-image-picker"
+      "expo-image-picker",
+      "./plugins/withFoldableSupport"
     ],
     "experiments": {
       "typedRoutes": true
