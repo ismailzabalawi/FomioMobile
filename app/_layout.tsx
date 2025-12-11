@@ -1,5 +1,5 @@
 import 'react-native-reanimated';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
@@ -10,7 +10,7 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import '../global.css';
 
 import { ThemeProvider, useTheme } from '@/components/theme';
-import { AuthProvider } from '@/shared/auth-context';
+import { AuthProvider, useAuth } from '@/shared/auth-context';
 import { attachIntentReplay } from '@/shared/intent-replay';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
@@ -36,6 +36,51 @@ export {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * Component that coordinates font loading and auth initialization
+ * Only hides splash screen when both are ready to prevent jumpy initial load
+ */
+function InitializationCoordinator({ children }: { children: React.ReactNode }) {
+  const { isLoading: isAuthLoading } = useAuth();
+  const [fontsReady, setFontsReady] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const hideSplashCalled = useRef(false);
+
+  // Wait for fonts to load
+  useEffect(() => {
+    // Small delay to ensure fonts are truly loaded
+    const timer = setTimeout(() => {
+      setFontsReady(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Coordinate hiding splash screen when both fonts and auth are ready
+  useEffect(() => {
+    if (fontsReady && !isAuthLoading && !hideSplashCalled.current) {
+      hideSplashCalled.current = true;
+      // Add a small delay to ensure smooth transition
+      const hideTimer = setTimeout(async () => {
+        try {
+          await SplashScreen.hideAsync();
+          setIsReady(true);
+        } catch (splashError) {
+          console.warn('Failed to hide splash screen:', splashError);
+          setIsReady(true); // Continue even if hiding fails
+        }
+      }, 150);
+      return () => clearTimeout(hideTimer);
+    }
+  }, [fontsReady, isAuthLoading]);
+
+  // Don't render children until initialization is complete
+  if (!isReady) {
+    return null;
+  }
+
+  return <>{children}</>;
+}
+
 export default function RootLayout(): React.ReactElement | null {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -51,15 +96,6 @@ export default function RootLayout(): React.ReactElement | null {
     }
   }, [error]);
 
-  useEffect(() => {
-    if (loaded || error) {
-      // Hide splash screen even if fonts failed to load
-      SplashScreen.hideAsync().catch((splashError) => {
-        console.warn('Failed to hide splash screen:', splashError);
-      });
-    }
-  }, [loaded, error]);
-
   // Don't block rendering if fonts fail to load
   if (!loaded && !error) {
     return null;
@@ -70,7 +106,9 @@ export default function RootLayout(): React.ReactElement | null {
       <BottomSheetModalProvider>
         <ThemeProvider defaultTheme="system">
           <AuthProvider>
-            <RootLayoutNav />
+            <InitializationCoordinator>
+              <RootLayoutNav />
+            </InitializationCoordinator>
           </AuthProvider>
         </ThemeProvider>
       </BottomSheetModalProvider>
