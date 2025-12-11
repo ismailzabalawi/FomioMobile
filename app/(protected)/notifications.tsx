@@ -46,7 +46,7 @@ function NotificationItem({
     text: isDark ? '#f9fafb' : '#111827',
     secondary: isDark ? '#9ca3af' : '#6b7280',
     border: isDark ? '#374151' : '#e5e7eb',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
+    accent: isDark ? '#26A69A' : '#009688',
     success: isDark ? '#10b981' : '#059669',
     warning: isDark ? '#f59e0b' : '#d97706',
     error: isDark ? '#ef4444' : '#dc2626',
@@ -167,7 +167,7 @@ export default function NotificationsScreen(): React.ReactElement {
     text: isDark ? '#f9fafb' : '#111827',
     secondary: isDark ? '#9ca3af' : '#6b7280',
     border: isDark ? '#374151' : '#e5e7eb',
-    primary: isDark ? '#3b82f6' : '#0ea5e9',
+    primary: isDark ? '#26A69A' : '#009688',
     error: isDark ? '#ef4444' : '#dc2626',
   };
 
@@ -639,4 +639,3 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 });
-

@@ -257,7 +257,7 @@ export function TeretPickerSheet({
                     {isSelected && (
                       <Check
                         size={16}
-                        color={isDark ? '#3B82F6' : '#2563EB'}
+                        color={isDark ? '#26A69A' : '#009688'}
                         weight="regular"
                         style={{ marginLeft: 8 }}
                       />
@@ -354,4 +354,3 @@ export function TeretPickerSheet({
     </Modal>
   );
 }
-

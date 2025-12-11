@@ -24,18 +24,18 @@ module.exports = {
         "fomio-foreground-dark": "#F5F5F7",
         "fomio-muted": "#6B6B72",
         "fomio-muted-dark": "#A1A1AA",
-        // Accents
-        "fomio-primary": "#2563EB",
-        "fomio-primary-dark": "#3B82F6",
-        "fomio-primary-soft": "#D0E1FF",
-        "fomio-primary-soft-dark": "#0B1020",
-        // Status
-        "fomio-accent": "#22C55E",
-        "fomio-accent-dark": "#4ADE80",
-        "fomio-danger": "#EF4444",
-        "fomio-danger-dark": "#F97373",
-        "fomio-warning": "#F59E0B",
-        "fomio-warning-dark": "#FBBF24",
+      // Accents
+      "fomio-primary": "#009688", // Fomio Teal - primary brand hue
+      "fomio-primary-dark": "#26A69A", // Teal 400 for better pop on dark surfaces
+      "fomio-primary-soft": "#B2DFDB",
+      "fomio-primary-soft-dark": "#0B2F2C",
+      // Secondary accent (brand blue)
+      "fomio-accent": "#1565C0",
+      "fomio-accent-dark": "#42A5F5",
+      "fomio-danger": "#EF4444",
+      "fomio-danger-dark": "#F97373",
+      "fomio-warning": "#F59E0B",
+      "fomio-warning-dark": "#FBBF24",
       },
       fontSize: {
         // Typography Scale (mapped to NativeWind classes)
@@ -62,4 +62,3 @@ module.exports = {
   },
   plugins: [],
 }
-

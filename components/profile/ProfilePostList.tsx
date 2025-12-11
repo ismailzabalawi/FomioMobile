@@ -88,7 +88,7 @@ export function ProfilePostList({
     if (isLoading) {
       return (
         <View className="py-12 items-center">
-          <ActivityIndicator size="large" color={isDark ? '#3b82f6' : '#2563eb'} />
+          <ActivityIndicator size="large" color={isDark ? '#26A69A' : '#009688'} />
         </View>
       );
     }
@@ -111,7 +111,7 @@ export function ProfilePostList({
     if (isLoading) {
       return (
         <View className="py-4 items-center">
-          <ActivityIndicator size="small" color={isDark ? '#3b82f6' : '#2563eb'} />
+          <ActivityIndicator size="small" color={isDark ? '#26A69A' : '#009688'} />
         </View>
       );
     }
@@ -146,4 +146,3 @@ export function ProfilePostList({
     />
   );
 }
-

@@ -39,7 +39,11 @@ export function LoadingOverlay({ message = 'Loading...', visible, style }: Loadi
   return (
     <View style={[styles.overlay, { backgroundColor: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)' }, style]}>
       <View style={[styles.overlayContent, { backgroundColor: isDark ? '#374151' : '#ffffff' }]}>
-        <ActivityIndicator size="large" color="#0ea5e9" style={styles.overlaySpinner} />
+        <ActivityIndicator
+          size="large"
+          color={isDark ? '#26A69A' : '#009688'}
+          style={styles.overlaySpinner}
+        />
         <Text style={[styles.overlayText, { color: isDark ? '#f9fafb' : '#374151' }]}>
           {message}
         </Text>
@@ -226,7 +230,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   retryButton: {
-    backgroundColor: '#0ea5e9',
+    backgroundColor: '#009688',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
@@ -267,4 +271,3 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
-

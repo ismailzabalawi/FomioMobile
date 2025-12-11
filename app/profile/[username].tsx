@@ -244,7 +244,7 @@ export default function PublicProfileScreen(): React.ReactElement {
                   onPress={refreshUser}
                   className="px-6 py-3 rounded-xl"
                   style={{
-                    backgroundColor: isDark ? '#3b82f6' : '#2563eb',
+                    backgroundColor: isDark ? '#26A69A' : '#009688',
                   }}
                   accessible
                   accessibilityRole="button"
@@ -272,4 +272,3 @@ export default function PublicProfileScreen(): React.ReactElement {
     </ScreenContainer>
   );
 }
-

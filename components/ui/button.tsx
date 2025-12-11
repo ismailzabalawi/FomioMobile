@@ -86,7 +86,7 @@ export function Button({
     if (variant === 'default' || variant === 'destructive') {
       return '#ffffff';
     }
-    return '#2563EB'; // fomio-primary
+    return '#009688'; // fomio-primary (teal)
   };
 
   const buttonClasses = cn(

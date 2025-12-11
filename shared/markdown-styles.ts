@@ -117,7 +117,7 @@ export function getMarkdownStyles(isDark: boolean) {
       fontSize: 14,
       fontFamily: codeFontFamily,
       backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-      color: isDark ? '#60a5fa' : '#2563eb',
+      color: isDark ? '#26A69A' : '#009688',
       paddingHorizontal: 4,
       paddingVertical: 2,
       borderRadius: 4,
@@ -149,9 +149,9 @@ export function getMarkdownStyles(isDark: boolean) {
     
     // Blockquotes
     blockquote: {
-      backgroundColor: isDark ? 'rgba(96,165,250,0.1)' : 'rgba(37,99,235,0.05)',
+      backgroundColor: isDark ? 'rgba(38,166,154,0.12)' : 'rgba(0,150,136,0.08)',
       borderLeftWidth: 4,
-      borderLeftColor: isDark ? '#60a5fa' : '#2563eb',
+      borderLeftColor: isDark ? '#26A69A' : '#009688',
       paddingLeft: 16,
       paddingRight: 16,
       paddingTop: 12,
@@ -169,7 +169,7 @@ export function getMarkdownStyles(isDark: boolean) {
     
     // Links
     link: {
-      color: isDark ? '#60a5fa' : '#2563eb',
+      color: isDark ? '#26A69A' : '#009688',
       textDecorationLine: 'underline' as const,
     },
     
@@ -227,4 +227,3 @@ export function getMarkdownStyles(isDark: boolean) {
     tr: {},
   };
 }
-

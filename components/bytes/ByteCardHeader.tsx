@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { CheckCircle } from 'phosphor-react-native';
+import { CheckCircle, CaretRight } from 'phosphor-react-native';
 import { Avatar } from '../ui/avatar';
 import { formatTimeAgo } from '@/lib/utils/time';
 import { goToProfile } from '@/shared/navigation/profile';
@@ -66,35 +66,51 @@ export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
       </Pressable>
 
       <View className="flex-1" style={{ minWidth: 0 }}>
-        <View className="flex-row items-center gap-x-1 flex-wrap">
-          <Pressable onPress={author.username ? handleNamePress : undefined} hitSlop={4}>
-            <Text className="text-body font-semibold text-fomio-foreground dark:text-fomio-foreground-dark">
-              {author.name || author.username}
-            </Text>
-          </Pressable>
-          {(isVerified || isAdmin || isModerator) && (
-            <CheckCircle size={16} weight="fill" color={badgeColor} />
+        <View className="flex-row items-center gap-2 flex-wrap">
+          <View className="flex-row items-center gap-1" style={{ minWidth: 0 }}>
+            <Pressable onPress={author.username ? handleNamePress : undefined} hitSlop={4}>
+              <Text className="text-body font-semibold text-fomio-foreground dark:text-fomio-foreground-dark">
+                {author.name || author.username}
+              </Text>
+            </Pressable>
+            {(isVerified || isAdmin || isModerator) && (
+              <CheckCircle size={16} weight="fill" color={badgeColor} />
+            )}
+            <CaretRight size={14} weight="bold" color="#9CA3AF" />
+          </View>
+
+          {(byte.hub || byte.teret) && (
+            <View className="flex-row flex-wrap items-center gap-2">
+              {byte.hub?.name && (
+                <Text
+                  className="px-2 py-0.5 rounded-full text-xs font-medium"
+                  style={{
+                    backgroundColor: byte.hub.color || '#6B7280',
+                    color: '#ffffff',
+                  }}
+                >
+                  {byte.hub.name}
+                </Text>
+              )}
+              {byte.teret?.name && (
+                <Text
+                  className="px-2 py-0.5 rounded-full text-xs font-medium"
+                  style={{
+                    backgroundColor: byte.teret.color || '#4A6CF7',
+                    color: '#ffffff',
+                  }}
+                >
+                  {byte.teret.name}
+                </Text>
+              )}
+            </View>
           )}
-          <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
-            @{author.username} · {formatTimeAgo(byte.createdAt)}
-          </Text>
         </View>
 
-        {/* Show thread context if replying */}
-        {byte.replyTo && (
-          <Text className="text-xs text-fomio-muted dark:text-fomio-muted-dark mt-0.5">
-            Replying to @{byte.replyTo.username}
-          </Text>
-        )}
-
-        {/* Show repost context if reposted */}
-        {byte.repostedBy && (
-          <Text className="text-xs text-fomio-muted dark:text-fomio-muted-dark mt-0.5">
-            Reposted by @{byte.repostedBy.username}
-          </Text>
-        )}
+        <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark mt-1">
+          {formatTimeAgo(byte.createdAt)}
+        </Text>
       </View>
     </View>
   );
 }
-

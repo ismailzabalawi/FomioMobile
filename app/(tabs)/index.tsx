@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
@@ -32,7 +32,7 @@ export default function HomeScreen(): React.ReactElement {
     secondary: isDark ? '#a1a1aa' : '#64748b',
     border: isDark ? '#334155' : '#e2e8f0',
     error: isDark ? '#ef4444' : '#dc2626',
-    primary: isDark ? '#38bdf8' : '#0ea5e9',
+    primary: isDark ? '#26A69A' : '#009688',
   }), [isAmoled, isDark]);
 
   // Memoize filters to prevent unnecessary re-renders
@@ -60,6 +60,18 @@ export default function HomeScreen(): React.ReactElement {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
 
+  const headerTitle = useMemo(
+    () => (
+      <Image
+        source={require('../../assets/images/favicon.png')}
+        style={{ width: 28, height: 28, borderRadius: 6 }}
+        resizeMode="contain"
+        accessibilityLabel="Fomio"
+      />
+    ),
+    []
+  );
+
   const headerActions = useMemo(() => [
     <TouchableOpacity
       key="filters-toggle"
@@ -81,7 +93,7 @@ export default function HomeScreen(): React.ReactElement {
 
   // Configure header with a filters toggle action
   useFeedHeader({
-    title: "Fomio",
+    title: headerTitle,
     rightActions: headerActions,
   });
   

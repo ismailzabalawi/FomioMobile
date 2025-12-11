@@ -20,7 +20,7 @@ export function AuthPromptView({
   const { isDark, isAmoled } = useTheme();
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
-    primary: isDark ? '#3b82f6' : '#0ea5e9',
+    primary: isDark ? '#26A69A' : '#009688',
     text: isDark ? '#f9fafb' : '#111827',
     secondary: isDark ? '#9ca3af' : '#6b7280',
     border: isDark ? '#374151' : '#e5e7eb',
@@ -121,4 +121,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-

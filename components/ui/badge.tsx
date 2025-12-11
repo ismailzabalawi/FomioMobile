@@ -22,7 +22,7 @@ export function Badge({
   const getVariantStyle = () => {
     const baseStyles = {
       default: {
-        backgroundColor: '#0ea5e9',
+        backgroundColor: '#009688',
       },
       secondary: {
         backgroundColor: isDark ? '#374151' : '#f1f5f9',
@@ -100,4 +100,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

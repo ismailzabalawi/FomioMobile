@@ -197,10 +197,10 @@ export function ProfileTabBar({
                 color={
                   isActive
                     ? isAmoled
-                      ? '#3B82F6'
+                      ? '#26A69A'
                       : isDark
-                        ? '#3B82F6'
-                        : '#2563EB'
+                        ? '#26A69A'
+                        : '#009688'
                     : isAmoled
                       ? '#A1A1AA'
                       : isDark
@@ -250,4 +250,3 @@ export function ProfileTabBar({
     </View>
   );
 }
-

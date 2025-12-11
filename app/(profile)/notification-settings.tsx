@@ -163,7 +163,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
     text: isDark ? '#f9fafb' : '#111827',
     secondary: isDark ? '#9ca3af' : '#6b7280',
     border: isDark ? '#374151' : '#e5e7eb',
-    primary: isDark ? '#3b82f6' : '#0ea5e9',
+    primary: isDark ? '#26A69A' : '#009688',
   };
 
   const getLikeFrequencyLabel = () => {
@@ -563,5 +563,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
 

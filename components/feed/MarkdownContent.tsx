@@ -221,7 +221,7 @@ export function MarkdownContent({ content, isRawMarkdown = false }: MarkdownCont
               try {
                 await WebBrowser.openBrowserAsync(url, {
                   presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                  controlsColor: isDark ? '#60a5fa' : '#2563eb',
+                  controlsColor: isDark ? '#26A69A' : '#009688',
                 });
               } catch (error) {
                 // Fallback to system browser
@@ -287,4 +287,3 @@ export function MarkdownContent({ content, isRawMarkdown = false }: MarkdownCont
     </View>
   );
 }
-

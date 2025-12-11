@@ -4,7 +4,7 @@ import { useTheme } from '@/components/theme';
 
 export interface UseFeedHeaderOptions {
   /** Header title */
-  title: string;
+  title: string | ReactNode;
   /** Show back button (default: false for feed screens) */
   canGoBack?: boolean;
   /** Custom back handler */
@@ -13,6 +13,8 @@ export interface UseFeedHeaderOptions {
   rightActions?: ReactNode[];
   /** Use compact header (default: true for feed screens) */
   compact?: boolean;
+  /** Center the title/logo (default: true for feed) */
+  centerTitle?: boolean;
 }
 
 /**
@@ -27,6 +29,7 @@ export function useFeedHeader({
   onBackPress,
   rightActions,
   compact = true,
+  centerTitle = true,
 }: UseFeedHeaderOptions) {
   const { isDark } = useTheme();
 
@@ -41,9 +44,9 @@ export function useFeedHeader({
       statusBarStyle: isDark ? 'light' : 'dark',
       rightActions,
       compact,
+      centerTitle,
       titleFontSize: compact ? 20 : 22, // Slightly smaller title for compact mode
     },
-    [title, canGoBack, onBackPress, isDark, rightActions, compact]
+    [title, canGoBack, onBackPress, isDark, rightActions, compact, centerTitle]
   );
 }
-

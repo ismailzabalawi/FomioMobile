@@ -14,10 +14,10 @@ export default function AuthorizeScreen() {
   
   const colors = {
     background: isDark ? '#18181b' : '#fff',
-    primary: isDark ? '#38bdf8' : '#0ea5e9',
+    primary: isDark ? '#26A69A' : '#009688',
     text: isDark ? '#f4f4f5' : '#1e293b',
     secondary: isDark ? '#a1a1aa' : '#64748b',
-    border: isDark ? '#334155' : '#0ea5e9',
+    border: isDark ? '#334155' : '#009688',
     error: isDark ? '#ef4444' : '#dc2626',
   };
 
@@ -279,4 +279,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-

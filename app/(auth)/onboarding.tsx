@@ -29,11 +29,11 @@ export default function OnboardingScreen() {
   const { width } = useWindowDimensions(); // Responsive to dimension changes (foldable devices)
   const colors = {
     background: isDark ? '#18181b' : '#fff',
-    primary: isDark ? '#38bdf8' : '#0ea5e9',
+    primary: isDark ? '#26A69A' : '#009688',
     text: isDark ? '#f4f4f5' : '#1e293b',
     secondary: isDark ? '#a1a1aa' : '#64748b',
     indicator: isDark ? '#334155' : '#e2e8f0',
-    activeIndicator: isDark ? '#38bdf8' : '#0ea5e9',
+    activeIndicator: isDark ? '#26A69A' : '#009688',
     buttonText: isDark ? '#fff' : '#fff',
   };
 
@@ -170,4 +170,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

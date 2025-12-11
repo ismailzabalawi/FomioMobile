@@ -1,13 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
-  StyleSheet, 
   TouchableOpacity, 
-  ScrollView, 
-  TextInput,
+  FlatList,
   ActivityIndicator,
-  Image
+  Image,
+  ListRenderItem,
+  ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -26,11 +26,41 @@ import { useSearch } from '../../shared/useSearch';
 import { router } from 'expo-router';
 import { goToProfile } from '@/shared/navigation/profile';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { getThemeColors } from '@/shared/theme-constants';
+import { Input } from '@/components/ui/input';
 
-// formatDate removed - now handled by formatTimeAgo in ByteCard component
+// UI Spec: SearchScreen
+// - Uses semantic theme tokens from getThemeColors
+// - Debounced search (500ms) for better UX
+// - Server-side type filtering via backend API
+// - FlatList for optimized rendering
+// - AMOLED dark mode support with true black baseline
+
+type SearchType = 'all' | 'bytes' | 'hubs' | 'users';
+
+// Helper to map frontend SearchType to backend type
+function mapSearchTypeToBackendType(frontendType: SearchType): 'topic' | 'category' | 'user' | 'all' {
+  switch (frontendType) {
+    case 'bytes':
+      return 'topic';
+    case 'hubs':
+      return 'category';
+    case 'users':
+      return 'user';
+    case 'all':
+    default:
+      return 'all';
+  }
+}
+
+interface SearchResultItem {
+  id: string;
+  type: 'byte' | 'hub' | 'user';
+  data: any;
+}
 
 // Helper to render ByteCard from topic data
-function renderTopicCard(topic: any, onPress: () => void, onCategoryPress?: () => void) {
+function renderTopicCard(topic: any, onPress: () => void) {
   const byte = searchResultToByte(topic);
   return (
     <ByteCard
@@ -41,51 +71,62 @@ function renderTopicCard(topic: any, onPress: () => void, onCategoryPress?: () =
 }
 
 function HubCard({ category, onPress }: { category: any; onPress: () => void }) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
-  };
+  const { themeMode, isAmoled } = useTheme();
+  const colors = getThemeColors(themeMode, isAmoled);
 
   return (
     <TouchableOpacity
-      style={[styles.hubCard, { 
-        backgroundColor: colors.background, 
+      className="mb-3 p-4 rounded-xl border"
+      style={{ 
+        backgroundColor: colors.card, 
         borderColor: colors.border 
-      }]}
+      }}
       onPress={onPress}
       accessible
       accessibilityRole="button"
       accessibilityLabel={`${category.name} hub`}
     >
-      <View style={styles.hubHeader}>
-        <View style={[styles.hubIcon, { backgroundColor: category.color + '20' }]}>
-          <Text style={[styles.hubIconText, { color: category.color }]}>
+      <View className="flex-row items-start mb-3">
+        <View 
+          className="w-10 h-10 rounded-full items-center justify-center mr-3"
+          style={{ backgroundColor: (category.color || colors.accent) + '20' }}
+        >
+          <Text 
+            className="text-xl font-semibold"
+            style={{ color: category.color || colors.accent }}
+          >
             {category.name.charAt(0).toUpperCase()}
           </Text>
         </View>
-        <View style={styles.hubInfo}>
-          <Text style={[styles.hubName, { color: colors.text }]} numberOfLines={1}>
-            {category.name}
-          </Text>
-          <Text style={[styles.hubDescription, { color: colors.secondary }]} numberOfLines={2}>
+        <View className="flex-1 min-w-0">
+          <View className="flex-row items-center">
+            <Text 
+              className="text-base font-bold mb-1 flex-shrink"
+              style={{ color: colors.foreground }}
+              numberOfLines={1}
+            >
+              {category.name}
+            </Text>
+            {category.topic_count > 5 && (
+              <View className="ml-2">
+                <Fire size={12} color={colors.accent} weight="fill" />
+              </View>
+            )}
+          </View>
+          <Text 
+            className="text-sm flex-shrink"
+            style={{ color: colors.secondary }}
+            numberOfLines={2}
+          >
             {category.description || 'No description available'}
           </Text>
         </View>
-        {category.topic_count > 5 && (
-          <View style={styles.popularBadge}>
-            <Fire size={12} color={colors.accent} weight="fill" />
-          </View>
-        )}
       </View>
-      <View style={styles.hubStats}>
-        <Text style={[styles.hubStat, { color: colors.secondary }]}>
+      <View className="flex-row justify-between">
+        <Text className="text-xs font-medium" style={{ color: colors.secondary }}>
           {category.topic_count} topics
         </Text>
-        <Text style={[styles.hubStat, { color: colors.secondary }]}>
+        <Text className="text-xs font-medium" style={{ color: colors.secondary }}>
           {category.post_count} posts
         </Text>
       </View>
@@ -97,46 +138,38 @@ function SearchTypeChips({
   activeType,
   onChange,
 }: {
-  activeType: 'all' | 'bytes' | 'hubs' | 'users';
-  onChange: (type: 'all' | 'bytes' | 'hubs' | 'users') => void;
+  activeType: SearchType;
+  onChange: (type: SearchType) => void;
 }) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    activeBg: isDark ? '#3b82f6' : '#0ea5e9',
-    inactiveBg: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#f3f4f6'),
-  };
+  const { themeMode, isAmoled } = useTheme();
+  const colors = getThemeColors(themeMode, isAmoled);
 
-  const types = [
-    { key: 'all' as const, label: 'All' },
-    { key: 'bytes' as const, label: 'Bytes' },
-    { key: 'hubs' as const, label: 'Hubs' },
-    { key: 'users' as const, label: 'Users' },
+  const types: { key: SearchType; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'bytes', label: 'Bytes' },
+    { key: 'hubs', label: 'Hubs' },
+    { key: 'users', label: 'Users' },
   ];
 
   return (
-    <View style={styles.chipsContainer}>
+    <View className="flex-row px-4 mb-3 gap-2">
       {types.map((t) => (
         <TouchableOpacity
           key={t.key}
           onPress={() => onChange(t.key)}
-          style={[
-            styles.chip,
-            {
-              backgroundColor: activeType === t.key ? colors.activeBg : colors.inactiveBg,
-              borderColor: activeType === t.key ? colors.activeBg : colors.border,
-            }
-          ]}
+          className="px-3 py-1.5 rounded-full border"
+          style={{
+            backgroundColor: activeType === t.key ? colors.accent : colors.card,
+            borderColor: activeType === t.key ? colors.accent : colors.border,
+          }}
           accessible
           accessibilityRole="button"
           accessibilityLabel={`Filter by ${t.label}`}
         >
-          <Text style={[
-            styles.chipText,
-            { color: activeType === t.key ? '#ffffff' : colors.text }
-          ]}>
+          <Text 
+            className="text-xs font-semibold"
+            style={{ color: activeType === t.key ? colors.accentForeground : colors.foreground }}
+          >
             {t.label}
           </Text>
         </TouchableOpacity>
@@ -145,7 +178,14 @@ function SearchTypeChips({
   );
 }
 
-function SearchResults({ results, isLoading, hasError, onRetry, searchQuery, errorMessage }: {
+function SearchResults({ 
+  results, 
+  isLoading, 
+  hasError, 
+  onRetry, 
+  searchQuery,
+  errorMessage 
+}: {
   results: {
     bytes: any[];
     comments: any[];
@@ -159,30 +199,48 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery, err
   searchQuery: string;
   errorMessage?: string;
 }) {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    error: '#ef4444',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
-  };
+  const { themeMode, isAmoled } = useTheme();
+  const colors = getThemeColors(themeMode, isAmoled);
 
-  // Normalize results to ensure all properties are arrays
-  const normalizedResults = {
+  // Use results directly from backend (server-side filtering)
+  const normalizedResults = useMemo(() => ({
     bytes: results?.bytes || [],
     comments: results?.comments || [],
     users: results?.users || [],
     hubs: results?.hubs || [],
     totalResults: results?.totalResults || 0
-  };
+  }), [results]);
+
+  // Build flat list data
+  const listData = useMemo<SearchResultItem[]>(() => {
+    const items: SearchResultItem[] = [];
+    
+    if (normalizedResults.bytes.length > 0) {
+      normalizedResults.bytes.forEach((byte) => {
+        items.push({ id: `byte-${byte.id}`, type: 'byte', data: byte });
+      });
+    }
+    
+    if (normalizedResults.hubs.length > 0) {
+      normalizedResults.hubs.forEach((hub) => {
+        items.push({ id: `hub-${hub.id}`, type: 'hub', data: hub });
+      });
+    }
+    
+    if (normalizedResults.users.length > 0) {
+      normalizedResults.users.forEach((user) => {
+        items.push({ id: `user-${user.id}`, type: 'user', data: user });
+      });
+    }
+    
+    return items;
+  }, [normalizedResults]);
 
   if (isLoading) {
     return (
-      <View style={styles.searchResultsContainer}>
-        <ActivityIndicator size="large" color={colors.text} />
-        <Text style={[styles.searchResultsText, { color: colors.secondary }]}>
+      <View className="flex-1 justify-center items-center py-12">
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text className="text-base mt-4" style={{ color: colors.secondary }}>
           Searching...
         </Text>
       </View>
@@ -191,19 +249,30 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery, err
 
   if (hasError) {
     return (
-      <View style={styles.searchResultsContainer}>
-        <Warning size={48} color={colors.error} />
-        <Text style={[styles.searchResultsText, { color: colors.error, fontWeight: '600' }]}>
+      <View className="flex-1 justify-center items-center px-8 py-12">
+        <Warning size={48} color={colors.destructive} />
+        <Text 
+          className="text-base font-semibold mt-4 text-center"
+          style={{ color: colors.destructive }}
+        >
           {errorMessage || 'Search failed'}
         </Text>
         {errorMessage && errorMessage.length > 60 && (
-          <Text style={[styles.searchResultsText, { color: colors.secondary, fontSize: 12, marginTop: 8, fontWeight: '400' }]}>
+          <Text 
+            className="text-xs mt-2 text-center"
+            style={{ color: colors.secondary }}
+          >
             {errorMessage}
           </Text>
         )}
-        <TouchableOpacity onPress={onRetry} style={styles.retryButton}>
-          <ArrowClockwise size={16} color={colors.error} />
-          <Text style={[styles.retryText, { color: colors.error }]}>Retry</Text>
+        <TouchableOpacity 
+          onPress={onRetry} 
+          className="flex-row items-center gap-2 px-4 py-2 mt-4"
+        >
+          <ArrowClockwise size={16} color={colors.destructive} />
+          <Text className="text-sm font-semibold" style={{ color: colors.destructive }}>
+            Retry
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -211,9 +280,9 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery, err
 
   if (normalizedResults.totalResults === 0) {
     return (
-      <View style={styles.searchResultsContainer}>
+      <View className="flex-1 justify-center items-center px-8 py-12">
         <MagnifyingGlass size={48} color={colors.secondary} />
-        <Text style={[styles.searchResultsText, { color: colors.secondary }]}>
+        <Text className="text-base mt-4 text-center" style={{ color: colors.secondary }}>
           {searchQuery.length > 0 && searchQuery.length < 3 
             ? 'Type at least 3 characters to search'
             : 'No results found'
@@ -223,107 +292,118 @@ function SearchResults({ results, isLoading, hasError, onRetry, searchQuery, err
     );
   }
 
-  // Group results by type
-  const topics = normalizedResults.bytes;
-  const categories = normalizedResults.hubs;
-  const users = normalizedResults.users;
+  const renderItem: ListRenderItem<SearchResultItem> = ({ item }) => {
+    if (item.type === 'byte') {
+      return (
+        <View className="mb-3">
+          {renderTopicCard(
+            item.data,
+            () => router.push(`/feed/${item.data.id}`)
+          )}
+        </View>
+      );
+    }
+
+    if (item.type === 'hub') {
+      return (
+        <HubCard 
+          category={item.data} 
+          onPress={() => router.push(`/feed?category=${item.data.slug}`)} 
+        />
+      );
+    }
+
+    if (item.type === 'user') {
+      const username = item.data.author?.username || item.data.username;
+      return (
+        <TouchableOpacity
+          className="mb-3 p-4 rounded-xl border"
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          onPress={() => {
+            if (username) {
+              goToProfile(username);
+            } else {
+              console.warn('User result missing username:', item.data);
+            }
+          }}
+        >
+          <View className="flex-row items-center mb-2">
+            {item.data.author?.avatar ? (
+              <Image 
+                source={{ uri: item.data.author.avatar }} 
+                className="w-8 h-8 rounded-full mr-3"
+              />
+            ) : (
+              <View 
+                className="w-8 h-8 rounded-full mr-3 justify-center items-center"
+                style={{ backgroundColor: colors.secondary }}
+              >
+                <Text 
+                  className="text-xs font-semibold"
+                  style={{ color: colors.card }}
+                >
+                  {item.data.author?.name?.charAt(0).toUpperCase() || 'U'}
+                </Text>
+              </View>
+            )}
+            <View className="flex-1">
+              <Text 
+                className="text-base font-bold mb-0.5"
+                style={{ color: colors.foreground }}
+              >
+                {item.data.title}
+              </Text>
+              <Text 
+                className="text-xs font-medium"
+                style={{ color: colors.secondary }}
+              >
+                @{item.data.author?.username}
+              </Text>
+            </View>
+          </View>
+          {item.data.content && (
+            <Text 
+              className="text-sm"
+              style={{ color: colors.secondary }}
+              numberOfLines={2}
+            >
+              {item.data.content}
+            </Text>
+          )}
+        </TouchableOpacity>
+      );
+    }
+
+    return null;
+  };
 
   return (
-    <ScrollView style={styles.searchResultsList} showsVerticalScrollIndicator={false}>
-      {/* Bytes */}
-      {topics.length > 0 && (
-        <View style={styles.searchSection}>
-          <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
-            Bytes ({topics.length})
-          </Text>
-          {topics.map((result) => (
-            <View key={`topic-${result.id}`}>
-              {renderTopicCard(
-                result,
-                () => router.push(`/feed/${result.id}`),
-                result.category?.slug ? () => router.push(`/feed?category=${result.category.slug}`) : undefined
-              )}
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* Hubs */}
-      {categories.length > 0 && (
-        <View style={styles.searchSection}>
-          <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
-            Hubs ({categories.length})
-          </Text>
-          {categories.map((result) => (
-            <HubCard key={`category-${result.id}`} category={result} onPress={() => {
-              router.push(`/feed?category=${result.slug}`);
-            }} />
-          ))}
-        </View>
-      )}
-
-      {/* Users */}
-      {users.length > 0 && (
-        <View style={styles.searchSection}>
-          <Text style={[styles.searchSectionTitle, { color: colors.text }]}>
-            Users ({users.length})
-          </Text>
-          {users.map((result) => {
-            const username = result.author?.username || result.username;
-            return (
-            <TouchableOpacity
-              key={`user-${result.id}`}
-              style={[styles.userCard, { backgroundColor: colors.background, borderColor: colors.border }]}
-              onPress={() => {
-                  if (username) {
-                    goToProfile(username);
-                  } else {
-                    console.warn('User result missing username:', result);
-                  }
-              }}
+    <FlatList
+      data={listData}
+      renderItem={renderItem}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+      showsVerticalScrollIndicator={false}
+      ListHeaderComponent={
+        normalizedResults.totalResults > 0 ? (
+          <View className="mb-4">
+            <Text 
+              className="text-lg font-bold"
+              style={{ color: colors.foreground }}
             >
-              <View style={styles.userCardHeader}>
-                {result.author?.avatar ? (
-                  <Image source={{ uri: result.author.avatar }} style={styles.userAvatar} />
-                ) : (
-                  <View style={[styles.userAvatar, { backgroundColor: colors.secondary, justifyContent: 'center', alignItems: 'center' }]}>
-                    <Text style={[styles.userAvatarFallback, { color: colors.background }]}>
-                      {result.author?.name?.charAt(0).toUpperCase() || 'U'}
-                    </Text>
-                  </View>
-                )}
-                <View style={styles.userInfo}>
-                  <Text style={[styles.userName, { color: colors.text }]}>{result.title}</Text>
-                  <Text style={[styles.userUsername, { color: colors.secondary }]}>
-                    @{result.author?.username}
-                  </Text>
-                </View>
-              </View>
-              {result.content && (
-                <Text style={[styles.userBio, { color: colors.secondary }]} numberOfLines={2}>
-                  {result.content}
-                </Text>
-              )}
-            </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-    </ScrollView>
+              {normalizedResults.totalResults} result{normalizedResults.totalResults !== 1 ? 's' : ''}
+            </Text>
+          </View>
+        ) : null
+      }
+    />
   );
 }
 
 // Placeholder cards for empty state
 function EmptyStateCards() {
-  const { isDark, isAmoled } = useTheme();
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-    card: isAmoled ? '#000000' : (isDark ? '#27272a' : '#f9fafb'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    accent: isDark ? '#3b82f6' : '#0ea5e9',
-  };
+  const { themeMode, isAmoled } = useTheme();
+  const colors = getThemeColors(themeMode, isAmoled);
 
   const cards = [
     {
@@ -345,8 +425,8 @@ function EmptyStateCards() {
 
   return (
     <ScrollView 
-      style={styles.scrollView}
-      contentContainerStyle={styles.scrollContent}
+      className="flex-1"
+      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
       showsVerticalScrollIndicator={false}
     >
       {cards.map((card, index) => {
@@ -355,13 +435,20 @@ function EmptyStateCards() {
           <Animated.View
             key={index}
             entering={FadeInDown.delay(index * 200).duration(400).springify()}
-            style={[styles.placeholderCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            className="mb-4 p-6 rounded-xl border items-center"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
             <IconComponent size={32} color={colors.accent} weight="duotone" />
-            <Text style={[styles.placeholderTitle, { color: colors.text }]}>
+            <Text 
+              className="text-lg font-bold mt-4 mb-2 text-center"
+              style={{ color: colors.foreground }}
+            >
               {card.title}
             </Text>
-            <Text style={[styles.placeholderText, { color: colors.secondary }]}>
+            <Text 
+              className="text-sm text-center leading-5"
+              style={{ color: colors.secondary }}
+            >
               {card.text}
             </Text>
           </Animated.View>
@@ -372,19 +459,30 @@ function EmptyStateCards() {
 }
 
 export default function SearchScreen(): React.ReactElement {
-  const { isDark, isAmoled } = useTheme();
+  const { themeMode, isAmoled } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeType, setActiveType] = useState<SearchType>('all');
   
   const { 
     search, 
-    advancedSearch,
+    searchWithDebounce,
     results, 
     isLoading: isSearchLoading, 
     hasError: hasSearchError, 
     error: searchError,
     retry: retrySearch,
-    searchType,
   } = useSearch();
+
+  const colors = useMemo(() => getThemeColors(themeMode, isAmoled), [themeMode, isAmoled]);
+
+  // Input background and text colors based on theme
+  const inputBackgroundColor = useMemo(() => {
+    return themeMode === 'dark' ? '#000000' : '#ffffff';
+  }, [themeMode]);
+
+  const inputTextColor = useMemo(() => {
+    return themeMode === 'dark' ? '#ffffff' : '#000000';
+  }, [themeMode]);
 
   // Configure header
   useScreenHeader({
@@ -394,66 +492,72 @@ export default function SearchScreen(): React.ReactElement {
     tone: "bg",
     compact: true,
     titleFontSize: 20,
-  }, [searchQuery, isDark]);
-  
-  const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
-    card: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-    text: isDark ? '#f9fafb' : '#111827',
-    secondary: isDark ? '#9ca3af' : '#6b7280',
-    border: isDark ? '#374151' : '#e5e7eb',
-    primary: isDark ? '#3b82f6' : '#0ea5e9',
-    input: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#ffffff'),
-  };
+  }, [searchQuery, themeMode]);
 
-  // Enhanced search handling
+  // Debounced search handling with type filter
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     const trimmed = query.trim();
+    
     if (trimmed.length >= 3) {
-      search(trimmed);
+      // Use debounced search with type filter
+      const backendType = mapSearchTypeToBackendType(activeType);
+      searchWithDebounce(trimmed, { type: backendType }, 500);
+    } else if (trimmed.length === 0) {
+      // Clear results when query is empty
+      setActiveType('all');
     }
-  }, [search]);
+  }, [searchWithDebounce, activeType]);
+
+  // Handle search type change - trigger new search with type filter
+  const handleTypeChange = useCallback((type: SearchType) => {
+    setActiveType(type);
+    if (searchQuery.trim().length >= 3) {
+      const backendType = mapSearchTypeToBackendType(type);
+      search(searchQuery.trim(), { type: backendType });
+    }
+  }, [searchQuery, search]);
 
   // Show search results if there's a query
   if (searchQuery.trim()) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.searchContainer}>
+      <SafeAreaView 
+        className="flex-1"
+        style={{ backgroundColor: colors.background }}
+      >
+        <View 
+          className="flex-row items-center mx-4 my-4 px-4 py-3"
+        >
           <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
+          <Input
+            style={{ 
+              flex: 1, 
+              marginLeft: 12,
+              backgroundColor: inputBackgroundColor,
+              borderWidth: 0,
+            }}
+            inputStyle={{ 
+              fontSize: 16, 
+              color: inputTextColor 
+            }}
             placeholder="Search topics, categories, or users..."
-            placeholderTextColor={colors.secondary}
             value={searchQuery}
             onChangeText={handleSearch}
-            accessible
             accessibilityLabel="Search input"
-            blurOnSubmit={false}
             returnKeyType="search"
-            autoFocus={true}
             onSubmitEditing={() => {
               const trimmed = searchQuery.trim();
               if (trimmed.length >= 3) {
-                search(trimmed);
+                const backendType = mapSearchTypeToBackendType(activeType);
+                search(trimmed, { type: backendType });
               }
             }}
           />
         </View>
 
         <SearchTypeChips
-          activeType={searchType as 'all' | 'bytes' | 'hubs' | 'users'}
-          onChange={(type) => {
-            if (searchQuery.trim().length >= 3) {
-              // Map Fomio types to Discourse API types
-              const discourseType = 
-                type === 'bytes' ? 'topic' : 
-                type === 'hubs' ? 'category' : 
-                type === 'users' ? 'user' : 
-                'all';
-              advancedSearch(searchQuery.trim(), { type: discourseType } as any);
-            }
-          }}
+          activeType={activeType}
+          onChange={handleTypeChange}
         />
 
         <SearchResults 
@@ -476,23 +580,27 @@ export default function SearchScreen(): React.ReactElement {
 
   // Empty state with placeholder cards
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.searchContainer, { backgroundColor: colors.input }]}>
+    <SafeAreaView 
+      className="flex-1"
+      style={{ backgroundColor: colors.background }}
+    >
+      <View 
+        className="flex-row items-center mx-4 my-4 px-4 py-3"
+      >
         <MagnifyingGlass size={20} color={colors.secondary} weight="regular" />
-        <TextInput
-          style={[styles.searchInput, { color: colors.text }]}
+        <Input
+          style={{ flex: 1, marginLeft: 12 }}
+          inputStyle={{ fontSize: 16, color: colors.foreground }}
           placeholder="Search topics, categories, or users..."
-          placeholderTextColor={colors.secondary}
           value={searchQuery}
           onChangeText={handleSearch}
-          accessible
           accessibilityLabel="Search input"
-          blurOnSubmit={false}
           returnKeyType="search"
           onSubmitEditing={() => {
             const trimmed = searchQuery.trim();
             if (trimmed.length >= 3) {
-              search(trimmed);
+              const backendType = mapSearchTypeToBackendType(activeType);
+              search(trimmed, { type: backendType });
             }
           }}
         />
@@ -502,187 +610,3 @@ export default function SearchScreen(): React.ReactElement {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginVertical: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-  },
-  placeholderCard: {
-    marginBottom: 16,
-    padding: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  placeholderTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  placeholderText: {
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  hubCard: {
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  hubHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  hubIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  hubIconText: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  hubInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  hubName: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-    flexShrink: 1,
-  },
-  hubDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    flexShrink: 1,
-  },
-  popularBadge: {
-    marginLeft: 8,
-  },
-  hubStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  hubStat: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  searchResultsContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 48,
-  },
-  searchResultsText: {
-    fontSize: 16,
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  searchResultsList: {
-    paddingHorizontal: 16,
-  },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 8,
-    marginTop: 16,
-  },
-  retryText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  chipsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  searchSection: {
-    marginBottom: 24,
-  },
-  searchSectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-    marginHorizontal: 16,
-  },
-  userCard: {
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  userCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  userAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 12,
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  userUsername: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  userBio: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  userAvatarFallback: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-});

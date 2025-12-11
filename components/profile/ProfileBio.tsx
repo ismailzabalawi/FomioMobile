@@ -45,7 +45,7 @@ export function ProfileBio({ bio }: ProfileBioProps) {
         >
           <Text
             className="text-sm font-medium"
-            style={{ color: isDark ? '#3b82f6' : '#2563eb' }}
+            style={{ color: isDark ? '#26A69A' : '#009688' }}
           >
             {isExpanded ? 'Show less' : 'Show more'}
           </Text>
@@ -54,4 +54,3 @@ export function ProfileBio({ bio }: ProfileBioProps) {
     </View>
   );
 }
-

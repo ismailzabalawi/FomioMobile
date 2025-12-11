@@ -56,7 +56,7 @@ export function StatusChipsRow({
     chips.push({
       label: 'Staff',
       icon: <ShieldCheck size={12} weight="fill" />,
-      color: isDark ? '#3b82f6' : '#2563eb',
+      color: isDark ? '#26A69A' : '#009688',
     });
   }
 
@@ -88,4 +88,3 @@ export function StatusChipsRow({
     </View>
   );
 }
-

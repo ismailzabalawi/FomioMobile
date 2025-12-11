@@ -18,7 +18,7 @@ export const COLORS = {
     mutedForeground: '#64748b',
     
     // Accent colors
-    accent: '#3b82f6',
+    accent: '#009688',
     accentForeground: '#ffffff',
     
     // Destructive colors
@@ -28,12 +28,12 @@ export const COLORS = {
     // Border and input colors
     border: '#e2e8f0',
     input: '#e2e8f0',
-    ring: '#3b82f6',
+    ring: '#009688',
     
     // Status colors
     success: '#22c55e',
     warning: '#f59e0b',
-    info: '#3b82f6',
+    info: '#1565C0',
     
     // Social colors
     like: '#ef4444',
@@ -54,7 +54,7 @@ export const COLORS = {
     mutedForeground: '#a1a1aa',
     
     // Accent colors
-    accent: '#60a5fa',
+    accent: '#26A69A',
     accentForeground: '#18181b',
     
     // Destructive colors
@@ -64,12 +64,12 @@ export const COLORS = {
     // Border and input colors
     border: '#3f3f46',
     input: '#3f3f46',
-    ring: '#60a5fa',
+    ring: '#26A69A',
     
     // Status colors
     success: '#4ade80',
     warning: '#fbbf24',
-    info: '#60a5fa',
+    info: '#42A5F5',
     
     // Social colors
     like: '#f87171',
@@ -90,7 +90,7 @@ export const COLORS = {
     mutedForeground: '#a1a1aa',
     
     // Accent colors
-    accent: '#60a5fa',
+    accent: '#26A69A',
     accentForeground: '#18181b',
     
     // Destructive colors
@@ -100,12 +100,12 @@ export const COLORS = {
     // Border and input colors
     border: '#3f3f46',
     input: '#3f3f46',
-    ring: '#60a5fa',
+    ring: '#26A69A',
     
     // Status colors
     success: '#4ade80',
     warning: '#fbbf24',
-    info: '#60a5fa',
+    info: '#42A5F5',
     
     // Social colors
     like: '#f87171',

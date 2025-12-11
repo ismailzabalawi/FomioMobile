@@ -48,7 +48,7 @@ export const NewCommentInput = forwardRef<NewCommentInputRef, NewCommentInputPro
     background: isAmoled ? '#000000' : (isDark ? '#23232b' : '#f8fafc'),
     text: isDark ? '#f4f4f5' : '#17131B',
     placeholder: isDark ? '#a1a1aa' : '#5C5D67',
-    accent: isDark ? '#38bdf8' : '#0ea5e9',
+    accent: isDark ? '#26A69A' : '#009688',
     border: isDark ? '#374151' : '#e2e8f0',
     error: isDark ? '#ef4444' : '#dc2626',
   };

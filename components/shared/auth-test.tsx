@@ -38,7 +38,7 @@ export function AuthTestScreen() {
     success: isDark ? '#10b981' : '#059669',
     error: isDark ? '#ef4444' : '#dc2626',
     warning: isDark ? '#f59e0b' : '#d97706',
-    info: isDark ? '#3b82f6' : '#0ea5e9',
+    info: isDark ? '#42A5F5' : '#1565C0',
   };
 
   useEffect(() => {

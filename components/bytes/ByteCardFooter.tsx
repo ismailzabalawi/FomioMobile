@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Heart, ChatCircle, BookmarkSimple, Share } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
@@ -18,7 +18,7 @@ const MIN_TOUCH_TARGET = 44;
  * - Spacing: gap-6 between actions, mt-3 from content/media
  * - Touch targets: min 44px (accessibility)
  */
-export function ByteCardFooter({ byte }: { byte: Byte }) {
+function ByteCardFooterComponent({ byte }: { byte: Byte }) {
   const { themeMode, isAmoled } = useTheme();
   const colors = getThemeColors(themeMode, isAmoled);
   
@@ -51,74 +51,71 @@ export function ByteCardFooter({ byte }: { byte: Byte }) {
     onSharePress,
   } = useByteCardActions(byte);
 
+  const likeIcon = useMemo(() => (
+    <Heart 
+      size={20} 
+      weight={isLiked ? "fill" : "regular"} 
+      color={isLiked ? colors.like : colors.comment} 
+    />
+  ), [isLiked, colors.like, colors.comment]);
+
+  const bookmarkIcon = useMemo(() => (
+    <BookmarkSimple 
+      size={20} 
+      weight={isBookmarked ? "fill" : "regular"} 
+      color={isBookmarked ? colors.bookmark : colors.comment} 
+    />
+  ), [isBookmarked, colors.bookmark, colors.comment]);
+
+  const commentIcon = useMemo(() => (
+    <ChatCircle size={20} weight="regular" color={colors.comment} />
+  ), [colors.comment]);
+
+  const shareIcon = useMemo(() => (
+    <Share size={20} weight="regular" color={colors.comment} />
+  ), [colors.comment]);
+
   return (
-    <View className="flex-row items-center justify-between mt-3 mb-3" style={{ flexWrap: 'nowrap' }}>
-      <View className="flex-row items-center" style={{ gap: 24 }}>
+    <View
+      className="mt-4 mb-2"
+      style={{
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        paddingTop: 12,
+      }}
+    >
+      <View className="flex-row items-center justify-between">
         <FooterButton
-          icon={
-            <Heart 
-              size={20} 
-              weight={isLiked ? "fill" : "regular"} 
-              color={isLiked ? colors.like : colors.comment} 
-            />
-          }
+          icon={likeIcon}
           count={likeCount}
           onPress={toggleLike}
           label="Like"
           loading={loadingLike}
+          active={isLiked}
+          tint={colors.like}
         />
         <FooterButton
-          icon={<ChatCircle size={20} weight="regular" color={colors.comment} />}
+          icon={commentIcon}
           count={replyCount}
           onPress={onCommentPress}
           label="Comment"
+          tint={colors.comment}
         />
         <FooterButton
-          icon={
-            <BookmarkSimple 
-              size={20} 
-              weight={isBookmarked ? "fill" : "regular"} 
-              color={isBookmarked ? colors.bookmark : colors.comment} 
-            />
-          }
+          icon={bookmarkIcon}
           onPress={toggleBookmark}
           label="Bookmark"
           loading={loadingBookmark}
+          active={isBookmarked}
+          tint={colors.bookmark}
         />
         <FooterButton
-          icon={<Share size={20} weight="regular" color={colors.comment} />}
+          icon={shareIcon}
           onPress={onSharePress}
           label="Share"
+          tint={colors.comment}
         />
       </View>
-      
-      {/* Category badges in right corner: Hub (left) + Teret (right) */}
-      {(byte.hub || byte.teret) && (
-        <View className="flex-row items-center gap-2">
-          {/* Hub badge (left) */}
-          {byte.hub && byte.hub.name && (
-            <Text
-              className="px-2 py-0.5 rounded-full text-xs text-white font-medium"
-              style={{
-                backgroundColor: byte.hub.color || '#6B7280', // Default gray for hubs
-              }}
-            >
-              {byte.hub.name}
-            </Text>
-          )}
-          {/* Teret badge (right) */}
-          {byte.teret && byte.teret.name && (
-            <Text
-              className="px-2 py-0.5 rounded-full text-xs text-white font-medium"
-              style={{
-                backgroundColor: byte.teret.color || '#4A6CF7',
-              }}
-            >
-              {byte.teret.name}
-            </Text>
-          )}
-        </View>
-      )}
     </View>
   );
 }
@@ -129,31 +126,44 @@ interface FooterButtonProps {
   onPress: () => void | Promise<void>;
   label: string;
   loading?: boolean;
+  active?: boolean;
+  tint?: string;
 }
 
-function FooterButton({ icon, count, onPress, label, loading }: FooterButtonProps) {
+function FooterButton({ icon, count, onPress, label, loading, active, tint }: FooterButtonProps) {
+  const showCount = typeof count === 'number';
+  const displayCount = showCount ? count : undefined;
+  const backgroundColor = active && tint ? `${tint}1A` : undefined;
+  const rippleColor = tint ? `${tint}1A` : 'rgba(0,0,0,0.06)';
+
   return (
     <Pressable
       onPress={onPress}
       disabled={loading}
-      className="flex-row items-center gap-1 min-h-11 justify-center"
+      className="flex-1 flex-row items-center gap-1 min-h-11 justify-center px-2 rounded-full"
       style={{ 
         minHeight: MIN_TOUCH_TARGET,
         opacity: loading ? 0.6 : 1,
+        backgroundColor,
       }}
       hitSlop={8}
+      android_ripple={{ color: rippleColor, borderless: true }}
       accessible
       accessibilityRole="button"
-      accessibilityLabel={`${label}${count !== undefined && count > 0 ? `, ${count}` : ''}`}
+      accessibilityLabel={`${label}${showCount ? `, ${displayCount}` : ''}`}
       accessibilityState={{ disabled: loading }}
     >
       {icon}
-      {count !== undefined && count > 0 && (
+      {showCount && (
         <Text className="text-caption font-medium text-fomio-muted dark:text-fomio-muted-dark">
-          {count}
+          {displayCount}
         </Text>
       )}
     </Pressable>
   );
 }
 
+export const ByteCardFooter = memo(ByteCardFooterComponent, (prev, next) => {
+  return prev.byte.id === next.byte.id;
+});
+ByteCardFooter.displayName = 'ByteCardFooter';

@@ -126,7 +126,7 @@ export default function EditProfileScreen(): React.ReactElement {
     text: isDark ? '#f4f4f5' : '#1e293b',
     secondary: isDark ? '#a1a1aa' : '#64748b',
     border: isDark ? '#334155' : '#e2e8f0',
-    accent: isDark ? '#38bdf8' : '#0ea5e9',
+    accent: isDark ? '#26A69A' : '#009688',
     error: isDark ? '#ef4444' : '#dc2626',
   };
 

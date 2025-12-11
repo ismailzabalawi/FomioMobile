@@ -66,6 +66,56 @@ jest.mock('react-native-reanimated', () => {
   return Reanimated;
 });
 
+// Mock NativeEventEmitter to silence addListener/removeListeners warnings in RN 0.81+
+jest.mock('react-native/Libraries/EventEmitter/NativeEventEmitter', () => {
+  return class MockNativeEventEmitter {
+    addListener() {
+      return { remove: jest.fn() };
+    }
+    removeAllListeners() {}
+    removeSubscription() {}
+    removeListeners() {}
+  };
+});
+
+// Mock NativeStatusBarManagerIOS used by StatusBar
+jest.mock('react-native/Libraries/Components/StatusBar/NativeStatusBarManagerIOS', () => ({
+  setStyle: jest.fn(),
+  setHidden: jest.fn(),
+  setNetworkActivityIndicatorVisible: jest.fn(),
+  getConstants: jest.fn(() => ({ height: 0 })),
+}));
+
+// Mock NativeAnimatedHelper to avoid timing/apply errors during tests
+jest.mock(
+  'react-native/Libraries/Animated/NativeAnimatedHelper',
+  () => ({
+    default: {
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+    },
+  }),
+  { virtual: true }
+);
+
+// Mock internal NativeAnimatedHelper path used in RN 0.81+
+jest.mock(
+  'react-native/src/private/animated/NativeAnimatedHelper',
+  () => ({
+    default: {
+      addListener: jest.fn(),
+      removeListeners: jest.fn(),
+      enableQueue: jest.fn(),
+      disableQueue: jest.fn(),
+    },
+    API: {
+      queue: [],
+      flushQueue: jest.fn(),
+    },
+  }),
+  { virtual: true }
+);
+
 // Silence the warning: Animated: `useNativeDriver` is not supported
 // Note: This path doesn't exist in React Native 0.81+, so we skip this mock
 // jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
@@ -101,8 +151,39 @@ jest.mock('react-native/Libraries/Utilities/Appearance', () => ({
 // Mock react-native with all necessary mocks
 jest.mock('react-native', () => {
   const RN = jest.requireActual('react-native');
+  const AnimatedMock = {
+    Value: function (val) {
+      return {
+        _value: val,
+        setValue: jest.fn(),
+        interpolate: jest.fn(() => val),
+        addListener: jest.fn(),
+        removeAllListeners: jest.fn(),
+        stopAnimation: jest.fn(),
+      };
+    },
+    timing: jest.fn(() => ({ start: jest.fn(), stop: jest.fn() })),
+    parallel: jest.fn(() => ({ start: jest.fn() })),
+    stagger: jest.fn(() => ({ start: jest.fn() })),
+    View: RN.View,
+    createAnimatedComponent: (Component: any) => Component,
+  };
   return {
     ...RN,
+    Animated: AnimatedMock,
+    NativeModules: {
+      ...RN.NativeModules,
+      StatusBarManager: {
+        setStyle: jest.fn(),
+        setHidden: jest.fn(),
+        setNetworkActivityIndicatorVisible: jest.fn(),
+      },
+    },
+    StatusBarManager: {
+      setStyle: jest.fn(),
+      setHidden: jest.fn(),
+      setNetworkActivityIndicatorVisible: jest.fn(),
+    },
     Appearance: {
       getColorScheme: jest.fn(() => 'light'),
       setColorScheme: jest.fn(),
@@ -161,4 +242,3 @@ afterEach(() => {
   jest.useRealTimers();
   jest.clearAllMocks();
 });
-

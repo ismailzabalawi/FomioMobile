@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   retryButton: {
-    backgroundColor: '#0ea5e9',
+    backgroundColor: '#009688',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -138,4 +138,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

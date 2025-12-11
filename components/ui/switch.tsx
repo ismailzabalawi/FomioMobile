@@ -41,7 +41,7 @@ export function Switch({
         disabled={disabled}
         trackColor={{
           false: '#d1d5db',
-          true: '#0ea5e9',
+          true: '#009688',
         }}
         thumbColor={checked ? '#ffffff' : '#ffffff'}
         ios_backgroundColor="#d1d5db"
@@ -80,4 +80,3 @@ const styles = StyleSheet.create({
     transform: [{ scaleX: 1.2 }, { scaleY: 1.2 }],
   },
 });
-

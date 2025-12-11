@@ -113,30 +113,30 @@ export const spacing = {
 export const colors = {
   // Primary Brand Colors
   primary: {
-    50: '#eff6ff',
-    100: '#dbeafe',
-    200: '#bfdbfe',
-    300: '#93c5fd',
-    400: '#60a5fa',
-    500: '#3b82f6',
-    600: '#2563eb',
-    700: '#1d4ed8',
-    800: '#1e40af',
-    900: '#1e3a8a',
+    50: '#E0F2F1',
+    100: '#B2DFDB',
+    200: '#80CBC4',
+    300: '#4DB6AC',
+    400: '#26A69A',
+    500: '#009688',
+    600: '#00897B',
+    700: '#00796B',
+    800: '#00695C',
+    900: '#004D40',
   },
 
   // Accent Colors
   accent: {
-    50: '#ecfeff',
-    100: '#cffafe',
-    200: '#a5f3fc',
-    300: '#67e8f9',
-    400: '#22d3ee',
-    500: '#06b6d4',
-    600: '#0891b2',
-    700: '#0e7490',
-    800: '#155e75',
-    900: '#164e63',
+    50: '#E3F2FD',
+    100: '#BBDEFB',
+    200: '#90CAF9',
+    300: '#64B5F6',
+    400: '#42A5F5',
+    500: '#2196F3',
+    600: '#1E88E5',
+    700: '#1976D2',
+    800: '#1565C0',
+    900: '#0D47A1',
   },
 
   // Semantic Colors
@@ -202,9 +202,9 @@ export const lightTheme = {
   background: colors.gray[50],
   surface: '#ffffff',
   surfaceVariant: colors.gray[100],
-  primary: colors.primary[600],
+  primary: colors.primary[500],
   primaryVariant: colors.primary[700],
-  secondary: colors.accent[500],
+  secondary: colors.accent[800],
   accent: colors.accent[600],
   
   // Text Colors
@@ -215,7 +215,7 @@ export const lightTheme = {
   
   // Border Colors
   border: colors.gray[200],
-  borderFocus: colors.primary[500],
+  borderFocus: colors.primary[400],
   
   // State Colors
   success: colors.success[600],
@@ -223,9 +223,9 @@ export const lightTheme = {
   error: colors.error[500],
   
   // Interactive Colors
-  interactive: colors.primary[600],
-  interactiveHover: colors.primary[700],
-  interactivePressed: colors.primary[800],
+  interactive: colors.primary[500],
+  interactiveHover: colors.primary[600],
+  interactivePressed: colors.primary[700],
 };
 
 export const darkTheme = {
@@ -234,8 +234,8 @@ export const darkTheme = {
   surfaceVariant: colors.gray[700],
   primary: colors.primary[400],
   primaryVariant: colors.primary[300],
-  secondary: colors.accent[400],
-  accent: colors.accent[400],
+  secondary: colors.accent[300],
+  accent: colors.accent[200],
   
   // Text Colors
   text: colors.gray[50],
@@ -245,7 +245,7 @@ export const darkTheme = {
   
   // Border Colors
   border: colors.gray[600],
-  borderFocus: colors.primary[400],
+  borderFocus: colors.primary[300],
   
   // State Colors
   success: colors.success[400],
@@ -442,4 +442,3 @@ export const accessibility = {
     menu: 'Open menu',
   },
 };
-

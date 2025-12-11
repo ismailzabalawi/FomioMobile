@@ -51,12 +51,12 @@ export function ProfileActions({
         >
           <PencilSimple
             size={20}
-            color={isDark ? '#3b82f6' : '#2563eb'}
+            color={isDark ? '#26A69A' : '#009688'}
             weight="regular"
           />
           <Text
             className="text-sm font-semibold mt-1"
-            style={{ color: isDark ? '#3b82f6' : '#2563eb' }}
+            style={{ color: isDark ? '#26A69A' : '#009688' }}
           >
             Edit Profile
           </Text>
@@ -190,4 +190,3 @@ export function ProfileActions({
     </View>
   );
 }
-

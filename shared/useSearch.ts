@@ -9,10 +9,12 @@ export interface SearchState {
   hasSearched: boolean;
 }
 
+// Updated to match backend API
 export interface SearchFilters {
-  hubId?: number;
-  order?: 'relevance' | 'latest' | 'views' | 'likes';
+  type?: 'topic' | 'category' | 'user' | 'all';
+  order?: 'relevance' | 'latest' | 'views' | 'likes' | 'created' | 'updated';
   limit?: number;
+  period?: 'all' | 'yearly' | 'quarterly' | 'monthly' | 'weekly' | 'daily';
 }
 
 export function useSearch() {
@@ -26,7 +28,7 @@ export function useSearch() {
 
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const search = async (
+  const search = useCallback(async (
     query: string,
     filters: SearchFilters = {}
   ): Promise<{ success: boolean; error?: string }> => {
@@ -97,7 +99,7 @@ export function useSearch() {
         error: errorMessage
       };
     }
-  };
+  }, []);
 
   const searchWithDebounce = useCallback(
     (query: string, filters: SearchFilters = {}, delay: number = 500) => {
@@ -111,7 +113,7 @@ export function useSearch() {
         search(query, filters);
       }, delay);
     },
-    []
+    [search]
   );
 
   const clearSearch = () => {
@@ -188,8 +190,6 @@ export function useSearch() {
     error: searchState.error, // Expose error message for UI display
     quickSearch: search,
     advancedSearch: search,
-    searchType: 'all',
-    filters: {}
   };
 }
 

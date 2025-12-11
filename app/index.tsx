@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
@@ -13,11 +13,11 @@ export default function WelcomeScreen({}: WelcomeScreenProps): React.ReactElemen
   
   const colors = {
     background: isDark ? '#18181b' : '#ffffff',
-    primary: isDark ? '#38bdf8' : '#0ea5e9',
+    primary: isDark ? '#26A69A' : '#009688',
     text: isDark ? '#f4f4f5' : '#1e293b',
     secondary: isDark ? '#a1a1aa' : '#64748b',
     buttonText: isDark ? '#ffffff' : '#ffffff',
-    border: isDark ? '#334155' : '#0ea5e9',
+    border: isDark ? '#334155' : '#009688',
   };
 
   const handleGetStarted = (): void => {
@@ -59,7 +59,12 @@ export default function WelcomeScreen({}: WelcomeScreenProps): React.ReactElemen
 
         <View style={styles.content}>
           <View style={styles.hero}>
-            <Text style={[styles.heroTitle, { color: colors.text }]}>Fomio</Text>
+            <Image
+              source={require('../assets/images/favicon.png')}
+              style={styles.heroLogo}
+              resizeMode="contain"
+              accessibilityLabel="Fomio logo"
+            />
             <Text style={[styles.heroSubtitle, { color: colors.secondary }]}>
               Your social platform for sharing and connecting
             </Text>
@@ -178,10 +183,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-  heroTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
+  heroLogo: {
+    width: 96,
+    height: 96,
     marginBottom: 12,
   },
   heroSubtitle: {
@@ -234,4 +238,3 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
-

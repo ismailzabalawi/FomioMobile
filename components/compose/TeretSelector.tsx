@@ -37,6 +37,7 @@ export function TeretSelector({
 }: TeretSelectorProps) {
   const { isDark } = useTheme();
   const { height } = useWindowDimensions();
+  const brandPrimary = isDark ? '#26A69A' : '#009688';
   const [searchQuery, setSearchQuery] = useState('');
   const bottomSheetRef = useRef<BottomSheetModalRef>(null);
   const snapPoints = useMemo(() => [height * 0.5, height * 0.9], [height]);
@@ -92,7 +93,7 @@ export function TeretSelector({
         <View className="flex-row justify-between items-start">
           <View className="flex-1 mr-3">
             <View className="flex-row items-center mb-2 flex-wrap">
-              <Hash size={16} color="#2563EB" weight="fill" />
+              <Hash size={16} color={brandPrimary} weight="fill" />
               <Text className="text-body font-semibold text-fomio-foreground dark:text-fomio-foreground-dark ml-2">
                 {item.name}
               </Text>
@@ -193,7 +194,7 @@ export function TeretSelector({
         {selectedTeret ? (
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1 flex-wrap">
-              <Hash size={20} color="#2563EB" weight="fill" />
+              <Hash size={20} color={brandPrimary} weight="fill" />
               <Text className="text-body font-semibold text-fomio-foreground dark:text-fomio-foreground-dark ml-2">
                 {selectedTeret.name}
               </Text>

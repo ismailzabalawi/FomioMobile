@@ -148,12 +148,12 @@ describe('AppHeader Component', () => {
       expect(mockRouterBack).not.toHaveBeenCalled();
     });
 
-    it('should call router.back() when onBackPress is not provided', () => {
+    it('should call safeBack when onBackPress is not provided', () => {
       renderWithProvider(<AppHeader title="Router Back" canGoBack />);
       
       fireEvent.press(screen.getByTestId('app-header-back'));
       
-      expect(mockRouterBack).toHaveBeenCalledTimes(1);
+      expect(mockSafeBack).toHaveBeenCalledTimes(1);
     });
 
     it('should render leftNode when canGoBack is false', () => {
@@ -221,7 +221,7 @@ describe('AppHeader Component', () => {
     it('should render large title when largeTitle is true', () => {
       renderWithProvider(<AppHeader title="Large Title" largeTitle />);
       
-      expect(screen.getByText('Large Title')).toBeTruthy();
+      expect(screen.getAllByText('Large Title').length).toBeGreaterThan(0);
     });
 
     it('should show subtitle in large title area', () => {
@@ -233,7 +233,7 @@ describe('AppHeader Component', () => {
         />
       );
       
-      expect(screen.getByText('Large Title')).toBeTruthy();
+      expect(screen.getAllByText('Large Title').length).toBeGreaterThan(0);
       expect(screen.getByText('Subtitle')).toBeTruthy();
     });
   });
@@ -546,4 +546,3 @@ describe('AppHeader Integration Tests', () => {
     expect(screen.getByTestId('action')).toBeTruthy();
   });
 });
-

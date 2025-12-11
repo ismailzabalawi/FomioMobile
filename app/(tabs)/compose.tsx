@@ -462,7 +462,7 @@ export default function ComposeScreen(): React.ReactElement {
     return (
       <ScreenContainer variant="card">
         <View className="flex-1 justify-center items-center px-8">
-          <SignIn size={64} color={isDark ? '#3b82f6' : '#0ea5e9'} weight="regular" />
+          <SignIn size={64} color={isDark ? '#26A69A' : '#009688'} weight="regular" />
           <Text className="text-title font-semibold text-fomio-primary dark:text-fomio-primary-dark mt-6 mb-2 text-center">
             Sign in to create Bytes
           </Text>

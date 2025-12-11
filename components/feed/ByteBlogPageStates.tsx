@@ -7,7 +7,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 export function ByteBlogPageLoading({ isDark }: { isDark: boolean }) {
   return (
     <View className="flex-1 justify-center items-center bg-fomio-bg dark:bg-fomio-bg-dark">
-      <ActivityIndicator size="large" color={isDark ? '#60a5fa' : '#2563EB'} />
+      <ActivityIndicator size="large" color={isDark ? '#26A69A' : '#009688'} />
       <Text className="mt-2.5 text-base text-fomio-foreground dark:text-fomio-foreground-dark">
         Loading topic...
       </Text>
@@ -54,4 +54,3 @@ export function ByteBlogPageNotFound({ isDark }: { isDark: boolean }) {
     </View>
   );
 }
-

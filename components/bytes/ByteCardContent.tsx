@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { MarkdownContent } from '../feed/MarkdownContent';
 import { CaretDown, CaretUp } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { Byte } from '@/types/byte';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
@@ -34,35 +35,67 @@ export function ByteCardContent({ byte, isPreview = true }: { byte: Byte; isPrev
     setIsExpanded(!isExpanded);
   };
 
+  const showFade = shouldTruncate && !isExpanded;
+
   return (
     <View className="mt-2">
-      <MarkdownContent content={displayContent} />
-      {shouldTruncate && (
+      <View style={{ position: 'relative', paddingBottom: showFade ? 36 : 0 }}>
+        <MarkdownContent content={displayContent} />
+
+        {showFade && (
+          <>
+            <LinearGradient
+              pointerEvents="none"
+              colors={['transparent', colors.card]}
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 32,
+                height: 72,
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: colors.card,
+                paddingTop: 8,
+              }}
+            >
+              <TouchableOpacity
+                onPress={handleToggleExpand}
+                className="flex-row items-center"
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={isExpanded ? 'Read less' : 'Read more'}
+              >
+                <Text className="text-sm font-medium" style={{ color: colors.accent }}>
+                  Read more
+                </Text>
+                <CaretDown size={16} color={colors.accent} weight="regular" style={{ marginLeft: 4 }} />
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
+
+      {shouldTruncate && isExpanded && (
         <TouchableOpacity
           onPress={handleToggleExpand}
           className="flex-row items-center mt-2"
           accessible
           accessibilityRole="button"
-          accessibilityLabel={isExpanded ? 'Read less' : 'Read more'}
+          accessibilityLabel="Read less"
         >
-          {isExpanded ? (
-            <>
-              <Text className="text-sm font-medium" style={{ color: colors.accent }}>
-                Read less
-              </Text>
-              <CaretUp size={16} color={colors.accent} weight="regular" style={{ marginLeft: 4 }} />
-            </>
-          ) : (
-            <>
-              <Text className="text-sm font-medium" style={{ color: colors.accent }}>
-                Read more
-              </Text>
-              <CaretDown size={16} color={colors.accent} weight="regular" style={{ marginLeft: 4 }} />
-            </>
-          )}
+          <Text className="text-sm font-medium" style={{ color: colors.accent }}>
+            Read less
+          </Text>
+          <CaretUp size={16} color={colors.accent} weight="regular" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       )}
     </View>
   );
 }
-
