@@ -36,14 +36,21 @@ export {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
+// Context to signal when navigation is ready
+const NavigationReadyContext = React.createContext<{
+  markNavigationReady: () => void;
+}>({
+  markNavigationReady: () => {},
+});
+
 /**
- * Component that coordinates font loading and auth initialization
- * Only hides splash screen when both are ready to prevent jumpy initial load
+ * Component that coordinates font loading, auth initialization, and navigation readiness
+ * Only hides splash screen when all are ready to prevent jumpy initial load
  */
 function InitializationCoordinator({ children }: { children: React.ReactNode }) {
   const { isLoading: isAuthLoading } = useAuth();
   const [fontsReady, setFontsReady] = useState(false);
-  const [isReady, setIsReady] = useState(false);
+  const [navigationReady, setNavigationReady] = useState(false);
   const hideSplashCalled = useRef(false);
 
   // Wait for fonts to load
@@ -55,30 +62,32 @@ function InitializationCoordinator({ children }: { children: React.ReactNode }) 
     return () => clearTimeout(timer);
   }, []);
 
-  // Coordinate hiding splash screen when both fonts and auth are ready
+  // Coordinate hiding splash screen when fonts, auth, and navigation are ready
   useEffect(() => {
-    if (fontsReady && !isAuthLoading && !hideSplashCalled.current) {
+    if (fontsReady && !isAuthLoading && navigationReady && !hideSplashCalled.current) {
       hideSplashCalled.current = true;
-      // Add a small delay to ensure smooth transition
+      // Add a delay to ensure smooth transition and all screens are painted
       const hideTimer = setTimeout(async () => {
         try {
           await SplashScreen.hideAsync();
-          setIsReady(true);
         } catch (splashError) {
           console.warn('Failed to hide splash screen:', splashError);
-          setIsReady(true); // Continue even if hiding fails
         }
-      }, 150);
+      }, 250); // Delay to ensure all screens are loaded and painted
       return () => clearTimeout(hideTimer);
     }
-  }, [fontsReady, isAuthLoading]);
+  }, [fontsReady, isAuthLoading, navigationReady]);
 
-  // Don't render children until initialization is complete
-  if (!isReady) {
-    return null;
-  }
+  const markNavigationReady = React.useCallback(() => {
+    setNavigationReady(true);
+  }, []);
 
-  return <>{children}</>;
+  // Render children immediately so navigation can initialize
+  return (
+    <NavigationReadyContext.Provider value={{ markNavigationReady }}>
+      {children}
+    </NavigationReadyContext.Provider>
+  );
 }
 
 export default function RootLayout(): React.ReactElement | null {
@@ -368,6 +377,20 @@ function RootLayoutNav(): React.ReactElement {
 
 function RootLayoutContent({ insets }: { insets: { top: number } }): React.ReactElement {
   const { header } = useHeader();
+  const { markNavigationReady } = React.useContext(NavigationReadyContext);
+  const navigationReadyCalled = useRef(false);
+
+  // Signal that navigation is ready after first render
+  useEffect(() => {
+    if (!navigationReadyCalled.current) {
+      navigationReadyCalled.current = true;
+      // Small delay to ensure navigation stack is fully initialized
+      const timer = setTimeout(() => {
+        markNavigationReady();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [markNavigationReady]);
 
   // Use measured header height, fallback to calculated default
   const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 40 : 44;

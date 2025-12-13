@@ -1,7 +1,7 @@
 // MyProfile Screen - Twitter/X-style tabbed layout
 // Uses ProfileTabView for consistent experience
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -19,12 +19,15 @@ import { useAuth } from '@/shared/auth-context';
 import { ProfileTabView, ProfileMessageCard } from '@/components/profile';
 import { ProfileSkeleton } from '@/components/profile/ProfileSkeleton';
 import { getThemeColors } from '@/shared/theme-constants';
+import { useFluidNav } from '@/shared/navigation/fluidNavContext';
 
 export default function ProfileScreen(): React.ReactElement {
   const { themeMode, isDark } = useTheme();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { user, loading: userLoading, error: userError, refreshUser } =
     useDiscourseUser();
+  const { scrollY, setUpHandler } = useFluidNav();
+  const containerRef = useRef<any>(null);
 
   const { setHeader, resetHeader, setActions } = useHeader();
 
@@ -93,6 +96,21 @@ export default function ProfileScreen(): React.ReactElement {
       };
     }, [setHeader, resetHeader, setActions, settingsButton])
   );
+
+  // Fluid nav: Scroll-to-top handler
+  const handleScrollToTop = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    if (containerRef.current) {
+      // Scroll to top of the collapsible tab view
+      containerRef.current.scrollTo({ y: 0, animated: true });
+    }
+  }, []);
+
+  // Share scroll position with fluid nav and keep scroll-to-top handler accessible
+  useEffect(() => {
+    setUpHandler(() => handleScrollToTop);
+    return () => setUpHandler(null);
+  }, [handleScrollToTop, setUpHandler]);
 
   // Unified safe area edges for all states to prevent background jumps
   const safeAreaEdges = ['top', 'bottom', 'left', 'right'] as const;
@@ -177,6 +195,8 @@ export default function ProfileScreen(): React.ReactElement {
         user={user}
         isOwnProfile={true}
         isAuthenticated={isAuthenticated}
+        containerRef={containerRef}
+        scrollY={scrollY}
       />
     </SafeAreaView>
   );

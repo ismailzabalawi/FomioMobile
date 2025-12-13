@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -25,9 +25,11 @@ import { searchResultToByte } from '@/shared/adapters/searchResultToByte';
 import { useSearch } from '../../shared/useSearch';
 import { router } from 'expo-router';
 import { goToProfile } from '@/shared/navigation/profile';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { getThemeColors } from '@/shared/theme-constants';
 import { Input } from '@/components/ui/input';
+import { useFluidNav } from '@/shared/navigation/fluidNavContext';
+import * as Haptics from 'expo-haptics';
 
 // UI Spec: SearchScreen
 // - Uses semantic theme tokens from getThemeColors
@@ -184,7 +186,9 @@ function SearchResults({
   hasError, 
   onRetry, 
   searchQuery,
-  errorMessage 
+  errorMessage,
+  scrollHandler,
+  onRef
 }: {
   results: {
     bytes: any[];
@@ -198,6 +202,8 @@ function SearchResults({
   onRetry: () => void;
   searchQuery: string;
   errorMessage?: string;
+  scrollHandler?: any;
+  onRef?: (ref: Animated.FlatList<any> | null) => void;
 }) {
   const { themeMode, isAmoled } = useTheme();
   const colors = getThemeColors(themeMode, isAmoled);
@@ -378,12 +384,15 @@ function SearchResults({
   };
 
   return (
-    <FlatList
+    <Animated.FlatList
+      ref={onRef}
       data={listData}
       renderItem={renderItem}
       keyExtractor={(item) => item.id}
       contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
       showsVerticalScrollIndicator={false}
+      onScroll={scrollHandler}
+      scrollEventThrottle={16}
       ListHeaderComponent={
         normalizedResults.totalResults > 0 ? (
           <View className="mb-4">
@@ -424,7 +433,7 @@ function EmptyStateCards() {
   ];
 
   return (
-    <ScrollView 
+    <Animated.ScrollView 
       className="flex-1"
       contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
       showsVerticalScrollIndicator={false}
@@ -454,7 +463,7 @@ function EmptyStateCards() {
           </Animated.View>
         );
       })}
-    </ScrollView>
+    </Animated.ScrollView>
   );
 }
 
@@ -462,6 +471,8 @@ export default function SearchScreen(): React.ReactElement {
   const { themeMode, isAmoled } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeType, setActiveType] = useState<SearchType>('all');
+  const { scrollY, setUpHandler } = useFluidNav();
+  const flatListRef = useRef<Animated.FlatList<any>>(null);
   
   const { 
     search, 
@@ -518,6 +529,25 @@ export default function SearchScreen(): React.ReactElement {
     }
   }, [searchQuery, search]);
 
+  // Fluid nav: Scroll-to-top handler
+  const handleScrollToTop = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
+
+  // Share scroll position with fluid nav and keep scroll-to-top handler accessible
+  useEffect(() => {
+    setUpHandler(() => handleScrollToTop);
+    return () => setUpHandler(null);
+  }, [handleScrollToTop, setUpHandler]);
+
+  // Animated scroll handler for fluid nav
+  const animatedScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
   // Show search results if there's a query
   if (searchQuery.trim()) {
     return (
@@ -573,6 +603,8 @@ export default function SearchScreen(): React.ReactElement {
           onRetry={retrySearch}
           searchQuery={searchQuery}
           errorMessage={searchError || undefined}
+          scrollHandler={animatedScrollHandler}
+          onRef={(ref) => { flatListRef.current = ref; }}
         />
       </SafeAreaView>
     );

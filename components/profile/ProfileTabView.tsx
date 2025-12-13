@@ -6,10 +6,11 @@
 // - Pull-to-refresh support
 // - Lazy loading tabs
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect } from 'react';
 import { View, Platform, useWindowDimensions } from 'react-native';
 import { Tabs } from 'react-native-collapsible-tab-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAnimatedScrollHandler } from 'react-native-reanimated';
 import { 
   List, 
   Article, 
@@ -44,6 +45,8 @@ export interface ProfileTabViewProps {
   onReport?: () => void;
   onBlock?: () => void;
   votingEnabled?: boolean;
+  containerRef?: React.RefObject<any>;
+  scrollY?: any;
 }
 
 const ALL_TABS: TabItem[] = [
@@ -90,6 +93,8 @@ export function ProfileTabView({
   onReport,
   onBlock,
   votingEnabled = false,
+  containerRef,
+  scrollY,
 }: ProfileTabViewProps) {
   const { isDark, isAmoled } = useTheme();
   const insets = useSafeAreaInsets();
@@ -117,6 +122,34 @@ export function ProfileTabView({
   );
 
   const tabNames = useMemo(() => visibleTabs.map(tab => tab.key), [visibleTabs]);
+
+  // Attach scroll listener to container ref for fluid nav
+  useEffect(() => {
+    if (!containerRef?.current || !scrollY) return;
+
+    // react-native-collapsible-tab-view exposes scroll handlers differently
+    // We'll track scroll via the container's internal scroll view if accessible
+    // For now, we'll use a workaround by attaching to the animated scroll view if available
+    const container = containerRef.current;
+    
+    // Try to access the internal scroll view and attach listener
+    // Note: This is a workaround - the library may not expose this directly
+    // Alternative: Pass scroll handlers to individual tab screens
+    if (container && 'scrollViewRef' in container && container.scrollViewRef?.current) {
+      const scrollView = container.scrollViewRef.current;
+      const listener = (event: any) => {
+        if (scrollY && event?.nativeEvent?.contentOffset) {
+          scrollY.value = event.nativeEvent.contentOffset.y;
+        }
+      };
+      const scrollViewId = scrollView.addListener?.('scroll', listener);
+      return () => {
+        if (scrollViewId) {
+          scrollView.removeListener?.('scroll', scrollViewId);
+        }
+      };
+    }
+  }, [containerRef, scrollY]);
 
   const renderHeader = useCallback(() => {
     if (!user) return null;
@@ -202,6 +235,7 @@ export function ProfileTabView({
       }}
     >
       <Tabs.Container
+        ref={containerRef}
         renderHeader={renderHeader}
         headerHeight={400}
         renderTabBar={renderTabBar}

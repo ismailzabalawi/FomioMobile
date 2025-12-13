@@ -53,6 +53,10 @@ import {
 import { Skeleton } from '@/components/shared/loading';
 import { cn } from '@/lib/utils/cn';
 import { getThemeColors } from '@/shared/theme-constants';
+import Animated, { useAnimatedScrollHandler } from 'react-native-reanimated';
+import { useFluidNav } from '@/shared/navigation/fluidNavContext';
+
+const AnimatedSectionList = Animated.createAnimatedComponent(SectionList) as any;
 
 // Notification type filter
 type TypeFilter = 'all' | 'replies' | 'mentions' | 'system';
@@ -370,6 +374,8 @@ export default function NotificationsScreen(): React.ReactElement {
   const [refreshing, setRefreshing] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const { preferences } = useNotificationPreferences();
+  const { scrollY, setUpHandler } = useFluidNav();
+  const sectionListRef = useRef<any>(null);
 
   // Memoize theme colors - dark mode always uses AMOLED
   const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
@@ -527,6 +533,25 @@ export default function NotificationsScreen(): React.ReactElement {
       console.error('Failed to mark notification as read:', error);
     }
   }, [markAsRead]);
+
+  // Fluid nav: Scroll-to-top handler
+  const handleScrollToTop = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    sectionListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
+  }, []);
+
+  // Share scroll position with fluid nav and keep scroll-to-top handler accessible
+  useEffect(() => {
+    setUpHandler(() => handleScrollToTop);
+    return () => setUpHandler(null);
+  }, [handleScrollToTop, setUpHandler]);
+
+  // Animated scroll handler for fluid nav
+  const animatedScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
 
   // Render filter chip
   const renderFilterChip = useCallback((
@@ -687,13 +712,16 @@ export default function NotificationsScreen(): React.ReactElement {
           type={typeFilter === 'all' ? 'empty' : 'filtered'}
         />
       ) : (
-        <SectionList
+        <AnimatedSectionList
+          ref={sectionListRef}
           sections={processedNotifications}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={{ paddingBottom: 32 }}
           showsVerticalScrollIndicator={false}
+          onScroll={animatedScrollHandler}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

@@ -63,7 +63,7 @@ export default function OnboardingScreen() {
     </TouchableOpacity>
   ), [handleSkip, colors.secondary]);
 
-  // Configure header
+  // Configure header - only pass stable values in deps, not React elements
   useScreenHeader({
     title: "",
     canGoBack: false,
@@ -71,7 +71,7 @@ export default function OnboardingScreen() {
     withSafeTop: false,
     tone: "bg",
     compact: true,
-  }, [isDark, skipButton]);
+  }, [isDark]); // ✅ FIXED: Removed skipButton from deps - React elements should not be in dependency arrays
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>

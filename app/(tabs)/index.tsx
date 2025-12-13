@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent, Image } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, Image, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
@@ -12,19 +12,21 @@ import { getSession } from '../../lib/discourse';
 import { FeedFilterChips } from '@/components/feed/FeedFilterChips';
 import { useHubs } from '@/shared/useHubs';
 import { ByteCardSkeleton } from '@/components/bytes/ByteCardSkeleton';
-import { ArrowClockwise, Newspaper, Bell, ArrowUp, SlidersHorizontal } from 'phosphor-react-native';
+import { ArrowClockwise, Newspaper, Bell, SlidersHorizontal } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
+import Animated, { useAnimatedScrollHandler } from 'react-native-reanimated';
+import { useFluidNav } from '@/shared/navigation/fluidNavContext';
 
 export default function HomeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const { hubs } = useHubs();
+  const { scrollY, setUpHandler } = useFluidNav();
   
   const [selectedSort, setSelectedSort] = useState<'latest' | 'hot' | 'unread'>('latest');
   const [selectedHubId, setSelectedHubId] = useState<number | undefined>(undefined);
-  const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [filtersVisible, setFiltersVisible] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<Animated.FlatList<FeedItem>>(null);
 
   const colors = useMemo(() => ({
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -159,15 +161,22 @@ export default function HomeScreen(): React.ReactElement {
     retry();
   }, [retry]);
 
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-    setShowScrollToTop(offsetY > 500);
-  }, []);
-
   const handleScrollToTop = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
+  
+  // Share scroll position with fluid nav and keep scroll-to-top handler accessible
+  useEffect(() => {
+    setUpHandler(() => handleScrollToTop);
+    return () => setUpHandler(null);
+  }, [handleScrollToTop, setUpHandler]);
+
+  const animatedScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
 
   const renderError = () => {
     if (!hasError) return null;
@@ -287,7 +296,7 @@ export default function HomeScreen(): React.ReactElement {
             isAuthenticated={isAuthenticated}
           />
         )}
-        <FlatList
+        <Animated.FlatList
           data={Array(5).fill(null)}
           renderItem={() => <ByteCardSkeleton />}
           keyExtractor={(_, index) => `skeleton-${index}`}
@@ -311,7 +320,7 @@ export default function HomeScreen(): React.ReactElement {
         />
       )}
       {renderErrorBanner()}
-      <FlatList
+      <Animated.FlatList
         ref={flatListRef}
         data={items}
         renderItem={renderFeedItem}
@@ -326,7 +335,7 @@ export default function HomeScreen(): React.ReactElement {
             colors={[colors.text]}
           />
         }
-        onScroll={handleScroll}
+        onScroll={animatedScrollHandler}
         scrollEventThrottle={16}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
@@ -338,17 +347,6 @@ export default function HomeScreen(): React.ReactElement {
         ListFooterComponent={renderFooter}
         ListEmptyComponent={hasError ? renderError : renderEmptyState}
       />
-      {showScrollToTop && (
-        <TouchableOpacity
-          style={[styles.scrollToTopButton, { backgroundColor: colors.primary }]}
-          onPress={handleScrollToTop}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Scroll to top"
-        >
-          <ArrowUp size={20} color="#ffffff" weight="regular" />
-        </TouchableOpacity>
-      )}
     </SafeAreaView>
   );
 }
@@ -447,20 +445,5 @@ const styles = StyleSheet.create({
   emptyButtonText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  scrollToTopButton: {
-    position: 'absolute',
-    bottom: 80,
-    right: 16,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
   },
 }); 
