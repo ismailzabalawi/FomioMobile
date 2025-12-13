@@ -3,7 +3,7 @@ import { Tabs, router } from 'expo-router';
 import { House, MagnifyingGlass, Plus, Bell, User, ArrowUp, CheckCircle, PencilSimple } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
-import { View, StyleSheet, Pressable, Text } from 'react-native';
+import { View, StyleSheet, Pressable, Text, Platform } from 'react-native';
 import { useNotifications } from '../../shared/useNotifications';
 import { useNotificationPreferences } from '../../shared/useNotificationPreferences';
 import { filterNotificationsByPreferences } from '../../lib/utils/notifications';
@@ -14,6 +14,7 @@ import { BlurView } from 'expo-blur';
 import Animated, { useSharedValue, useDerivedValue, useAnimatedStyle, withSpring, useAnimatedProps, interpolate, Extrapolate } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { FluidNavProvider, useFluidNav } from '@/shared/navigation/fluidNavContext';
+import { getTokens } from '@/shared/design/tokens';
 
 // ============================================================================
 // SCREEN TYPES FOR CONTEXT-AWARE NAVIGATION
@@ -257,6 +258,119 @@ function TabIcon({ isFocused, children }: { isFocused: boolean; children: React.
   return <Animated.View style={animatedStyle}>{children}</Animated.View>;
 }
 
+// FluidTabItem - Tab item with optional fluid ripple animation (for search tab)
+function FluidTabItem({
+  routeName,
+  routeKey,
+  isFocused,
+  activeColor,
+  inactiveColor,
+  accessibilityLabel,
+  onPress,
+  renderIcon,
+  showBadge,
+  badgeCount,
+  isDark,
+}: {
+  routeName: string;
+  routeKey: string;
+  isFocused: boolean;
+  activeColor: string;
+  inactiveColor: string;
+  accessibilityLabel?: string;
+  onPress: () => void;
+  renderIcon?: (props: { focused: boolean; color: string; size: number }) => React.ReactNode;
+  showBadge?: boolean;
+  badgeCount?: number;
+  isDark: boolean;
+}) {
+  const isSearchTab = routeName === 'search';
+  const tokens = useMemo(() => getTokens(isDark ? 'dark' : 'light'), [isDark]);
+  
+  // Shared values for search tab ripple animation
+  const searchPressProgress = useSharedValue(0);
+  const searchRippleScale = useSharedValue(0);
+
+  const handlePressIn = () => {
+    if (isSearchTab) {
+      searchPressProgress.value = withSpring(1, tokens.motion.liquidSpring);
+      searchRippleScale.value = withSpring(1.5, tokens.motion.snapSpring);
+    }
+  };
+
+  const handlePressOut = () => {
+    if (isSearchTab) {
+      searchPressProgress.value = withSpring(0, tokens.motion.liquidSpring);
+      searchRippleScale.value = withSpring(0, tokens.motion.liquidSpring);
+    }
+  };
+
+  // Animated ripple style for search tab
+  const searchRippleStyle = useAnimatedStyle(() => {
+    if (!isSearchTab) return { opacity: 0 };
+    
+    const opacity = interpolate(
+      searchPressProgress.value,
+      [0, 0.3, 0.7, 1],
+      [0, 0.25, 0.15, 0],
+      Extrapolate.CLAMP
+    );
+    
+    return {
+      opacity,
+      transform: [{ scale: searchRippleScale.value }],
+    };
+  }, [isSearchTab]);
+
+  const color = isFocused ? activeColor : inactiveColor;
+
+  return (
+    <Pressable
+      key={routeKey}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={isFocused ? { selected: true } : {}}
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={styles.tabPressable}
+      hitSlop={12}
+    >
+      <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Fluid ripple effect for search tab */}
+        {isSearchTab && (
+          <Animated.View
+            style={[
+              {
+                position: 'absolute',
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: activeColor,
+              },
+              searchRippleStyle,
+            ]}
+          />
+        )}
+        <TabIcon isFocused={isFocused}>
+          {renderIcon?.({
+            focused: isFocused,
+            color,
+            size: 26,
+          })}
+        </TabIcon>
+      </View>
+      {showBadge && badgeCount !== undefined && badgeCount > 0 && (
+        <View style={styles.badgeContainer}>
+          <Text style={styles.badgeText}>
+            {badgeCount > 99 ? '99+' : badgeCount}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
 function CustomTabBar({
   state,
   descriptors,
@@ -291,7 +405,16 @@ function CustomTabBar({
   const { isDark, isAmoled } = useTheme();
   const { scrollY, triggerUp } = useFluidNav();
   const colors = useTabBarColors(isDark, isAmoled);
-  const surfaceBg = isDark ? 'rgba(17,24,39,0.35)' : 'rgba(255,255,255,0.55)';
+  // Platform-specific background: Android needs higher opacity since blur is weaker
+  const surfaceBg = useMemo(() => {
+    if (isDark) {
+      // Dark mode: white frosted for iOS, slightly more opaque for Android
+      return Platform.OS === 'android' ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.35)';
+    } else {
+      // Light mode: dark tinted for iOS, slightly more opaque for Android  
+      return Platform.OS === 'android' ? 'rgba(0,0,0,0.20)' : 'rgba(255,255,255,0.55)';
+    }
+  }, [isDark]);
   const gooFill = surfaceBg;
 
   const containerWidth = useSharedValue(0);
@@ -723,7 +846,10 @@ function CustomTabBar({
         ]}
       >
         <BlurView
-          intensity={isAmoled ? 36 : isDark ? 48 : 64}
+          intensity={Platform.OS === 'android' 
+            ? (isAmoled ? 60 : isDark ? 75 : 80)  // Higher on Android
+            : (isAmoled ? 36 : isDark ? 48 : 64)  // Original on iOS
+          }
           tint={isAmoled || isDark ? 'dark' : 'light'}
           style={styles.dropBlur}
         >
@@ -757,7 +883,10 @@ function CustomTabBar({
         ]}
       >
         <BlurView
-          intensity={isAmoled ? 36 : isDark ? 48 : 64}
+          intensity={Platform.OS === 'android' 
+            ? (isAmoled ? 60 : isDark ? 75 : 80)  // Higher on Android
+            : (isAmoled ? 36 : isDark ? 48 : 64)  // Original on iOS
+          }
           tint={isAmoled || isDark ? 'dark' : 'light'}
           style={styles.mainBarBlur}
         >
@@ -776,7 +905,7 @@ function CustomTabBar({
               ]}
             />
 
-            {/* Tab icons */}
+            {/* Tab icons with fluid animations */}
             {visibleRoutes.map((route: any) => {
               const activeKey = state.routes[state.index]?.key;
               const isFocused = activeKey === route.key;
@@ -797,33 +926,21 @@ function CustomTabBar({
                 }
               };
 
-              const color = isFocused ? colors.active : colors.inactive;
-
               return (
-                <Pressable
+                <FluidTabItem
                   key={route.key}
-                  accessibilityRole="button"
+                  routeName={route.name}
+                  routeKey={route.key}
+                  isFocused={isFocused}
+                  activeColor={colors.active}
+                  inactiveColor={colors.inactive}
                   accessibilityLabel={options.tabBarAccessibilityLabel}
-                  accessibilityState={isFocused ? { selected: true } : {}}
                   onPress={onPress}
-                  style={styles.tabPressable}
-                  hitSlop={12}
-                >
-                  <TabIcon isFocused={isFocused}>
-                    {renderIcon?.({
-                      focused: isFocused,
-                      color,
-                      size: 26,
-                    })}
-                  </TabIcon>
-                  {route.name === 'notifications' && unreadCount > 0 && (
-                    <View style={styles.badgeContainer}>
-                      <Text style={styles.badgeText}>
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </Text>
-                    </View>
-                  )}
-                </Pressable>
+                  renderIcon={renderIcon}
+                  showBadge={route.name === 'notifications'}
+                  badgeCount={unreadCount}
+                  isDark={isDark}
+                />
               );
             })}
           </View>
@@ -850,7 +967,10 @@ function CustomTabBar({
           ]}
         >
           <BlurView
-            intensity={isAmoled ? 36 : isDark ? 48 : 64}
+            intensity={Platform.OS === 'android' 
+              ? (isAmoled ? 60 : isDark ? 75 : 80)  // Higher on Android
+              : (isAmoled ? 36 : isDark ? 48 : 64)  // Original on iOS
+            }
             tint={isAmoled || isDark ? 'dark' : 'light'}
             style={styles.dropBlur}
           >

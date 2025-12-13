@@ -63,11 +63,16 @@ export function ProfilePostList({
   }, []);
 
   const renderPostItem = useCallback(
-    (item: PostItem) => {
+    (item: PostItem, index?: number) => {
       const byte = postItemToByte(item);
-      // Use postId for replies (to avoid duplicate keys when multiple replies are to the same topic)
-      // Fall back to id for topics
-      const uniqueKey = item.postId || item.id;
+      // Generate truly unique key: postId (for replies) or id (for topics) + index as fallback
+      // This ensures uniqueness even if postId/id are duplicated across posts and replies
+      // Note: For FlatList, keyExtractor handles keys, so index is only needed for renderAsList
+      const uniqueKey = item.postId 
+        ? `post-${item.postId}` 
+        : index !== undefined 
+          ? `topic-${item.id}-${index}` 
+          : `topic-${item.id}`;
       return (
         <ByteCard
           key={uniqueKey}
@@ -120,14 +125,15 @@ export function ProfilePostList({
   };
 
   // Render as View list for nested scroll contexts (e.g., inside Tabs.ScrollView)
+  // Note: Parent ScrollView handles scrolling, so we just render the content
   if (renderAsList) {
     if (posts.length === 0) {
       return renderEmpty();
     }
 
     return (
-      <View style={{ width: '100%', overflow: 'hidden' }}>
-        {posts.map(renderPostItem)}
+      <View style={{ width: '100%' }}>
+        {posts.map((item, index) => renderPostItem(item, index))}
         {renderFooter()}
       </View>
     );
@@ -137,7 +143,12 @@ export function ProfilePostList({
     <FlatList
       data={posts}
       renderItem={renderItem}
-      keyExtractor={(item) => (item.postId || item.id).toString()}
+      keyExtractor={(item, index) => {
+        // Generate unique key: postId for replies, id-index for topics
+        return item.postId 
+          ? `post-${item.postId}` 
+          : `topic-${item.id}-${index}`;
+      }}
       ListEmptyComponent={renderEmpty}
       ListFooterComponent={renderFooter}
       onEndReached={hasMore && !isLoading ? onLoadMore : undefined}

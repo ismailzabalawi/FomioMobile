@@ -9,6 +9,7 @@ import {
   StyleProp,
 } from 'react-native';
 import { useTheme } from '@/components/theme';
+import { getThemeColors } from '@/shared/theme-constants';
 
 export interface InputProps {
   placeholder?: string;
@@ -90,15 +91,16 @@ export const Input = React.forwardRef<TextInput, InputProps>(({
   accessibilityHint,
   accessibilityLiveRegion,
 }, ref) => {
-  const { isDark } = useTheme();
+  const { themeMode, isAmoled } = useTheme();
+  const colors = getThemeColors(themeMode, isAmoled);
 
   const isEditable = editable && !disabled;
 
   const containerStyle: StyleProp<ViewStyle> = [
     styles.container,
     {
-      backgroundColor: isDark ? '#374151' : '#ffffff',
-      borderColor: isDark ? '#4b5563' : '#d1d5db',
+      backgroundColor: colors.card,
+      borderColor: colors.border,
       opacity: disabled ? 0.6 : 1,
     },
     style,
@@ -107,7 +109,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(({
   const textInputStyle: StyleProp<TextStyle> = [
     styles.input,
     {
-      color: isDark ? '#f9fafb' : '#111827',
+      color: colors.foreground,
     },
     multiline && { height: numberOfLines * 20 + 20 },
     inputStyle,
@@ -119,7 +121,7 @@ export const Input = React.forwardRef<TextInput, InputProps>(({
         ref={ref}
         style={textInputStyle}
         placeholder={placeholder}
-        placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
+        placeholderTextColor={colors.secondary}
         value={value}
         onChangeText={onChangeText}
         secureTextEntry={secureTextEntry}
