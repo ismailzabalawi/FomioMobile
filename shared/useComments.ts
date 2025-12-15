@@ -1,5 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+/**
+ * useComments Hook - Comments data fetching with TanStack Query
+ * 
+ * Uses useQuery for comments data with caching and mutation hooks
+ * for comment operations (create, update, delete, like).
+ */
+
+import { useState, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { discourseApi, Comment } from './discourseApi';
+import { queryKeys } from './query-client';
 
 export interface CommentsState {
   comments: Comment[];
@@ -9,121 +18,165 @@ export interface CommentsState {
   isPosting: boolean;
 }
 
+/**
+ * Fetch comments for a byte/topic
+ */
+async function fetchComments(byteId: number): Promise<Comment[]> {
+  const response = await discourseApi.getComments(byteId);
+  
+  if (!response.success) {
+    throw new Error(response.error || 'Failed to load comments');
+  }
+  
+  return response.data || [];
+}
+
+/**
+ * useComments hook with TanStack Query
+ * 
+ * Provides comments data with caching, background refetching,
+ * and mutation hooks for CRUD operations.
+ */
 export function useComments(byteId: number) {
-  const [commentsState, setCommentsState] = useState<CommentsState>({
-    comments: [],
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-    isPosting: false
+  const queryClient = useQueryClient();
+  const commentsQueryKey = queryKeys.topicComments(byteId);
+
+  // Query for fetching comments
+  const {
+    data: comments = [],
+    isLoading: isQueryLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: commentsQueryKey,
+    queryFn: () => fetchComments(byteId),
+    enabled: byteId > 0,
+    staleTime: 1 * 60 * 1000, // 1 minute - comments update frequently
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnMount: 'always',
   });
 
-  useEffect(() => {
-    if (byteId) {
-      loadComments();
-    }
-  }, [byteId]);
-
-  const loadComments = async (showLoading: boolean = true) => {
-    try {
-      if (showLoading) {
-        setCommentsState(prev => ({
-          ...prev,
-          isLoading: true,
-          error: null
-        }));
-      } else {
-        setCommentsState(prev => ({
-          ...prev,
-          isRefreshing: true,
-          error: null
-        }));
+  // Create comment mutation
+  const createMutation = useMutation({
+    mutationFn: async ({ content, replyToPostNumber }: { content: string; replyToPostNumber?: number }) => {
+      const response = await discourseApi.createComment({
+        content,
+        byteId,
+        replyToPostNumber,
+      });
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Failed to create comment');
       }
+      
+      return response.data;
+    },
+    onSuccess: (newComment) => {
+      // Add the new comment to the cache
+      queryClient.setQueryData<Comment[]>(commentsQueryKey, (old) => 
+        old ? [...old, newComment] : [newComment]
+      );
+    },
+  });
 
-      const response = await discourseApi.getComments(byteId);
-
-      if (response.success && response.data) {
-        setCommentsState(prev => ({
-          ...prev,
-          comments: response.data || [],
-          isLoading: false,
-          isRefreshing: false,
-          error: null
-        }));
-      } else {
-        setCommentsState(prev => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: response.error || 'Failed to load comments'
-        }));
+  // Update comment mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ commentId, content }: { commentId: number; content: string }) => {
+      const response = await discourseApi.updateComment(commentId, content);
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Failed to update comment');
       }
-    } catch (error) {
-      console.error('Comments loading error:', error);
-      setCommentsState(prev => ({
-        ...prev,
-        isLoading: false,
-        isRefreshing: false,
-        error: error instanceof Error ? error.message : 'Network error'
-      }));
-    }
-  };
+      
+      return response.data;
+    },
+    onSuccess: (updatedComment) => {
+      // Update the comment in cache
+      queryClient.setQueryData<Comment[]>(commentsQueryKey, (old) =>
+        old?.map((comment) =>
+          comment.id === updatedComment.id ? updatedComment : comment
+        ) ?? []
+      );
+    },
+  });
 
+  // Delete comment mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (commentId: number) => {
+      const response = await discourseApi.deleteComment(commentId);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to delete comment');
+      }
+      
+      return commentId;
+    },
+    onSuccess: (deletedId) => {
+      // Remove the comment from cache
+      queryClient.setQueryData<Comment[]>(commentsQueryKey, (old) =>
+        old?.filter((comment) => comment.id !== deletedId) ?? []
+      );
+    },
+  });
+
+  // Like comment mutation with optimistic update
+  const likeMutation = useMutation({
+    mutationFn: async (commentId: number) => {
+      const response = await discourseApi.likeComment(commentId);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to like comment');
+      }
+      
+      return commentId;
+    },
+    onMutate: async (commentId) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: commentsQueryKey });
+      
+      // Snapshot previous value
+      const previousComments = queryClient.getQueryData<Comment[]>(commentsQueryKey);
+      
+      // Optimistically update
+      queryClient.setQueryData<Comment[]>(commentsQueryKey, (old) =>
+        old?.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                isLiked: !comment.isLiked,
+                likeCount: comment.isLiked ? comment.likeCount - 1 : comment.likeCount + 1,
+              }
+            : comment
+        ) ?? []
+      );
+      
+      return { previousComments };
+    },
+    onError: (_err, _commentId, context) => {
+      // Rollback on error
+      if (context?.previousComments) {
+        queryClient.setQueryData(commentsQueryKey, context.previousComments);
+      }
+    },
+  });
+
+  // Backward compatible methods
   const refreshComments = useCallback(() => {
-    loadComments(false);
-  }, [byteId]);
+    refetch();
+  }, [refetch]);
 
   const createComment = async (
     content: string,
     replyToPostNumber?: number
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      setCommentsState(prev => ({
-        ...prev,
-        isPosting: true,
-        error: null
-      }));
-
-      const response = await discourseApi.createComment({
-        content,
-        byteId,
-        replyToPostNumber
-      });
-
-      if (response.success && response.data) {
-        // Add the new comment to the list
-        setCommentsState(prev => ({
-          ...prev,
-          comments: response.data ? [...prev.comments, response.data] : prev.comments,
-          isPosting: false
-        }));
-
-        return { success: true };
-      } else {
-        setCommentsState(prev => ({
-          ...prev,
-          isPosting: false,
-          error: response.error || 'Failed to create comment'
-        }));
-
-        return {
-          success: false,
-          error: response.error || 'Failed to create comment'
-        };
-      }
+      await createMutation.mutateAsync({ content, replyToPostNumber });
+      return { success: true };
     } catch (error) {
-      console.error('Create comment error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Network error';
-      
-      setCommentsState(prev => ({
-        ...prev,
-        isPosting: false,
-        error: errorMessage
-      }));
-
       return {
         success: false,
-        error: errorMessage
+        error: error instanceof Error ? error.message : 'Failed to create comment',
       };
     }
   };
@@ -133,147 +186,76 @@ export function useComments(byteId: number) {
     content: string
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await discourseApi.updateComment(commentId, content);
-
-      if (response.success && response.data) {
-        // Update the comment in the list
-        setCommentsState(prev => ({
-          ...prev,
-          comments: prev.comments.map(comment =>
-            comment.id === commentId ? response.data! : comment
-          )
-        }));
-
-        return { success: true };
-      } else {
-        return {
-          success: false,
-          error: response.error || 'Failed to update comment'
-        };
-      }
+      await updateMutation.mutateAsync({ commentId, content });
+      return { success: true };
     } catch (error) {
-      console.error('Update comment error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error'
+        error: error instanceof Error ? error.message : 'Failed to update comment',
       };
     }
   };
 
   const deleteComment = async (commentId: number): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await discourseApi.deleteComment(commentId);
-
-      if (response.success) {
-        // Remove the comment from the list
-        setCommentsState(prev => ({
-          ...prev,
-          comments: prev.comments.filter(comment => comment.id !== commentId)
-        }));
-
-        return { success: true };
-      } else {
-        return {
-          success: false,
-          error: response.error || 'Failed to delete comment'
-        };
-      }
+      await deleteMutation.mutateAsync(commentId);
+      return { success: true };
     } catch (error) {
-      console.error('Delete comment error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error'
+        error: error instanceof Error ? error.message : 'Failed to delete comment',
       };
     }
   };
 
   const likeComment = async (commentId: number) => {
     try {
-      // Optimistically update UI
-      setCommentsState(prev => ({
-        ...prev,
-        comments: prev.comments.map(comment =>
-          comment.id === commentId
-            ? {
-                ...comment,
-                isLiked: !comment.isLiked,
-                likeCount: comment.isLiked ? comment.likeCount - 1 : comment.likeCount + 1
-              }
-            : comment
-        )
-      }));
-
-      const response = await discourseApi.likeComment(commentId);
-
-      if (!response.success) {
-        // Revert optimistic update on failure
-        setCommentsState(prev => ({
-          ...prev,
-          comments: prev.comments.map(comment =>
-            comment.id === commentId
-              ? {
-                  ...comment,
-                  isLiked: !comment.isLiked,
-                  likeCount: comment.isLiked ? comment.likeCount - 1 : comment.likeCount + 1
-                }
-              : comment
-          )
-        }));
-        console.error('Failed to like comment:', response.error);
-      }
+      await likeMutation.mutateAsync(commentId);
     } catch (error) {
       console.error('Like comment error:', error);
-      // Revert optimistic update
-      setCommentsState(prev => ({
-        ...prev,
-        comments: prev.comments.map(comment =>
-          comment.id === commentId
-            ? {
-                ...comment,
-                isLiked: !comment.isLiked,
-                likeCount: comment.isLiked ? comment.likeCount - 1 : comment.likeCount + 1
-              }
-            : comment
-        )
-      }));
     }
   };
 
   const addComment = (newComment: Comment) => {
-    setCommentsState(prev => ({
-      ...prev,
-      comments: [...prev.comments, newComment]
-    }));
-  };
-
-  const clearError = () => {
-    setCommentsState(prev => ({ ...prev, error: null }));
-  };
-
-  // Helper function to get replies to a specific comment
-  const getReplies = (commentPostNumber: number): Comment[] => {
-    return commentsState.comments.filter(
-      comment => comment.replyToPostNumber === commentPostNumber
+    queryClient.setQueryData<Comment[]>(commentsQueryKey, (old) =>
+      old ? [...old, newComment] : [newComment]
     );
   };
 
-  // Helper function to get top-level comments (not replies)
-  const getTopLevelComments = (): Comment[] => {
-    return commentsState.comments.filter(comment => !comment.replyToPostNumber);
+  const clearError = () => {
+    // Error is managed by React Query, this is a no-op for compatibility
   };
 
-  // Helper function to build threaded comment structure
+  // Helper functions for threading
+  const getReplies = (commentPostNumber: number): Comment[] => {
+    return comments.filter(
+      (comment) => comment.replyToPostNumber === commentPostNumber
+    );
+  };
+
+  const getTopLevelComments = (): Comment[] => {
+    return comments.filter((comment) => !comment.replyToPostNumber);
+  };
+
   const getThreadedComments = (): Comment[] => {
     const topLevel = getTopLevelComments();
-    
-    return topLevel.map(comment => ({
+    return topLevel.map((comment) => ({
       ...comment,
-      replies: getReplies(comment.postNumber)
+      replies: getReplies(comment.postNumber),
     }));
   };
 
+  // Compute states for backward compatibility
+  const isLoading = isQueryLoading && comments.length === 0;
+  const isRefreshing = isFetching && comments.length > 0;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
+
   return {
-    ...commentsState,
+    comments,
+    isLoading,
+    isRefreshing,
+    error: errorMessage,
+    isPosting: createMutation.isPending,
     refreshComments,
     createComment,
     updateComment,
@@ -283,11 +265,11 @@ export function useComments(byteId: number) {
     clearError,
     getReplies,
     getTopLevelComments,
-    getThreadedComments
+    getThreadedComments,
   };
 }
 
-// Hook for managing comment drafts
+// Hook for managing comment drafts (unchanged - local state only)
 export function useCommentDraft(byteId: number) {
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<{
@@ -301,17 +283,15 @@ export function useCommentDraft(byteId: number) {
 
   const setReplyTarget = (postNumber: number, username: string) => {
     setReplyTo({ postNumber, username });
-    // Optionally pre-fill draft with @username mention
     if (!draft.includes(`@${username}`)) {
-      setDraft(prev => `@${username} ${prev}`);
+      setDraft((prev) => `@${username} ${prev}`);
     }
   };
 
   const clearReply = () => {
     setReplyTo(null);
-    // Remove @username mention if it was added
     if (replyTo) {
-      setDraft(prev => prev.replace(`@${replyTo.username} `, ''));
+      setDraft((prev) => prev.replace(`@${replyTo.username} `, ''));
     }
   };
 
@@ -331,7 +311,6 @@ export function useCommentDraft(byteId: number) {
     setReplyTarget,
     clearReply,
     clearDraft,
-    isDraftEmpty
+    isDraftEmpty,
   };
 }
-

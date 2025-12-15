@@ -1,11 +1,32 @@
-import { useState, useCallback, useEffect } from 'react';
+/**
+ * useTopic Hook - Topic data fetching with TanStack Query
+ * 
+ * Uses useQuery for topic data with caching, background refetching,
+ * and stale-while-revalidate pattern.
+ */
+
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { discourseApi } from './discourseApi';
 import { logger } from './logger';
+import { queryKeys } from './query-client';
 
 export interface TopicData {
   id: number;
   title: string;
   content: string;
+  linkMetadata?: Record<
+    string,
+    {
+      title?: string;
+      description?: string;
+      image?: string;
+      favicon?: string;
+      siteName?: string;
+      publishedAt?: string;
+      type?: 'article' | 'video' | 'post' | 'generic';
+    }
+  >;
   author: {
     username: string;
     name: string;
@@ -29,10 +50,10 @@ export interface TopicData {
   slug: string;
   url: string;
   bookmarked: boolean;
-  notificationLevel: number; // 0=muted, 1=normal, 2=tracking, 3=watching, 4=watching-first-post
+  notificationLevel: number;
   lastReadPostNumber: number;
   highestPostNumber: number;
-  unreadCount: number; // Calculated: highestPostNumber - lastReadPostNumber
+  unreadCount: number;
   canEdit: boolean;
   canDelete: boolean;
   canFlag: boolean;
@@ -45,7 +66,7 @@ export interface TopicData {
     icon?: string;
   }>;
   hasMedia: boolean;
-  coverImage?: string; // First image URL from first post
+  coverImage?: string;
   posts: Array<{
     id: number;
     number: number;
@@ -70,223 +91,223 @@ export interface TopicState {
   errorMessage?: string;
 }
 
-export function useTopic(topicId: number | null) {
-  const [state, setState] = useState<TopicState>({
-    topic: null,
-    isLoading: false,
-    hasError: false,
+/**
+ * Fetch and transform topic data from API
+ */
+async function fetchTopic(topicId: number): Promise<TopicData> {
+  const topicResponse = await discourseApi.getTopic(topicId, {
+    includeRaw: true,
+    trackVisit: true,
+    includePostActions: true,
   });
 
-  const loadTopic = useCallback(async (id: number) => {
-    if (!id) return;
+  if (!topicResponse.success || !topicResponse.data) {
+    throw new Error(topicResponse.error || 'Failed to load topic');
+  }
 
+  const topic = topicResponse.data;
+  const posts = topic.post_stream?.posts || [];
+
+  // Extract category information
+  let categoryInfo = {
+    id: topic.category_id || 0,
+    name: 'Uncategorized',
+    color: '#000000',
+    slug: 'uncategorized',
+  };
+
+  if (topic.details?.category) {
+    categoryInfo = {
+      id: topic.details.category.id,
+      name: topic.details.category.name,
+      color: topic.details.category.color ? `#${topic.details.category.color}` : '#000000',
+      slug: topic.details.category.slug,
+    };
+  } else if (topic.category_id) {
     try {
-      setState(prev => ({
-        ...prev,
-        isLoading: true,
-        hasError: false,
-        errorMessage: undefined,
-      }));
-
-      // Single optimized API call with all needed data
-      const topicResponse = await discourseApi.getTopic(id, {
-        includeRaw: true,
-        trackVisit: true,
-        includePostActions: true,
-      });
-      
-      if (!topicResponse.success || !topicResponse.data) {
-        throw new Error(topicResponse.error || 'Failed to load topic');
-      }
-
-      const topic = topicResponse.data;
-
-      // Extract posts from topic.post_stream.posts (already in response)
-      const posts = topic.post_stream?.posts || [];
-
-      // Extract category information from topic.details.category (already in response)
-      let categoryInfo = {
-        id: topic.category_id || 0,
-        name: 'Uncategorized',
-        color: '#000000',
-        slug: 'uncategorized',
-      };
-      
-      if (topic.details?.category) {
-        // Category info is already in the response
+      const categoryResponse = await discourseApi.getCategory(topic.category_id);
+      if (categoryResponse.success && categoryResponse.data) {
         categoryInfo = {
-          id: topic.details.category.id,
-          name: topic.details.category.name,
-          color: topic.details.category.color ? `#${topic.details.category.color}` : '#000000',
-          slug: topic.details.category.slug,
-        };
-      } else if (topic.category_id) {
-        // Fallback: try to get category info if not in details
-        try {
-          const categoryResponse = await discourseApi.getCategory(topic.category_id);
-          if (categoryResponse.success && categoryResponse.data) {
-            categoryInfo = {
-              id: categoryResponse.data.id,
-              name: categoryResponse.data.name,
-              color: categoryResponse.data.color ? `#${categoryResponse.data.color}` : '#000000',
-              slug: categoryResponse.data.slug,
-            };
-          }
-        } catch (error) {
-          console.log('Failed to fetch category info:', error);
-        }
-      }
-
-      // Get user information from the first post (original poster)
-      const firstPost = posts[0];
-      let authorInfo = {
-        username: 'unknown',
-        name: 'Unknown User',
-        avatar: '',
-      };
-      
-      if (firstPost) {
-        authorInfo = {
-          username: firstPost.username || 'unknown',
-          name: firstPost.name || firstPost.username || 'Unknown User',
-          avatar: discourseApi.getAvatarUrl(firstPost.avatar_template || '', 120),
+          id: categoryResponse.data.id,
+          name: categoryResponse.data.name,
+          color: categoryResponse.data.color ? `#${categoryResponse.data.color}` : '#000000',
+          slug: categoryResponse.data.slug,
         };
       }
-
-      // Extract user actions from post.actions_summary for like/bookmark status
-      const extractUserAction = (post: any, actionTypeId: number): boolean => {
-        if (!post.actions_summary) return false;
-        const action = post.actions_summary.find((a: any) => a.id === actionTypeId);
-        return action?.acted === true;
-      };
-
-      // Helper function to extract first image URL from HTML
-      const extractFirstImage = (html: string): string | undefined => {
-        if (!html) return undefined;
-        const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-        return imgMatch ? imgMatch[1] : undefined;
-      };
-
-      // Extract topic-level fields
-      const bookmarked = topic.details?.bookmarked || false;
-      const notificationLevel = topic.details?.notification_level ?? 1;
-      const lastReadPostNumber = topic.details?.last_read_post_number || 0;
-      const highestPostNumber = topic.highest_post_number || topic.posts_count || 0;
-      const unreadCount = Math.max(0, highestPostNumber - lastReadPostNumber);
-
-      // Extract permission flags
-      const canEdit = topic.details?.can_edit || false;
-      const canDelete = topic.details?.can_delete || false;
-      const canFlag = topic.details?.can_flag || false;
-      const canClose = topic.details?.can_close_topic || false;
-      const canPin = topic.details?.can_pin || false;
-      const canArchive = topic.details?.can_archive_topic || false;
-
-      // Extract author badges
-      const authorBadges: Array<{ id: number; name: string; icon?: string }> = [];
-      if (firstPost?.user_badge_count > 0 && firstPost.badges) {
-        firstPost.badges.forEach((badge: any) => {
-          authorBadges.push({
-            id: badge.id,
-            name: badge.name,
-            icon: badge.icon,
-          });
-        });
-      }
-
-      // Detect media and extract cover image
-      const firstPostContent = firstPost?.cooked || '';
-      const hasMedia = /<img|<video|<iframe/i.test(firstPostContent);
-      const coverImage = extractFirstImage(firstPostContent);
-
-      // Transform topic data
-      const topicData: TopicData = {
-        id: topic.id,
-        title: topic.title,
-        content: firstPost?.cooked || '',
-        author: authorInfo,
-        category: categoryInfo,
-        tags: topic.tags || [],
-        createdAt: topic.created_at,
-        updatedAt: topic.updated_at,
-        replyCount: topic.reply_count,
-        likeCount: topic.like_count,
-        isPinned: topic.pinned,
-        isClosed: topic.closed,
-        isArchived: topic.archived,
-        views: topic.views,
-        slug: topic.slug,
-        url: `${discourseApi.getBaseUrl()}/t/${topic.slug}/${topic.id}`,
-        bookmarked,
-        notificationLevel,
-        lastReadPostNumber,
-        highestPostNumber,
-        unreadCount,
-        canEdit,
-        canDelete,
-        canFlag,
-        canClose,
-        canPin,
-        canArchive,
-        authorBadges: authorBadges.length > 0 ? authorBadges : undefined,
-        hasMedia,
-        coverImage,
-        posts: posts.map((post: any) => ({
-          id: post.id,
-          number: post.post_number,
-          content: post.cooked,
-          author: {
-            username: post.username,
-            name: post.name || post.username,
-            avatar: discourseApi.getAvatarUrl(post.avatar_template || '', 40),
-          },
-          createdAt: post.created_at,
-          updatedAt: post.updated_at,
-          likeCount: post.like_count || 0,
-          isLiked: extractUserAction(post, 2), // Action type 2 is like
-          reply_to_post_number: post.reply_to_post_number,
-        })),
-      };
-
-      setState(prev => ({
-        ...prev,
-        topic: topicData,
-        isLoading: false,
-      }));
-
     } catch (error) {
-      logger.error('Failed to load topic', error);
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        hasError: true,
-        errorMessage: error instanceof Error ? error.message : 'Failed to load topic',
-      }));
+      logger.warn('Failed to fetch category info:', error);
     }
-  }, []);
+  }
 
-  const retry = useCallback(() => {
-    if (topicId && state.hasError) {
-      loadTopic(topicId);
-    }
-  }, [topicId, state.hasError, loadTopic]);
+  // Get author info from the first post
+  const firstPost = posts[0];
+  let authorInfo = {
+    username: 'unknown',
+    name: 'Unknown User',
+    avatar: '',
+  };
 
-  // Add refetch function that always reloads (regardless of error state)
-  const refetch = useCallback(() => {
-    if (topicId) {
-      loadTopic(topicId);
-    }
-  }, [topicId, loadTopic]);
+  if (firstPost) {
+    authorInfo = {
+      username: firstPost.username || 'unknown',
+      name: firstPost.name || firstPost.username || 'Unknown User',
+      avatar: discourseApi.getAvatarUrl(firstPost.avatar_template || '', 120),
+    };
+  }
 
-  useEffect(() => {
-    if (topicId) {
-      loadTopic(topicId);
-    }
-  }, [topicId, loadTopic]);
+  // Helper functions
+  const extractUserAction = (post: any, actionTypeId: number): boolean => {
+    if (!post.actions_summary) return false;
+    const action = post.actions_summary.find((a: any) => a.id === actionTypeId);
+    return action?.acted === true;
+  };
+
+  const extractFirstImage = (html: string): string | undefined => {
+    if (!html) return undefined;
+    const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+    return imgMatch ? imgMatch[1] : undefined;
+  };
+
+  // Extract topic-level fields
+  const bookmarked = topic.details?.bookmarked || false;
+  const notificationLevel = topic.details?.notification_level ?? 1;
+  const lastReadPostNumber = topic.details?.last_read_post_number || 0;
+  const highestPostNumber = topic.highest_post_number || topic.posts_count || 0;
+  const unreadCount = Math.max(0, highestPostNumber - lastReadPostNumber);
+
+  const linkMetadata =
+    (topic as any).link_metadata ||
+    (topic as any).linkMetadata ||
+    (topic.details && (topic.details as any).link_metadata) ||
+    undefined;
+
+  // Permission flags
+  const canEdit = topic.details?.can_edit || false;
+  const canDelete = topic.details?.can_delete || false;
+  const canFlag = topic.details?.can_flag || false;
+  const canClose = topic.details?.can_close_topic || false;
+  const canPin = topic.details?.can_pin || false;
+  const canArchive = topic.details?.can_archive_topic || false;
+
+  // Author badges
+  const authorBadges: Array<{ id: number; name: string; icon?: string }> = [];
+  if (firstPost?.user_badge_count > 0 && firstPost.badges) {
+    firstPost.badges.forEach((badge: any) => {
+      authorBadges.push({
+        id: badge.id,
+        name: badge.name,
+        icon: badge.icon,
+      });
+    });
+  }
+
+  // Media detection
+  const firstPostContent = firstPost?.cooked || '';
+  const hasMedia = /<img|<video|<iframe/i.test(firstPostContent);
+  const coverImage = extractFirstImage(firstPostContent);
 
   return {
-    ...state,
+    id: topic.id,
+    title: topic.title,
+    content: firstPost?.cooked || '',
+    linkMetadata,
+    author: authorInfo,
+    category: categoryInfo,
+    tags: topic.tags || [],
+    createdAt: topic.created_at,
+    updatedAt: topic.updated_at,
+    replyCount: topic.reply_count,
+    likeCount: topic.like_count,
+    isPinned: topic.pinned,
+    isClosed: topic.closed,
+    isArchived: topic.archived,
+    views: topic.views,
+    slug: topic.slug,
+    url: `${discourseApi.getBaseUrl()}/t/${topic.slug}/${topic.id}`,
+    bookmarked,
+    notificationLevel,
+    lastReadPostNumber,
+    highestPostNumber,
+    unreadCount,
+    canEdit,
+    canDelete,
+    canFlag,
+    canClose,
+    canPin,
+    canArchive,
+    authorBadges: authorBadges.length > 0 ? authorBadges : undefined,
+    hasMedia,
+    coverImage,
+    posts: posts.map((post: any) => ({
+      id: post.id,
+      number: post.post_number,
+      content: post.cooked,
+      author: {
+        username: post.username,
+        name: post.name || post.username,
+        avatar: discourseApi.getAvatarUrl(post.avatar_template || '', 40),
+      },
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      likeCount: post.like_count || 0,
+      isLiked: extractUserAction(post, 2),
+      reply_to_post_number: post.reply_to_post_number,
+    })),
+  };
+}
+
+/**
+ * useTopic hook with TanStack Query
+ * 
+ * Provides topic data with caching, background refetching,
+ * and optimistic updates. Maintains backward compatible interface.
+ */
+export function useTopic(topicId: number | null) {
+  const queryClient = useQueryClient();
+  const topicQueryKey = topicId ? queryKeys.topic(topicId) : ['topic', null];
+
+  const {
+    data: topic,
+    isLoading: isQueryLoading,
+    isFetching,
+    error,
+    refetch: queryRefetch,
+  } = useQuery({
+    queryKey: topicQueryKey,
+    queryFn: () => fetchTopic(topicId!),
+    enabled: topicId !== null && topicId > 0,
+    staleTime: 5 * 60 * 1000, // 5 minutes - topics change less frequently
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnMount: 'always', // Always get latest when viewing
+  });
+
+  // Retry on error - invalidates and refetches
+  const retry = useCallback(() => {
+    if (topicId) {
+      queryClient.invalidateQueries({ queryKey: topicQueryKey });
+    }
+  }, [queryClient, topicQueryKey, topicId]);
+
+  // Refetch - always reloads regardless of cache state
+  const refetch = useCallback(async () => {
+    if (topicId) {
+      await queryRefetch();
+    }
+  }, [topicId, queryRefetch]);
+
+  // Compute loading state for backward compatibility
+  // isLoading is true only on initial load when there's no cached data
+  const isLoading = isQueryLoading && !topic;
+
+  // Error handling
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : undefined;
+
+  return {
+    topic: topic ?? null,
+    isLoading,
+    hasError: !!error,
+    errorMessage,
     retry,
     refetch,
   };
-} 
+}

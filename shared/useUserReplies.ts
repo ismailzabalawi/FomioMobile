@@ -1,10 +1,15 @@
-// Hook to fetch user's replies (posts that are not first post in topic)
-// Uses Discourse activity API /u/{username}/activity/replies.json endpoint
+/**
+ * useUserReplies Hook - User replies with TanStack Query
+ * 
+ * Uses useInfiniteQuery for paginated user replies.
+ */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { discourseApi } from './discourseApi';
 import { PostItem } from '@/components/profile/ProfilePostList';
 import { discourseTopicToPostItem, userActionToPostItem } from './adapters/byteToPostItem';
+import { queryKeys } from './query-client';
 
 export interface UseUserRepliesReturn {
   replies: PostItem[];
@@ -16,130 +21,116 @@ export interface UseUserRepliesReturn {
   refresh: () => Promise<void>;
 }
 
+interface RepliesPageData {
+  replies: PostItem[];
+  page: number;
+  hasMore: boolean;
+}
+
+/**
+ * Fetch user replies page from API
+ */
+async function fetchUserRepliesPage(
+  username: string,
+  page: number
+): Promise<RepliesPageData> {
+  const response = await discourseApi.getUserActivity(username, 'replies', page);
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error || 'Failed to load replies');
+  }
+
+  const responseData = response.data || {};
+  let topics: any[] = [];
+  let isUserActionsFormat = false;
+
+  // Structure 1: user_actions array (from /user_actions.json?filter=5)
+  if (responseData.user_actions && Array.isArray(responseData.user_actions)) {
+    topics = responseData.user_actions
+      .filter((action: any) => action.action_type === 5)
+      .map((action: any) => action.topic || action);
+    isUserActionsFormat = true;
+  }
+  // Structure 2: topic_list.topics (fallback)
+  else if (responseData.topic_list?.topics && Array.isArray(responseData.topic_list.topics)) {
+    topics = responseData.topic_list.topics;
+  }
+  // Structure 3: Direct topics array (fallback)
+  else if (responseData.topics && Array.isArray(responseData.topics)) {
+    topics = responseData.topics;
+  }
+
+  const replies: PostItem[] = topics
+    .map((topic: any) =>
+      isUserActionsFormat
+        ? userActionToPostItem(topic, discourseApi)
+        : discourseTopicToPostItem(topic, discourseApi)
+    )
+    .filter(Boolean);
+
+  return {
+    replies,
+    page,
+    hasMore: topics.length === 20,
+  };
+}
+
+/**
+ * useUserReplies hook with TanStack Query
+ */
 export function useUserReplies(username: string): UseUserRepliesReturn {
-  const [replies, setReplies] = useState<PostItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
-  const [hasMore, setHasMore] = useState(true);
-  const [currentPage, setCurrentPage] = useState(0);
+  const queryClient = useQueryClient();
+  const repliesQueryKey = queryKeys.userReplies(username);
 
-  const loadReplies = useCallback(
-    async (page: number = 0, append: boolean = false) => {
-      if (!username) return;
-
-      setIsLoading(true);
-      setHasError(false);
-      setErrorMessage(undefined);
-
-      try {
-        // Use Discourse activity endpoint for user replies
-        const response = await discourseApi.getUserActivity(username, 'replies', page);
-
-        if (!response.success || !response.data) {
-          throw new Error(response.error || 'Failed to load replies');
-        }
-
-        // Log response structure for debugging
-        console.log('📊 User Replies Response:', {
-          hasData: !!response.data,
-          keys: response.data ? Object.keys(response.data) : [],
-          hasUserActions: !!(response.data?.user_actions),
-          userActionsCount: response.data?.user_actions?.length || 0,
-          hasTopicList: !!(response.data?.topic_list),
-          topicListCount: response.data?.topic_list?.topics?.length || 0,
-          hasTopics: !!(response.data?.topics),
-          topicsCount: response.data?.topics?.length || 0,
-        });
-
-        // Handle multiple possible response structures from Discourse API
-        // Endpoint: /user_actions.json?username={username}&filter=5 returns user_actions format
-        const responseData = response.data || {};
-        
-        let topics: any[] = [];
-        
-        // Structure 1: user_actions array (standard format from /user_actions.json?filter=5)
-        if (responseData.user_actions && Array.isArray(responseData.user_actions)) {
-          // Extract topics from user_actions where action_type = 5 (replied)
-          // User actions have topic data embedded directly in the action object
-          topics = responseData.user_actions
-            .filter((action: any) => action.action_type === 5)
-            .map((action: any) => {
-              // User actions have topic data embedded directly
-              // If there's a nested topic, use it; otherwise use the action itself
-              return action.topic || action;
-            });
-          console.log('✅ Found replies in user_actions (filtered action_type=5):', topics.length);
-        }
-        // Structure 2: topic_list.topics (fallback)
-        else if (responseData.topic_list?.topics && Array.isArray(responseData.topic_list.topics)) {
-          topics = responseData.topic_list.topics;
-          console.log('✅ Found replies in topic_list.topics:', topics.length);
-        }
-        // Structure 3: Direct topics array (fallback)
-        else if (responseData.topics && Array.isArray(responseData.topics)) {
-          topics = responseData.topics;
-          console.log('✅ Found replies in direct topics array:', topics.length);
-        }
-        
-        console.log('💬 Extracted replies:', topics.length, {
-          structure: responseData.user_actions ? 'user_actions' : responseData.topic_list ? 'topic_list' : 'unknown',
-        });
-
-        // Transform topics to PostItem format
-        // Replies from user_actions format need userActionToPostItem adapter
-        const isUserActionsFormat = responseData.user_actions && !responseData.topic_list;
-        const mappedReplies: PostItem[] = topics.map((topic: any) => {
-          return isUserActionsFormat 
-            ? userActionToPostItem(topic, discourseApi)
-            : discourseTopicToPostItem(topic, discourseApi);
-        }).filter(Boolean);
-
-        if (append) {
-          setReplies((prev) => [...prev, ...mappedReplies]);
-        } else {
-          setReplies(mappedReplies);
-        }
-
-        // Check if there are more results
-        setHasMore(mappedReplies.length === 20);
-        setCurrentPage(page);
-      } catch (error) {
-        setHasError(true);
-        setErrorMessage(
-          error instanceof Error ? error.message : 'Failed to load replies'
-        );
-      } finally {
-        setIsLoading(false);
-      }
+  const {
+    data,
+    isLoading: isQueryLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    error,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: repliesQueryKey,
+    queryFn: async ({ pageParam = 0 }) => {
+      return fetchUserRepliesPage(username, pageParam);
     },
-    [username]
-  );
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.page + 1 : undefined;
+    },
+    initialPageParam: 0,
+    enabled: !!username,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+  });
 
+  // Flatten pages into single array
+  const replies: PostItem[] = data?.pages.flatMap((page) => page.replies) ?? [];
+
+  // Load more
   const loadMore = useCallback(async () => {
-    if (!hasMore || isLoading) return;
-    await loadReplies(currentPage + 1, true);
-  }, [hasMore, isLoading, currentPage, loadReplies]);
-
-  const refresh = useCallback(async () => {
-    setCurrentPage(0);
-    await loadReplies(0, false);
-  }, [loadReplies]);
-
-  useEffect(() => {
-    if (username) {
-      loadReplies(0, false);
+    if (hasNextPage && !isFetchingNextPage) {
+      await fetchNextPage();
     }
-  }, [username, loadReplies]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Refresh
+  const refresh = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: repliesQueryKey });
+  }, [queryClient, repliesQueryKey]);
+
+  // Compute states for backward compatibility
+  const isLoading = isQueryLoading && replies.length === 0;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : undefined;
 
   return {
     replies,
     isLoading,
-    hasError,
+    hasError: !!error,
     errorMessage,
-    hasMore,
+    hasMore: hasNextPage ?? false,
     loadMore,
     refresh,
   };
 }
-

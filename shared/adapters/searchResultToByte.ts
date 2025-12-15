@@ -62,6 +62,7 @@ export function searchResultToByte(result: SearchResultTopic): Byte {
 
   return {
     id: result.id,
+    title: result.title, // Include title for ByteCard
     author: {
       id: 0, // Search results don't have author.id
       name: result.author?.name || result.author?.username || 'Unknown User',

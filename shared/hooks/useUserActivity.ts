@@ -1,7 +1,12 @@
-// Hook to fetch user activity data using Discourse activity API
-// Generic hook that can fetch different activity types
+/**
+ * useUserActivity Hook - Generic user activity with TanStack Query
+ * 
+ * Uses useInfiniteQuery for paginated user activity data.
+ * This is a generic hook that can fetch different activity types.
+ */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { discourseApi } from '../discourseApi';
 import { PostItem } from '@/components/profile/ProfilePostList';
 import { discourseTopicToPostItem, userActionToPostItem } from '../adapters/byteToPostItem';
@@ -18,137 +23,132 @@ export interface UseUserActivityReturn {
   refresh: () => Promise<void>;
 }
 
+interface ActivityPageData {
+  items: PostItem[];
+  page: number;
+  hasMore: boolean;
+}
+
 /**
- * Generic hook for fetching user activity data
+ * Create query key for user activity
+ */
+function activityQueryKey(username: string, activityType: ActivityType) {
+  return ['user', username, 'activity', activityType] as const;
+}
+
+/**
+ * Fetch user activity page from API
+ */
+async function fetchUserActivityPage(
+  username: string,
+  activityType: ActivityType,
+  page: number
+): Promise<ActivityPageData> {
+  const response = await discourseApi.getUserActivity(username, activityType, page);
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error || 'Failed to load activity');
+  }
+
+  const responseData = response.data || {};
+  let rawItems: any[] = [];
+  let useUserActionAdapter = false;
+
+  // Structure 1: user_actions array (from /user_actions.json endpoints)
+  if (responseData.user_actions && Array.isArray(responseData.user_actions)) {
+    rawItems = responseData.user_actions;
+    useUserActionAdapter = true;
+  }
+  // Structure 2: topic_list.topics (from /topics/created-by, /topics/voted-by, etc.)
+  else if (responseData.topic_list?.topics && Array.isArray(responseData.topic_list.topics)) {
+    rawItems = responseData.topic_list.topics;
+  }
+  // Structure 3: Direct topics array (fallback)
+  else if (responseData.topics && Array.isArray(responseData.topics)) {
+    rawItems = responseData.topics;
+  }
+  // Structure 4: Solutions format (from /solution/by_user.json)
+  else if (responseData.solutions && Array.isArray(responseData.solutions)) {
+    rawItems = responseData.solutions.map((solution: any) => solution.topic || solution);
+  }
+
+  const items: PostItem[] = rawItems
+    .map((item: any) =>
+      useUserActionAdapter
+        ? userActionToPostItem(item, discourseApi)
+        : discourseTopicToPostItem(item, discourseApi)
+    )
+    .filter(Boolean);
+
+  return {
+    items,
+    page,
+    hasMore: rawItems.length === 20,
+  };
+}
+
+/**
+ * Generic hook for fetching user activity data with TanStack Query
  */
 export function useUserActivity(
   username: string | undefined,
   activityType: ActivityType
 ): UseUserActivityReturn {
-  const [items, setItems] = useState<PostItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
-  const [hasMore, setHasMore] = useState(true);
-  const [currentPage, setCurrentPage] = useState(0);
+  const queryClient = useQueryClient();
+  const queryKey = username ? activityQueryKey(username, activityType) : ['user', null, 'activity', activityType];
 
-  const loadActivity = useCallback(
-    async (page: number = 0, append: boolean = false) => {
-      if (!username) return;
-
-      setIsLoading(true);
-      setHasError(false);
-      setErrorMessage(undefined);
-
-      try {
-        const response = await discourseApi.getUserActivity(username, activityType, page);
-
-        if (!response.success || !response.data) {
-          throw new Error(response.error || 'Failed to load activity');
-        }
-
-        // Handle multiple possible response structures from Discourse API
-        // Different activity types return different formats:
-        // - user_actions.json returns: { user_actions: [...] }
-        // - /topics/created-by/{username}.json returns: { topic_list: { topics: [...] } }
-        // - /topics/voted-by/{username}.json returns: { topic_list: { topics: [...] } }
-        // - /solution/by_user.json returns: different format
-        // - /read.json returns: different format
-        const responseData = response.data || {};
-        
-        let items: any[] = [];
-        let useUserActionAdapter = false;
-        
-        // Structure 1: user_actions array (from /user_actions.json endpoints)
-        if (responseData.user_actions && Array.isArray(responseData.user_actions)) {
-          // User actions have topic data embedded directly in the action object
-          items = responseData.user_actions.map((action: any) => action);
-          useUserActionAdapter = true;
-          console.log(`✅ useUserActivity (${activityType}): Found ${items.length} user_actions`);
-        }
-        // Structure 2: topic_list.topics (from /topics/created-by, /topics/voted-by, etc.)
-        else if (responseData.topic_list?.topics && Array.isArray(responseData.topic_list.topics)) {
-          items = responseData.topic_list.topics;
-          useUserActionAdapter = false;
-          console.log(`✅ useUserActivity (${activityType}): Found ${items.length} topics in topic_list.topics`);
-        }
-        // Structure 3: Direct topics array (fallback)
-        else if (responseData.topics && Array.isArray(responseData.topics)) {
-          items = responseData.topics;
-          useUserActionAdapter = false;
-          console.log(`✅ useUserActivity (${activityType}): Found ${items.length} topics in direct array`);
-        }
-        // Structure 4: Solutions format (from /solution/by_user.json)
-        else if (responseData.solutions && Array.isArray(responseData.solutions)) {
-          items = responseData.solutions.map((solution: any) => solution.topic || solution);
-          useUserActionAdapter = false;
-          console.log(`✅ useUserActivity (${activityType}): Found ${items.length} solutions`);
-        }
-        // Structure 5: Read topics format (from /read.json)
-        else if (responseData.topic_list && responseData.topic_list.topics) {
-          items = responseData.topic_list.topics;
-          useUserActionAdapter = false;
-          console.log(`✅ useUserActivity (${activityType}): Found ${items.length} read topics`);
-        }
-        
-        console.log(`📝 useUserActivity (${activityType}): Extracted ${items.length} items`, {
-          structure: responseData.user_actions ? 'user_actions' : 
-                    responseData.topic_list ? 'topic_list' : 
-                    responseData.solutions ? 'solutions' : 'unknown',
-        });
-        
-        // Use appropriate adapter based on response structure
-        const mappedItems: PostItem[] = items.map((item: any) => {
-          return useUserActionAdapter
-            ? userActionToPostItem(item, discourseApi)
-            : discourseTopicToPostItem(item, discourseApi);
-        }).filter(Boolean);
-
-        if (append) {
-          setItems((prev) => [...prev, ...mappedItems]);
-        } else {
-          setItems(mappedItems);
-        }
-
-        // Check if there are more results (typical pagination pattern)
-        setHasMore(mappedItems.length === 20);
-        setCurrentPage(page);
-      } catch (error) {
-        setHasError(true);
-        setErrorMessage(
-          error instanceof Error ? error.message : 'Failed to load activity'
-        );
-      } finally {
-        setIsLoading(false);
+  const {
+    data,
+    isLoading: isQueryLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    error,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey,
+    queryFn: async ({ pageParam = 0 }) => {
+      if (!username) {
+        return { items: [], page: 0, hasMore: false };
       }
+      return fetchUserActivityPage(username, activityType, pageParam);
     },
-    [username, activityType]
-  );
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.page + 1 : undefined;
+    },
+    initialPageParam: 0,
+    enabled: !!username,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+  });
 
+  // Flatten pages into single array
+  const items: PostItem[] = data?.pages.flatMap((page) => page.items) ?? [];
+
+  // Load more
   const loadMore = useCallback(async () => {
-    if (!hasMore || isLoading) return;
-    await loadActivity(currentPage + 1, true);
-  }, [hasMore, isLoading, currentPage, loadActivity]);
-
-  const refresh = useCallback(async () => {
-    setCurrentPage(0);
-    await loadActivity(0, false);
-  }, [loadActivity]);
-
-  useEffect(() => {
-    if (username) {
-      loadActivity(0, false);
+    if (hasNextPage && !isFetchingNextPage) {
+      await fetchNextPage();
     }
-  }, [username, activityType, loadActivity]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Refresh
+  const refresh = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey });
+  }, [queryClient, queryKey]);
+
+  // Compute states for backward compatibility
+  const isLoading = isQueryLoading && items.length === 0;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : undefined;
 
   return {
     items,
     isLoading,
-    hasError,
+    hasError: !!error,
     errorMessage,
-    hasMore,
+    hasMore: hasNextPage ?? false,
     loadMore,
     refresh,
   };
 }
-

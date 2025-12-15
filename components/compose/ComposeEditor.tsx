@@ -11,12 +11,12 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Markdown from 'react-native-markdown-display';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
 import { CaretRight } from 'phosphor-react-native';
 import { Teret } from '@/shared/useTerets';
 import { getMarkdownStyles } from '@/shared/markdown-styles';
+import { MarkdownContent } from '../feed/MarkdownContent';
 
 type EditorMode = 'write' | 'preview';
 
@@ -201,6 +201,43 @@ export function ComposeEditor({
     [applyLinePrefix],
   );
 
+  const applyChecklist = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      applyLinePrefix(currentBody, sel, '- [ ] ');
+    },
+    [applyLinePrefix]
+  );
+
+  const applyCodeBlock = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      const { start, end } = sel;
+      const before = currentBody.slice(0, start);
+      const middle = currentBody.slice(start, end);
+      const after = currentBody.slice(end);
+      const block = `\n\`\`\`\n${middle || 'code here'}\n\`\`\`\n`;
+      const next = before + block + after;
+      const cursor = before.length + block.length;
+      onChangeBody(next);
+      setSelection({ start: cursor, end: cursor });
+    },
+    [onChangeBody]
+  );
+
+  const applyLink = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      const { start, end } = sel;
+      const before = currentBody.slice(0, start);
+      const middle = currentBody.slice(start, end) || 'link text';
+      const after = currentBody.slice(end);
+      const snippet = `[${middle}](https://)`;
+      const next = before + snippet + after;
+      const cursor = before.length + snippet.indexOf('https://');
+      onChangeBody(next);
+      setSelection({ start: cursor, end: cursor + 'https://'.length });
+    },
+    [onChangeBody]
+  );
+
   // Detect and handle slash commands
   const handleBodyChange = useCallback(
     (text: string) => {
@@ -288,6 +325,24 @@ export function ComposeEditor({
 
           case '/list':
             applyList(clean, adjustedSel);
+            return;
+
+          case '/todo':
+          case '/task':
+            applyChecklist(clean, adjustedSel);
+            return;
+
+          case '/code':
+          case '/fence':
+            applyCodeBlock(clean, adjustedSel);
+            return;
+
+          case '/link':
+            applyLink(clean, adjustedSel);
+            return;
+
+          case '/h3':
+            applyLinePrefix(clean, adjustedSel, '### ');
             return;
         }
       }
@@ -422,17 +477,16 @@ export function ComposeEditor({
             showsVerticalScrollIndicator={true}
             keyboardShouldPersistTaps="handled"
           >
-            <Markdown 
-              style={markdownStyles} 
-              mergeStyle={true}
-              rules={markdownRenderers}
-            >
-              {body || '_Nothing to preview yet._'}
-            </Markdown>
+            {body ? (
+              <MarkdownContent content={body} isRawMarkdown linkMetadata={undefined} />
+            ) : (
+              <Text className="text-body text-fomio-muted dark:text-fomio-muted-dark">
+                _Nothing to preview yet._
+              </Text>
+            )}
           </ScrollView>
         )}
       </View>
     </View>
   );
 }
-

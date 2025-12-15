@@ -1,289 +1,464 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, Linking, ScrollView, useWindowDimensions, Platform } from 'react-native';
 import Markdown from 'react-native-markdown-display';
+import RenderHTML, { HTMLContentModel, HTMLElementModel } from 'react-native-render-html';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
 import { getMarkdownStyles } from '@/shared/markdown-styles';
 import * as WebBrowser from 'expo-web-browser';
+import { getThemeColors } from '@/shared/theme-constants';
+import { LinkSimpleBreak } from 'phosphor-react-native';
 
 export interface MarkdownContentProps {
   content: string; // HTML from Discourse `cooked` field
   isRawMarkdown?: boolean; // If true, content is already markdown
-}
-
-// Minimal emoji mapping for Discourse-specific shortcodes
-// Most Discourse emojis already output Unicode in the alt attribute, so we only map shortcodes
-const DISCOURSE_EMOJI_MAP: Record<string, string> = {
-  'e_mail': '📧',
-  'handshake': '🤝',
-  'speech_balloon': '💬',
-  // Add more Discourse-specific shortcodes as needed
-};
-
-// Helper to convert emoji shortcodes to Unicode
-// Leverages system emoji fonts - no external libraries needed
-function convertEmojiShortcode(alt: string): string {
-  // If it's already Unicode emoji, return as-is
-  // Unicode emoji ranges: U+1F300-1F9FF, U+2600-26FF, U+2700-27BF
-  if (/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(alt)) {
-    return alt;
-  }
-  
-  // Check if it's a shortcode format like :e_mail: or e_mail
-  const shortcode = alt.replace(/^:|:$/g, '').trim();
-  if (shortcode && DISCOURSE_EMOJI_MAP[shortcode]) {
-    return DISCOURSE_EMOJI_MAP[shortcode];
-  }
-  
-  // Return original if not found (might be text or unknown shortcode)
-  return alt;
-}
-
-// Simple HTML to Markdown converter for React Native (doesn't require DOM)
-// This replaces turndown which requires a browser environment
-function htmlToMarkdown(html: string): string {
-  if (!html) return '';
-
-  let markdown = html;
-
-  // Remove script and style tags with their content
-  markdown = markdown.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  markdown = markdown.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
-
-  // Convert Discourse mentions first (before other spans)
-  markdown = markdown.replace(/<span[^>]*class=["'][^"']*mention[^"']*["'][^>]*data-username=["']([^"']*)["'][^>]*>.*?<\/span>/gi, '@$1');
-  markdown = markdown.replace(/<span[^>]*class=["'][^"']*mention[^"']*["'][^>]*>(.*?)<\/span>/gi, '@$1');
-
-  // Convert Discourse emojis (before other images)
-  // Extract alt text and convert shortcodes to Unicode emojis (uses system fonts)
-  markdown = markdown.replace(/<img[^>]*class=["'][^"']*emoji[^"']*["'][^>]*alt=["']([^"']*)["'][^>]*>/gi, (match, alt) => {
-    return convertEmojiShortcode(alt);
-  });
-  
-  // Also handle emoji shortcodes that might appear in text (like :e_mail:)
-  markdown = markdown.replace(/:([a-z_]+):/gi, (match, code) => {
-    return DISCOURSE_EMOJI_MAP[code] || match; // Convert if mapped, otherwise keep original
-  });
-
-  // Convert inline code FIRST (before other inline elements, so it's preserved)
-  markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
-
-  // Convert links (before headings, so headings can contain links)
-  markdown = markdown.replace(/<a[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gi, (match, href, text) => {
-    const linkText = text.replace(/<[^>]*>/g, '').trim();
-    return `[${linkText || href}](${href})`;
-  });
-
-  // Convert strong/bold (before headings, so headings can contain bold)
-  markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**');
-  markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**');
-
-  // Convert emphasis/italic (before headings, so headings can contain italic)
-  markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*');
-  markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*');
-
-  // Convert headings (H1-H6) - NOW they can contain properly formatted markdown
-  // Process from H6 to H1 to avoid conflicts (smaller headings first)
-  markdown = markdown.replace(/<h6[^>]*>(.*?)<\/h6>/gi, (match, content) => {
-    const text = content.trim();
-    return text ? `###### ${text}\n\n` : '';
-  });
-  markdown = markdown.replace(/<h5[^>]*>(.*?)<\/h5>/gi, (match, content) => {
-    const text = content.trim();
-    return text ? `##### ${text}\n\n` : '';
-  });
-  markdown = markdown.replace(/<h4[^>]*>(.*?)<\/h4>/gi, (match, content) => {
-    const text = content.trim();
-    return text ? `#### ${text}\n\n` : '';
-  });
-  markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gi, (match, content) => {
-    const text = content.trim();
-    return text ? `### ${text}\n\n` : '';
-  });
-  markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, (match, content) => {
-    const text = content.trim();
-    return text ? `## ${text}\n\n` : '';
-  });
-  markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, (match, content) => {
-    const text = content.trim();
-    return text ? `# ${text}\n\n` : '';
-  });
-
-  // Convert blockquotes
-  markdown = markdown.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gi, (match, content) => {
-    const text = content.replace(/<[^>]*>/g, '').trim();
-    if (!text) return '';
-    return `> ${text.split('\n').join('\n> ')}\n\n`;
-  });
-
-  // Convert code blocks (pre > code)
-  markdown = markdown.replace(/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/gi, (match, content) => {
-    const code = content.replace(/<[^>]*>/g, '').trim();
-    return `\n\`\`\`\n${code}\n\`\`\`\n\n`;
-  });
-
-  // Convert images (non-emoji)
-  markdown = markdown.replace(/<img[^>]*src=["']([^"']*)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>/gi, (match, src, alt) => {
-    // Skip if it's an emoji (already converted above)
-    if (match.includes('emoji')) return '';
-    return `![${alt || ''}](${src})`;
-  });
-
-  // Convert lists - unordered
-  markdown = markdown.replace(/<ul[^>]*>(.*?)<\/ul>/gi, (match, content) => {
-    const items = content.match(/<li[^>]*>(.*?)<\/li>/gi) || [];
-    const listItems = items.map((item: string) => {
-      const text = item.replace(/<li[^>]*>|<\/li>/gi, '').replace(/<[^>]*>/g, '').trim();
-      return text ? `- ${text}` : '';
-    }).filter(Boolean).join('\n');
-    return listItems ? `${listItems}\n\n` : '';
-  });
-
-  // Convert lists - ordered
-  markdown = markdown.replace(/<ol[^>]*>(.*?)<\/ol>/gi, (match, content) => {
-    const items = content.match(/<li[^>]*>(.*?)<\/li>/gi) || [];
-    const listItems = items.map((item: string, index: number) => {
-      const text = item.replace(/<li[^>]*>|<\/li>/gi, '').replace(/<[^>]*>/g, '').trim();
-      return text ? `${index + 1}. ${text}` : '';
-    }).filter(Boolean).join('\n');
-    return listItems ? `${listItems}\n\n` : '';
-  });
-
-  // Convert paragraphs
-  markdown = markdown.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
-
-  // Convert line breaks
-  markdown = markdown.replace(/<br\s*\/?>/gi, '\n');
-
-  // Convert horizontal rules
-  markdown = markdown.replace(/<hr\s*\/?>/gi, '\n---\n\n');
-
-  // Remove all remaining HTML tags
-  markdown = markdown.replace(/<[^>]*>/g, '');
-
-  // Decode common HTML entities
-  markdown = markdown
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .replace(/&#x2F;/g, '/')
-    .replace(/&#x60;/g, '`');
-
-  // Clean up extra whitespace
-  markdown = markdown.replace(/\n{3,}/g, '\n\n');
-  markdown = markdown.trim();
-
-  return markdown;
-}
-
-// UI Spec: MarkdownContent — Renders Discourse cooked HTML as styled markdown
-// - Supports headings, paragraphs, lists, code, quotes, links, images
-// - Themed with Fomio semantic tokens
-// - Images are tappable (future: lightbox)
-// - Links open in in-app browser
-// - Proper typography: line-height, margins, no edge-to-edge text
-export function MarkdownContent({ content, isRawMarkdown = false }: MarkdownContentProps) {
-  const { isDark, isAmoled, themeMode } = useTheme();
-
-  // Convert HTML to markdown if needed
-  const markdown = useMemo(() => {
-    if (isRawMarkdown) return content;
-    try {
-      // Use our React Native-compatible HTML to Markdown converter
-      return htmlToMarkdown(content);
-    } catch (error) {
-      console.error('Error converting HTML to markdown:', error);
-      // Fallback: strip HTML tags and return plain text
-      return content.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, '');
+  linkMetadata?: Record<
+    string,
+    {
+      title?: string;
+      description?: string;
+      image?: string;
+      favicon?: string;
+      siteName?: string;
+      publishedAt?: string;
+      type?: 'article' | 'video' | 'post' | 'generic';
     }
-  }, [content, isRawMarkdown]);
+  >;
+}
 
-  // Use shared markdown styles with theme mode for proper dark theme colors
-  // getMarkdownStyles uses getThemeColors(isDark) which returns darkAmoled for dark mode
+// UI Spec: MarkdownContent — Renders Discourse cooked HTML or raw markdown with full fidelity
+// - Supports headings, paragraphs, lists, code, quotes, links, images, tables, HRs
+// - Themed with Fomio semantic tokens
+// - Links open in in-app browser
+// - Images use expo-image and are tappable (lightbox-ready)
+export function MarkdownContent({ content, isRawMarkdown = false, linkMetadata }: MarkdownContentProps) {
+  const { isDark } = useTheme();
+  const { width } = useWindowDimensions();
   const markdownStyles = useMemo(() => getMarkdownStyles(isDark), [isDark]);
+  const colors = useMemo(() => getThemeColors(isDark), [isDark]);
+  const contentWidth = Math.max(320, width - 32); // keep nice margins even on small screens
+  const baseTextColor = isDark ? '#F5F5F7' : colors.foreground;
+  const codeFont = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
-  // Custom renderers for interactive elements
-  const renderers = {
-    // Make links open in in-app browser
-    link: (node: any, children: any, parent: any, styles: any) => {
-      return (
-        <Text
-          key={node.key}
-          style={styles.link}
-          onPress={async () => {
-            const url = node.attributes?.href;
-            if (url) {
-              try {
-                await WebBrowser.openBrowserAsync(url, {
-                  presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-                  controlsColor: isDark ? '#26A69A' : '#009688',
-                });
-              } catch (error) {
-                // Fallback to system browser
-                Linking.openURL(url).catch(() => {});
-              }
-            }
-          }}
-        >
-          {children}
-        </Text>
-      );
-    },
-    
-    // Make images tappable (future: lightbox)
-    image: (node: any, children: any, parent: any, styles: any) => {
-      const src = node.attributes?.src;
-      if (!src) return null;
-      
-      return (
-        <TouchableOpacity
-          key={node.key}
-          activeOpacity={0.9}
-          onPress={() => {
-            // TODO: Open lightbox/modal with full-size image
-            console.log('Image tapped:', src);
-          }}
-          style={styles.image}
-        >
-          <Image
-            source={{ uri: src }}
-            style={{
-              width: '100%',
-              aspectRatio: 16 / 9,
-              resizeMode: 'cover',
+  // Renderer for links (shared across HTML and markdown paths)
+  const renderLink = useMemo(
+    () => ({
+      onPress: async (_event: any, href: string) => {
+        if (!href) return;
+        try {
+          await WebBrowser.openBrowserAsync(href, {
+            presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+            controlsColor: isDark ? '#26A69A' : '#009688',
+          });
+        } catch {
+          Linking.openURL(href).catch(() => {});
+        }
+      },
+    }),
+    [isDark]
+  );
+
+  // Custom renderers for RenderHTML (cooked HTML path)
+  const htmlRenderers = useMemo(
+    () => ({
+      img: ({ tnode }: any) => {
+        const attrs = tnode?.attributes || {};
+        const src = attrs.src;
+        if (!src) return null;
+        const alt = attrs.alt || 'Post image';
+        const widthAttr = Number(attrs.width);
+        const heightAttr = Number(attrs.height);
+        const hasExplicitSize = widthAttr > 0 && heightAttr > 0 && widthAttr <= 200 && heightAttr <= 200;
+        const aspectRatio =
+          widthAttr > 0 && heightAttr > 0
+            ? widthAttr / heightAttr
+            : 16 / 9;
+
+        return (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => {
+              // TODO: hook up lightbox once design is ready
             }}
-            contentFit="cover"
-            transition={200}
-            accessibilityLabel="Post image"
-          />
-        </TouchableOpacity>
-      );
-    },
-  };
+            style={{
+              marginVertical: hasExplicitSize ? 6 : 12,
+              borderRadius: hasExplicitSize ? 6 : 8,
+              overflow: 'hidden',
+              alignSelf: hasExplicitSize ? 'flex-start' : 'stretch',
+            }}
+          >
+            <Image
+              source={{ uri: src }}
+              style={
+                hasExplicitSize
+                  ? { width: widthAttr, height: heightAttr }
+                  : { width: '100%', aspectRatio }
+              }
+              contentFit="cover"
+              transition={200}
+              accessibilityLabel={alt}
+            />
+          </TouchableOpacity>
+        );
+      },
+      pre: ({ tnode }: any) => {
+        const code = tnode?.textContent || '';
+        return (
+          <View
+            style={{
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: 10,
+              padding: 12,
+              marginVertical: 12,
+            }}
+          >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <Text
+                style={{
+                  color: baseTextColor,
+                  fontFamily: codeFont,
+                  fontSize: 14,
+                  lineHeight: 20,
+                }}
+              >
+                {code}
+              </Text>
+            </ScrollView>
+          </View>
+        );
+      },
+      a: ({ tnode }: any) => {
+        const href = tnode?.attributes?.href;
+        if (!href) return null;
+        const label = (tnode?.data || tnode?.textContent || href).trim();
+        const isStandalone =
+          tnode?.parent?.tagName === 'p' &&
+          Array.isArray(tnode?.parent?.children) &&
+          tnode.parent.children.length === 1;
 
-  // ✅ Get text color for wrapper to ensure proper inheritance
-  const textColor = isDark ? '#FFFFFF' : '#17131B';
+        if (isStandalone) {
+          return (
+            <LinkPreviewCard
+              key={href}
+              url={href}
+              label={label}
+              colors={colors}
+              baseTextColor={baseTextColor}
+              metadata={linkMetadata?.[href]}
+              onPress={() => renderLink.onPress?.(undefined, href)}
+            />
+          );
+        }
+
+        return (
+          <Text
+            style={markdownStyles.link}
+            onPress={(event) => renderLink.onPress?.(event, href)}
+          >
+            {label || href}
+          </Text>
+        );
+      },
+    }),
+    [baseTextColor, codeFont, colors, isDark, markdownStyles.link, renderLink]
+  );
+
+  // Styles for HTML tags (cooked content)
+  const tagsStyles = useMemo(
+    () => ({
+      body: {
+        color: baseTextColor,
+        backgroundColor: 'transparent',
+      },
+      p: markdownStyles.paragraph,
+      h1: markdownStyles.heading1,
+      h2: markdownStyles.heading2,
+      h3: markdownStyles.heading3,
+      h4: markdownStyles.heading4,
+      h5: markdownStyles.heading5,
+      h6: markdownStyles.heading6,
+      ul: markdownStyles.listUnordered,
+      ol: markdownStyles.listOrdered,
+      li: markdownStyles.listItem,
+      code: markdownStyles.code_inline,
+      pre: markdownStyles.code_block,
+      blockquote: markdownStyles.blockquote,
+      a: markdownStyles.link,
+      strong: markdownStyles.strong,
+      em: markdownStyles.em,
+      hr: markdownStyles.hr,
+      img: markdownStyles.image,
+      table: markdownStyles.table,
+      thead: markdownStyles.thead,
+      tbody: markdownStyles.tbody,
+      th: markdownStyles.th,
+      td: markdownStyles.td,
+    }),
+    [baseTextColor, markdownStyles]
+  );
+
+  // Raw markdown path: keep existing markdown renderer for bios / previews
+  if (isRawMarkdown) {
+    return (
+      <View style={{ paddingHorizontal: 0 }}>
+        <Markdown
+          style={markdownStyles}
+          rules={{
+            link: (node: any, children: any, parent: any, styles: any) => {
+              const url = node.attributes?.href;
+              const label = Array.isArray(children) ? children.join('') : url;
+              const isStandalone =
+                parent?.type === 'paragraph' &&
+                Array.isArray(parent?.children) &&
+                parent.children.length === 1;
+
+              if (isStandalone && url) {
+                return (
+                  <LinkPreviewCard
+                    key={node.key}
+                    url={url}
+                    label={label || url}
+                    colors={colors}
+                    baseTextColor={baseTextColor}
+                    metadata={linkMetadata?.[url]}
+                    onPress={() => renderLink.onPress?.(undefined, url)}
+                  />
+                );
+              }
+
+              return (
+                <Text
+                  key={node.key}
+                  style={styles.link}
+                  onPress={() => {
+                    if (url) {
+                      renderLink.onPress?.(undefined, url);
+                    }
+                  }}
+                >
+                  {children}
+                </Text>
+              );
+            },
+            image: (node: any, children: any, parent: any, styles: any) => {
+              const src = node.attributes?.src;
+              if (!src) return null;
+              const widthAttr = Number(node.attributes?.width);
+              const heightAttr = Number(node.attributes?.height);
+              const hasExplicitSize = widthAttr > 0 && heightAttr > 0 && widthAttr <= 200 && heightAttr <= 200;
+              return (
+                <TouchableOpacity
+                  key={node.key}
+                  activeOpacity={0.9}
+                  onPress={() => {}}
+                  style={[
+                    styles.image,
+                    hasExplicitSize && { width: widthAttr, height: heightAttr, marginVertical: 6, alignSelf: 'flex-start' },
+                  ]}
+                >
+                  <Image
+                    source={{ uri: src }}
+                    style={
+                      hasExplicitSize
+                        ? { width: widthAttr, height: heightAttr }
+                        : { width: '100%', aspectRatio: 16 / 9, resizeMode: 'cover' }
+                    }
+                    contentFit="cover"
+                    transition={200}
+                    accessibilityLabel="Markdown image"
+                  />
+                </TouchableOpacity>
+              );
+            },
+          }}
+          mergeStyle={false}
+        >
+          {content}
+        </Markdown>
+      </View>
+    );
+  }
+
+  // Cooked HTML path: render directly without brittle conversion
+  return (
+    <RenderHTML
+      contentWidth={contentWidth}
+      source={{ html: content || '' }}
+      baseStyle={{
+        color: baseTextColor,
+        lineHeight: 24,
+        fontSize: 16,
+      }}
+      defaultTextProps={{ selectable: false }}
+      tagsStyles={tagsStyles}
+      renderers={htmlRenderers as any}
+      renderersProps={{
+        a: {
+          onPress: (_event: any, href: string) => renderLink.onPress?.(_event, href),
+        },
+      }}
+      customHTMLElementModels={{
+        // Ensure pre stays block-level with inline children (code)
+        pre: HTMLElementModel.fromCustomModel({
+          tagName: 'pre',
+          contentModel: HTMLContentModel.block,
+        }),
+      }}
+    />
+  );
+}
+
+function LinkPreviewCard({
+  url,
+  label,
+  colors,
+  baseTextColor,
+  onPress,
+  metadata,
+}: {
+  url: string;
+  label: string;
+  colors: ReturnType<typeof getThemeColors>;
+  baseTextColor: string;
+  onPress?: () => void;
+  metadata?: {
+    title?: string;
+    description?: string;
+    image?: string;
+    favicon?: string;
+    siteName?: string;
+    publishedAt?: string;
+    type?: 'article' | 'video' | 'post' | 'generic';
+  };
+}) {
+  let host = '';
+  try {
+    host = new URL(url).host;
+  } catch {
+    host = url;
+  }
+
+  const isArticle = metadata?.type === 'article' || !!metadata?.description || !!metadata?.image;
+  const titleText = metadata?.title || label || url;
+  const descriptionText = metadata?.description;
+  const timeAgo = formatTimeAgo(metadata?.publishedAt);
 
   return (
-    <View 
-      style={{ 
-        paddingHorizontal: 0,
-        // ✅ Explicitly set text color on wrapper to help markdown Text components inherit
-        // This ensures NativeWind doesn't override with default colors
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => {
+        if (onPress) {
+          onPress();
+          return;
+        }
+        // Fallback open
+        Linking.openURL(url).catch(() => {});
+      }}
+      style={{
+        marginVertical: 10,
+        padding: isArticle ? 14 : 12,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.card,
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 3 },
       }}
     >
-      <Markdown
-        style={markdownStyles}
-        rules={renderers}
-        mergeStyle={false}
-      >
-        {markdown}
-      </Markdown>
-    </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+        <LinkSimpleBreak size={18} color={colors.accent} weight="bold" />
+        {metadata?.favicon ? (
+          <Image
+            source={{ uri: metadata.favicon }}
+            style={{ width: 18, height: 18, borderRadius: 4 }}
+            contentFit="cover"
+          />
+        ) : null}
+        <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+          {metadata?.siteName || host}
+        </Text>
+        {timeAgo ? (
+          <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={1}>
+            · {timeAgo}
+          </Text>
+        ) : null}
+      </View>
+
+      {isArticle ? (
+        <>
+          <Text
+            numberOfLines={2}
+            style={{ color: baseTextColor, fontSize: 16, lineHeight: 23, fontWeight: '700', marginBottom: 6 }}
+          >
+            {titleText}
+          </Text>
+          {descriptionText ? (
+            <Text
+              numberOfLines={3}
+              style={{ color: colors.secondary, fontSize: 14, lineHeight: 20, marginBottom: metadata?.image ? 10 : 6 }}
+            >
+              {descriptionText}
+            </Text>
+          ) : null}
+          {metadata?.image ? (
+            <Image
+              source={{ uri: metadata.image }}
+              style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 12 }}
+              contentFit="cover"
+              transition={150}
+            />
+          ) : null}
+        </>
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {metadata?.image ? (
+            <Image
+              source={{ uri: metadata.image }}
+              style={{ width: 72, height: 72, borderRadius: 10 }}
+              contentFit="cover"
+              transition={150}
+            />
+          ) : null}
+
+          <View style={{ flex: 1 }}>
+            <Text
+              numberOfLines={2}
+              style={{ color: baseTextColor, fontSize: 15, lineHeight: 22, fontWeight: '700' }}
+            >
+              {titleText}
+            </Text>
+            {descriptionText ? (
+              <Text
+                numberOfLines={2}
+                style={{ color: colors.secondary, fontSize: 13, lineHeight: 18, marginTop: 4 }}
+              >
+                {descriptionText}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      )}
+    </TouchableOpacity>
   );
+}
+
+function formatTimeAgo(dateString?: string) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return null;
+  const diff = Date.now() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `${weeks}w`;
+  const months = Math.floor(days / 30);
+  return `${months}mo`;
 }

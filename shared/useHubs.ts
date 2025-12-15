@@ -1,6 +1,15 @@
+/**
+ * useHubs Hook - Hubs data fetching with TanStack Query
+ * 
+ * Uses useQuery for hubs data with caching and long stale time
+ * since hubs rarely change.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { discourseApi, Hub } from './discourseApi';
 import { onAuthEvent } from './auth-events';
+import { queryKeys } from './query-client';
 
 export interface HubsState {
   hubs: Hub[];
@@ -9,94 +18,85 @@ export interface HubsState {
   error: string | null;
 }
 
+/**
+ * Fetch hubs from API
+ */
+async function fetchHubs(): Promise<Hub[]> {
+  const response = await discourseApi.getHubs();
+
+  if (!response.success) {
+    throw new Error(response.error || 'Failed to load hubs');
+  }
+
+  return response.data || [];
+}
+
+/**
+ * useHubs hook with TanStack Query
+ * 
+ * Provides hubs data with caching. Hubs rarely change so we use
+ * a long stale time.
+ */
 export function useHubs() {
-  const [hubsState, setHubsState] = useState<HubsState>({
-    hubs: [],
-    isLoading: true,
-    isRefreshing: false,
-    error: null
+  const queryClient = useQueryClient();
+  const hubsQueryKey = queryKeys.hubs();
+
+  const {
+    data: hubs = [],
+    isLoading: isQueryLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: hubsQueryKey,
+    queryFn: fetchHubs,
+    staleTime: 10 * 60 * 1000, // 10 minutes - hubs rarely change
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnMount: 'always',
   });
-
-  const loadHubs = useCallback(async (showLoading: boolean = true) => {
-    try {
-      if (showLoading) {
-        setHubsState(prev => ({
-          ...prev,
-          isLoading: true,
-          error: null
-        }));
-      } else {
-        setHubsState(prev => ({
-          ...prev,
-          isRefreshing: true,
-          error: null
-        }));
-      }
-
-      const response = await discourseApi.getHubs();
-
-      if (response.success && response.data) {
-        setHubsState(prev => ({
-          ...prev,
-          hubs: response.data || [],
-          isLoading: false,
-          isRefreshing: false,
-          error: null
-        }));
-      } else {
-        setHubsState(prev => ({
-          ...prev,
-          isLoading: false,
-          isRefreshing: false,
-          error: response.error || 'Failed to load hubs'
-        }));
-      }
-    } catch (error) {
-      console.error('Hubs loading error:', error);
-      setHubsState(prev => ({
-        ...prev,
-        isLoading: false,
-        isRefreshing: false,
-        error: error instanceof Error ? error.message : 'Network error'
-      }));
-    }
-  }, []);
-
-  const refreshHubs = useCallback(() => {
-    loadHubs(false);
-  }, [loadHubs]);
-
-  useEffect(() => {
-    loadHubs();
-  }, [loadHubs]);
 
   // Subscribe to auth events for auto-refresh
   useEffect(() => {
     const unsubscribe = onAuthEvent((e) => {
       if (e === 'auth:signed-in' || e === 'auth:refreshed') {
-        refreshHubs();
+        queryClient.invalidateQueries({ queryKey: hubsQueryKey });
       }
     });
     return () => {
       unsubscribe();
     };
-  }, [refreshHubs]);
+  }, [queryClient, hubsQueryKey]);
 
-  const getHub = (id: number): Hub | undefined => {
-    return hubsState.hubs.find(hub => hub.id === id);
-  };
+  // Refresh hubs
+  const refreshHubs = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: hubsQueryKey });
+  }, [queryClient, hubsQueryKey]);
 
-  const getHubBySlug = (slug: string): Hub | undefined => {
-    return hubsState.hubs.find(hub => hub.slug === slug);
-  };
+  // Helper functions
+  const getHub = useCallback(
+    (id: number): Hub | undefined => {
+      return hubs.find((hub) => hub.id === id);
+    },
+    [hubs]
+  );
 
-  const getTopLevelHubs = (): Hub[] => {
-    return hubsState.hubs.filter(hub => !hub.parentId);
-  };
+  const getHubBySlug = useCallback(
+    (slug: string): Hub | undefined => {
+      return hubs.find((hub) => hub.slug === slug);
+    },
+    [hubs]
+  );
 
-  const getSubHubs = (parentId: number): Hub[] => {
-    return hubsState.hubs.filter(hub => hub.parentId === parentId);
-  };
+  const getTopLevelHubs = useCallback((): Hub[] => {
+    return hubs.filter((hub) => !hub.parentId);
+  }, [hubs]);
+
+  const getSubHubs = useCallback(
+    (parentId: number): Hub[] => {
+      return hubs.filter((hub) => hub.parentId === parentId);
+    },
+    [hubs]
+  );
 
   const createHub = async (data: {
     name: string;
@@ -105,70 +105,76 @@ export function useHubs() {
     description?: string;
     parentCategoryId?: number;
   }): Promise<{ success: boolean; error?: string; hub?: Hub }> => {
-    try {
-      // Note: Hub creation requires admin API access
-      // For now, return error as this feature isn't fully implemented
-      return {
-        success: false,
-        error: 'Hub creation requires admin privileges'
-      };
-    } catch (error) {
-      console.error('Create hub error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error'
-      };
-    }
+    // Hub creation requires admin API access
+    return {
+      success: false,
+      error: 'Hub creation requires admin privileges',
+    };
   };
 
-  const updateHub = (updatedHub: Hub) => {
-    setHubsState(prev => ({
-      ...prev,
-      hubs: prev.hubs.map(hub =>
-        hub.id === updatedHub.id ? updatedHub : hub
-      )
-    }));
-  };
+  const updateHub = useCallback(
+    (updatedHub: Hub) => {
+      queryClient.setQueryData<Hub[]>(hubsQueryKey, (old) =>
+        old?.map((hub) => (hub.id === updatedHub.id ? updatedHub : hub)) ?? []
+      );
+    },
+    [queryClient, hubsQueryKey]
+  );
 
-  const removeHub = (hubId: number) => {
-    setHubsState(prev => ({
-      ...prev,
-      hubs: prev.hubs.filter(hub => hub.id !== hubId)
-    }));
-  };
+  const removeHub = useCallback(
+    (hubId: number) => {
+      queryClient.setQueryData<Hub[]>(hubsQueryKey, (old) =>
+        old?.filter((hub) => hub.id !== hubId) ?? []
+      );
+    },
+    [queryClient, hubsQueryKey]
+  );
 
-  const clearError = () => {
-    setHubsState(prev => ({ ...prev, error: null }));
-  };
+  const clearError = useCallback(() => {
+    // Error is managed by React Query
+  }, []);
 
-  // Helper function to get hub hierarchy
-  const getHubHierarchy = (hubId: number): Hub[] => {
-    const hierarchy: Hub[] = [];
-    let currentHub = getHub(hubId);
+  // Hub hierarchy helpers
+  const getHubHierarchy = useCallback(
+    (hubId: number): Hub[] => {
+      const hierarchy: Hub[] = [];
+      let currentHub = getHub(hubId);
 
-    while (currentHub) {
-      hierarchy.unshift(currentHub);
-      currentHub = currentHub.parentId ? getHub(currentHub.parentId) : undefined;
-    }
+      while (currentHub) {
+        hierarchy.unshift(currentHub);
+        currentHub = currentHub.parentId ? getHub(currentHub.parentId) : undefined;
+      }
 
-    return hierarchy;
-  };
+      return hierarchy;
+    },
+    [getHub]
+  );
 
-  // Helper function to get all descendant hubs
-  const getDescendantHubs = (parentId: number): Hub[] => {
-    const descendants: Hub[] = [];
-    const directChildren = getSubHubs(parentId);
+  const getDescendantHubs = useCallback(
+    (parentId: number): Hub[] => {
+      const descendants: Hub[] = [];
+      const directChildren = getSubHubs(parentId);
 
-    for (const child of directChildren) {
-      descendants.push(child);
-      descendants.push(...getDescendantHubs(child.id));
-    }
+      for (const child of directChildren) {
+        descendants.push(child);
+        descendants.push(...getDescendantHubs(child.id));
+      }
 
-    return descendants;
-  };
+      return descendants;
+    },
+    [getSubHubs]
+  );
+
+  // Compute states for backward compatibility
+  const isLoading = isQueryLoading && hubs.length === 0;
+  const isRefreshing = isFetching && hubs.length > 0;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
 
   return {
-    ...hubsState,
+    hubs,
+    isLoading,
+    isRefreshing,
+    error: errorMessage,
     refreshHubs,
     getHub,
     getHubBySlug,
@@ -179,60 +185,72 @@ export function useHubs() {
     removeHub,
     clearError,
     getHubHierarchy,
-    getDescendantHubs
+    getDescendantHubs,
   };
 }
 
-// Hook for managing a single hub
+/**
+ * Fetch single hub from API
+ */
+async function fetchHub(hubId: number): Promise<Hub> {
+  const response = await discourseApi.getHub(hubId);
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error || 'Failed to load hub');
+  }
+
+  return response.data;
+}
+
+/**
+ * useHub hook - single hub with TanStack Query
+ */
 export function useHub(hubId: number) {
-  const [hub, setHub] = useState<Hub | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const hubQueryKey = queryKeys.hub(hubId);
 
-  useEffect(() => {
-    if (hubId) {
-      loadHub();
-    }
-  }, [hubId]);
+  const {
+    data: hub,
+    isLoading: isQueryLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: hubQueryKey,
+    queryFn: () => fetchHub(hubId),
+    enabled: hubId > 0,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+  });
 
-  const loadHub = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  const loadHub = useCallback(() => {
+    refetch();
+  }, [refetch]);
 
-      const response = await discourseApi.getHub(hubId);
+  const updateHub = useCallback(
+    (updates: Partial<Hub>) => {
+      queryClient.setQueryData<Hub>(hubQueryKey, (old) =>
+        old ? { ...old, ...updates } : undefined
+      );
+    },
+    [queryClient, hubQueryKey]
+  );
 
-      if (response.success && response.data) {
-        setHub(response.data);
-      } else {
-        setError(response.error || 'Failed to load hub');
-      }
-    } catch (error) {
-      console.error('Hub loading error:', error);
-      setError(error instanceof Error ? error.message : 'Network error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const updateHub = (updates: Partial<Hub>) => {
-    setHub(prev => prev ? { ...prev, ...updates } : null);
-  };
+  const isLoading = isQueryLoading && !hub;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
 
   return {
-    hub,
+    hub: hub ?? null,
     isLoading,
-    error,
+    error: errorMessage,
     loadHub,
-    updateHub
+    updateHub,
   };
 }
 
-// Hook for hub subscription management
+// Hook for hub subscription management (unchanged - local state)
 export function useHubSubscription() {
   const [subscriptions, setSubscriptions] = useState<Set<number>>(new Set());
 
-  // Load subscriptions from storage on mount
   useEffect(() => {
     loadSubscriptions();
   }, []);
@@ -240,7 +258,6 @@ export function useHubSubscription() {
   const loadSubscriptions = async () => {
     try {
       // TODO: Load from AsyncStorage or API
-      // For now, using empty set
       setSubscriptions(new Set());
     } catch (error) {
       console.error('Failed to load subscriptions:', error);
@@ -254,14 +271,13 @@ export function useHubSubscription() {
   const subscribe = async (hubId: number): Promise<{ success: boolean; error?: string }> => {
     try {
       // TODO: Call API to subscribe
-      // For now, just update local state
-      setSubscriptions(prev => new Set([...prev, hubId]));
+      setSubscriptions((prev) => new Set([...prev, hubId]));
       return { success: true };
     } catch (error) {
       console.error('Subscribe error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to subscribe'
+        error: error instanceof Error ? error.message : 'Failed to subscribe',
       };
     }
   };
@@ -269,8 +285,7 @@ export function useHubSubscription() {
   const unsubscribe = async (hubId: number): Promise<{ success: boolean; error?: string }> => {
     try {
       // TODO: Call API to unsubscribe
-      // For now, just update local state
-      setSubscriptions(prev => {
+      setSubscriptions((prev) => {
         const newSet = new Set(prev);
         newSet.delete(hubId);
         return newSet;
@@ -280,12 +295,14 @@ export function useHubSubscription() {
       console.error('Unsubscribe error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to unsubscribe'
+        error: error instanceof Error ? error.message : 'Failed to unsubscribe',
       };
     }
   };
 
-  const toggleSubscription = async (hubId: number): Promise<{ success: boolean; error?: string }> => {
+  const toggleSubscription = async (
+    hubId: number
+  ): Promise<{ success: boolean; error?: string }> => {
     if (isSubscribed(hubId)) {
       return unsubscribe(hubId);
     } else {
@@ -303,7 +320,6 @@ export function useHubSubscription() {
     subscribe,
     unsubscribe,
     toggleSubscription,
-    getSubscribedHubs
+    getSubscribedHubs,
   };
 }
-

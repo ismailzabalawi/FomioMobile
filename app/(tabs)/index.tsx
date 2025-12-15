@@ -12,7 +12,7 @@ import { getSession } from '../../lib/discourse';
 import { FeedFilterChips } from '@/components/feed/FeedFilterChips';
 import { useHubs } from '@/shared/useHubs';
 import { ByteCardSkeleton } from '@/components/bytes/ByteCardSkeleton';
-import { ArrowClockwise, Newspaper, Bell, SlidersHorizontal } from 'phosphor-react-native';
+import { ArrowClockwise, Newspaper, Bell } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedScrollHandler } from 'react-native-reanimated';
 import { useFluidNav } from '@/shared/navigation/fluidNavContext';
@@ -25,7 +25,7 @@ export default function HomeScreen(): React.ReactElement {
   
   const [selectedSort, setSelectedSort] = useState<'latest' | 'hot' | 'unread'>('latest');
   const [selectedHubId, setSelectedHubId] = useState<number | undefined>(undefined);
-  const [filtersVisible, setFiltersVisible] = useState(false);
+  const filtersVisible = false;
   const flatListRef = useRef<Animated.FlatList<FeedItem>>(null);
 
   const colors = useMemo(() => ({
@@ -57,16 +57,11 @@ export default function HomeScreen(): React.ReactElement {
   
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  const toggleFilters = useCallback(() => {
-    setFiltersVisible((prev) => !prev);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-  }, []);
-
   const headerTitle = useMemo(
     () => (
       <Image
         source={require('../../assets/images/favicon.png')}
-        style={{ width: 28, height: 28, borderRadius: 6 }}
+        style={{ width: 32, height: 32, borderRadius: 8 }}
         resizeMode="contain"
         accessibilityLabel="Fomio"
       />
@@ -74,29 +69,10 @@ export default function HomeScreen(): React.ReactElement {
     []
   );
 
-  const headerActions = useMemo(() => [
-    <TouchableOpacity
-      key="filters-toggle"
-      onPress={toggleFilters}
-      className="flex-row items-center gap-1 px-3 py-1.5 rounded-full active:opacity-80"
-      style={{
-        backgroundColor: filtersVisible ? `${colors.primary}1A` : 'transparent',
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={filtersVisible ? "Hide feed filters" : "Show feed filters"}
-      accessibilityState={{ expanded: filtersVisible }}
-    >
-      <SlidersHorizontal size={18} color={filtersVisible ? colors.primary : colors.text} weight="bold" />
-      <Text style={{ color: filtersVisible ? colors.primary : colors.text, fontWeight: '600', fontSize: 13 }}>
-        Filters
-      </Text>
-    </TouchableOpacity>
-  ], [toggleFilters, filtersVisible, colors.primary, colors.text]);
-
-  // Configure header with a filters toggle action
+  // Configure header with centered logo
   useFeedHeader({
     title: headerTitle,
-    rightActions: headerActions,
+    centerTitle: true,
   });
   
   // Load user session if authenticated

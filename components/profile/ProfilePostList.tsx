@@ -32,6 +32,11 @@ export interface PostItem {
   hasMedia?: boolean;
   coverImage?: string;
   slug: string;
+  // Draft metadata (used only for drafts tab)
+  draftKey?: string;
+  draftSequence?: number;
+  rawContent?: string;
+  categoryId?: number;
 }
 
 export interface ProfilePostListProps {

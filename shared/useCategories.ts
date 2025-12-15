@@ -1,6 +1,15 @@
-import { useState, useCallback, useEffect } from 'react';
+/**
+ * useCategories Hook - Categories data fetching with TanStack Query
+ * 
+ * Uses useQuery for categories data with caching and long stale time
+ * since categories rarely change.
+ */
+
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { discourseApi } from './discourseApi';
 import { logger } from './logger';
+import { queryKeys } from './query-client';
 
 export interface Category {
   id: number;
@@ -54,78 +63,82 @@ export interface CategoryState {
   errorMessage?: string;
 }
 
+/**
+ * Fetch and transform categories from API
+ */
+async function fetchCategories(): Promise<Category[]> {
+  const response = await discourseApi.getCategories();
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error || 'Failed to load categories');
+  }
+
+  const categories = response.data.category_list.categories
+    .filter((cat: any) => !cat.parent_category_id) // Only show parent categories (hubs)
+    .sort((a: any, b: any) => b.topic_count - a.topic_count) // Sort by topic count
+    .map((cat: any) => ({
+      id: cat.id,
+      name: cat.name,
+      description: cat.description || '',
+      slug: cat.slug,
+      color: cat.color || '#000000',
+      text_color: cat.text_color || '#ffffff',
+      topic_count: cat.topic_count || 0,
+      post_count: cat.post_count || 0,
+      read_restricted: cat.read_restricted || false,
+      permission: cat.permission || 1,
+      topic_list: cat.topic_list || { topics: [] },
+    }));
+
+  logger.info('Categories loaded successfully', { count: categories.length });
+
+  return categories;
+}
+
+/**
+ * useCategories hook with TanStack Query
+ * 
+ * Provides categories data with caching. Categories rarely change so we use
+ * a long stale time.
+ */
 export function useCategories() {
-  const [state, setState] = useState<CategoryState>({
-    categories: [],
-    isLoading: false,
-    hasError: false,
+  const queryClient = useQueryClient();
+  const categoriesQueryKey = queryKeys.categories();
+
+  const {
+    data: categories = [],
+    isLoading: isQueryLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: categoriesQueryKey,
+    queryFn: fetchCategories,
+    staleTime: 10 * 60 * 1000, // 10 minutes - categories rarely change
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnMount: 'always',
   });
 
-  const loadCategories = useCallback(async () => {
-    try {
-      setState(prev => ({
-        ...prev,
-        isLoading: true,
-        hasError: false,
-        errorMessage: undefined,
-      }));
+  // Load/refresh categories
+  const loadCategories = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: categoriesQueryKey });
+  }, [queryClient, categoriesQueryKey]);
 
-      const response = await discourseApi.getCategories();
-      
-      if (!response.success || !response.data) {
-        throw new Error(response.error || 'Failed to load categories');
-      }
-
-      const categories = response.data.category_list.categories
-        .filter((cat: any) => !cat.parent_category_id) // Only show parent categories (hubs)
-        .sort((a: any, b: any) => b.topic_count - a.topic_count) // Sort by topic count
-        .map((cat: any) => ({
-          id: cat.id,
-          name: cat.name,
-          description: cat.description || '',
-          slug: cat.slug,
-          color: cat.color || '#000000',
-          text_color: cat.text_color || '#ffffff',
-          topic_count: cat.topic_count || 0,
-          post_count: cat.post_count || 0,
-          read_restricted: cat.read_restricted || false,
-          permission: cat.permission || 1,
-          topic_list: cat.topic_list || { topics: [] },
-        }));
-
-      setState(prev => ({
-        ...prev,
-        categories,
-        isLoading: false,
-      }));
-
-      logger.info('Categories loaded successfully', { count: categories.length });
-
-    } catch (error) {
-      logger.error('Failed to load categories', error);
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        hasError: true,
-        errorMessage: error instanceof Error ? error.message : 'Failed to load categories',
-      }));
-    }
-  }, []);
-
+  // Retry on error
   const retry = useCallback(() => {
-    if (state.hasError) {
-      loadCategories();
-    }
-  }, [state.hasError, loadCategories]);
+    refetch();
+  }, [refetch]);
 
-  // Load categories on mount
-  useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
+  // Compute states for backward compatibility
+  const isLoading = isQueryLoading && categories.length === 0;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : undefined;
 
   return {
-    ...state,
+    categories,
+    isLoading,
+    hasError: !!error,
+    errorMessage,
     loadCategories,
     retry,
   };
-} 
+}

@@ -1,5 +1,14 @@
+/**
+ * useSearch Hook - Search with TanStack Query
+ * 
+ * Uses useQuery for search results with caching.
+ * Debounce is handled at the UI layer via the query string.
+ */
+
 import { useState, useCallback, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { discourseApi, SearchResult } from './discourseApi';
+import { queryKeys } from './query-client';
 
 export interface SearchState {
   results: SearchResult | null;
@@ -9,7 +18,6 @@ export interface SearchState {
   hasSearched: boolean;
 }
 
-// Updated to match backend API
 export interface SearchFilters {
   type?: 'topic' | 'category' | 'user' | 'all';
   order?: 'relevance' | 'latest' | 'views' | 'likes' | 'created' | 'updated';
@@ -17,98 +25,87 @@ export interface SearchFilters {
   period?: 'all' | 'yearly' | 'quarterly' | 'monthly' | 'weekly' | 'daily';
 }
 
-export function useSearch() {
-  const [searchState, setSearchState] = useState<SearchState>({
-    results: null,
-    isSearching: false,
-    error: null,
-    query: '',
-    hasSearched: false
-  });
+/**
+ * Fetch search results from API
+ */
+async function fetchSearchResults(
+  query: string,
+  filters: SearchFilters
+): Promise<SearchResult> {
+  const response = await discourseApi.search(query.trim(), filters);
 
+  if (!response.success) {
+    const errorMessage =
+      response.error ||
+      (response.errors && response.errors.length > 0
+        ? response.errors.join(', ')
+        : 'Search failed');
+    throw new Error(errorMessage);
+  }
+
+  return response.data as SearchResult;
+}
+
+/**
+ * useSearch hook with TanStack Query
+ * 
+ * Provides search results with caching. Maintains backward compatible interface.
+ */
+export function useSearch() {
+  const queryClient = useQueryClient();
+  const [currentQuery, setCurrentQuery] = useState('');
+  const [currentFilters, setCurrentFilters] = useState<SearchFilters>({});
+  const [hasSearched, setHasSearched] = useState(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const search = useCallback(async (
-    query: string,
-    filters: SearchFilters = {}
-  ): Promise<{ success: boolean; error?: string }> => {
-    if (!query.trim()) {
-      setSearchState(prev => ({
-        ...prev,
-        results: null,
-        query: '',
-        hasSearched: false,
-        error: null
-      }));
-      return { success: true };
-    }
+  const searchQueryKey = queryKeys.search(currentQuery, currentFilters);
 
-    try {
-      setSearchState(prev => ({
-        ...prev,
-        isSearching: true,
-        error: null,
-        query: query.trim()
-      }));
+  const {
+    data: results,
+    isLoading: isQueryLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: searchQueryKey,
+    queryFn: () => fetchSearchResults(currentQuery, currentFilters),
+    enabled: currentQuery.trim().length >= 2, // Only search with 2+ characters
+    staleTime: 5 * 60 * 1000, // 5 minutes - search results are stable
+    gcTime: 15 * 60 * 1000, // 15 minutes
+    refetchOnMount: false, // Don't refetch on mount for search
+  });
 
-      const response = await discourseApi.search(query.trim(), filters);
-
-      if (response.success && response.data) {
-        // response.data is now properly typed as SearchResult
-        setSearchState(prev => ({
-          ...prev,
-          results: response.data as SearchResult,
-          isSearching: false,
-          hasSearched: true,
-          error: null
-        }));
-
+  // Search function - updates the query state
+  const search = useCallback(
+    async (
+      query: string,
+      filters: SearchFilters = {}
+    ): Promise<{ success: boolean; error?: string }> => {
+      if (!query.trim()) {
+        setCurrentQuery('');
+        setCurrentFilters({});
+        setHasSearched(false);
         return { success: true };
-      } else {
-        // Extract detailed error information from backend
-        const errorMessage = response.error || 
-          (response.errors && response.errors.length > 0 
-            ? response.errors.join(', ') 
-            : 'Search failed');
-        
-        setSearchState(prev => ({
-          ...prev,
-          isSearching: false,
-          hasSearched: true,
-          error: errorMessage
-        }));
-
-        return {
-          success: false,
-          error: errorMessage
-        };
       }
-    } catch (error) {
-      console.error('Search error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Network error';
-      
-      setSearchState(prev => ({
-        ...prev,
-        isSearching: false,
-        hasSearched: true,
-        error: errorMessage
-      }));
 
-      return {
-        success: false,
-        error: errorMessage
-      };
-    }
-  }, []);
+      setCurrentQuery(query.trim());
+      setCurrentFilters(filters);
+      setHasSearched(true);
 
+      // The query will be executed automatically by React Query
+      // due to the state change above
+      return { success: true };
+    },
+    []
+  );
+
+  // Debounced search
   const searchWithDebounce = useCallback(
     (query: string, filters: SearchFilters = {}, delay: number = 500) => {
-      // Clear existing timeout
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
 
-      // Set new timeout
       searchTimeoutRef.current = setTimeout(() => {
         search(query, filters);
       }, delay);
@@ -116,63 +113,50 @@ export function useSearch() {
     [search]
   );
 
-  const clearSearch = () => {
-    // Clear any pending search
+  // Clear search
+  const clearSearch = useCallback(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
       searchTimeoutRef.current = null;
     }
 
-    setSearchState({
-      results: null,
-      isSearching: false,
-      error: null,
-      query: '',
-      hasSearched: false
-    });
-  };
+    setCurrentQuery('');
+    setCurrentFilters({});
+    setHasSearched(false);
+  }, []);
 
-  const clearError = () => {
-    setSearchState(prev => ({ ...prev, error: null }));
-  };
+  const clearError = useCallback(() => {
+    // Error is managed by React Query, this is kept for compatibility
+  }, []);
 
-  // Helper functions for accessing search results
-  const getBytes = () => {
-    return searchState.results?.bytes || [];
-  };
+  // Helper functions
+  const getBytes = useCallback(() => results?.bytes || [], [results]);
+  const getComments = useCallback(() => results?.comments || [], [results]);
+  const getUsers = useCallback(() => results?.users || [], [results]);
+  const getHubs = useCallback(() => results?.hubs || [], [results]);
+  const getTotalResults = useCallback(() => results?.totalResults || 0, [results]);
+  const hasResults = useCallback(() => getTotalResults() > 0, [getTotalResults]);
+  const isEmpty = useCallback(
+    () => hasSearched && !hasResults() && !isFetching,
+    [hasSearched, hasResults, isFetching]
+  );
 
-  const getComments = () => {
-    return searchState.results?.comments || [];
-  };
-
-  const getUsers = () => {
-    return searchState.results?.users || [];
-  };
-
-  const getHubs = () => {
-    return searchState.results?.hubs || [];
-  };
-
-  const getTotalResults = () => {
-    return searchState.results?.totalResults || 0;
-  };
-
-  const hasResults = () => {
-    return getTotalResults() > 0;
-  };
-
-  const isEmpty = () => {
-    return searchState.hasSearched && !hasResults() && !searchState.isSearching;
-  };
-
-  const retry = () => {
-    if (searchState.query) {
-      search(searchState.query);
+  const retry = useCallback(() => {
+    if (currentQuery) {
+      refetch();
     }
-  };
+  }, [currentQuery, refetch]);
+
+  // Compute states for backward compatibility
+  const isSearching = isQueryLoading || isFetching;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
 
   return {
-    ...searchState,
+    results: results ?? null,
+    isSearching,
+    error: errorMessage,
+    query: currentQuery,
+    hasSearched,
     search,
     searchWithDebounce,
     clearSearch,
@@ -185,15 +169,14 @@ export function useSearch() {
     hasResults,
     isEmpty,
     retry,
-    isLoading: searchState.isSearching,
-    hasError: !!searchState.error,
-    error: searchState.error, // Expose error message for UI display
+    isLoading: isSearching,
+    hasError: !!error,
     quickSearch: search,
     advancedSearch: search,
   };
 }
 
-// Hook for search suggestions/autocomplete
+// Hook for search suggestions/autocomplete (unchanged - mock implementation)
 export function useSearchSuggestions() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -208,14 +191,15 @@ export function useSearchSuggestions() {
       setIsLoading(true);
 
       // TODO: Implement actual suggestions API
-      // For now, return mock suggestions
       const mockSuggestions = [
         `${query} tutorial`,
         `${query} guide`,
         `${query} tips`,
         `${query} best practices`,
-        `${query} examples`
-      ].filter(suggestion => suggestion.toLowerCase().includes(query.toLowerCase()));
+        `${query} examples`,
+      ].filter((suggestion) =>
+        suggestion.toLowerCase().includes(query.toLowerCase())
+      );
 
       setSuggestions(mockSuggestions);
       return mockSuggestions;
@@ -236,23 +220,17 @@ export function useSearchSuggestions() {
     suggestions,
     isLoading,
     getSuggestions,
-    clearSuggestions
+    clearSuggestions,
   };
 }
 
-// Hook for search history
+// Hook for search history (unchanged - local state)
 export function useSearchHistory() {
   const [history, setHistory] = useState<string[]>([]);
-
-  // Load history from storage on mount
-  // useEffect(() => {
-  //   loadHistory();
-  // }, []);
 
   const loadHistory = async () => {
     try {
       // TODO: Load from AsyncStorage
-      // For now, using empty array
       setHistory([]);
     } catch (error) {
       console.error('Failed to load search history:', error);
@@ -264,13 +242,10 @@ export function useSearchHistory() {
 
     try {
       const trimmedQuery = query.trim();
-      
-      setHistory(prev => {
-        // Remove if already exists
-        const filtered = prev.filter(item => item !== trimmedQuery);
-        // Add to beginning
+
+      setHistory((prev) => {
+        const filtered = prev.filter((item) => item !== trimmedQuery);
         const newHistory = [trimmedQuery, ...filtered];
-        // Keep only last 20 items
         return newHistory.slice(0, 20);
       });
 
@@ -282,7 +257,7 @@ export function useSearchHistory() {
 
   const removeFromHistory = async (query: string) => {
     try {
-      setHistory(prev => prev.filter(item => item !== query));
+      setHistory((prev) => prev.filter((item) => item !== query));
       // TODO: Save to AsyncStorage
     } catch (error) {
       console.error('Failed to remove from search history:', error);
@@ -307,7 +282,6 @@ export function useSearchHistory() {
     addToHistory,
     removeFromHistory,
     clearHistory,
-    getRecentSearches
+    getRecentSearches,
   };
 }
-

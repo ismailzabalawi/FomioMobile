@@ -121,6 +121,7 @@ export function ByteBlogPageHeader({
       <View className="mb-8">
         <MarkdownContent 
           content={topic.content} 
+          linkMetadata={topic.linkMetadata}
           isRawMarkdown={false} 
         />
       </View>

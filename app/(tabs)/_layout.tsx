@@ -401,6 +401,10 @@ function CustomTabBar({
   // Phase 2: Scroll-to-top buds from bar
   const BUD_START = 120;
   const BUD_END = 220;
+  // Compose reappear window when scrolling back up (allows showing compose mid-list)
+  const REAPPEAR_WINDOW = 160;
+  const REAPPEAR_RESET_DELTA = 8;
+  const REAPPEAR_FACTOR = 0.9;
   const insets = useSafeAreaInsets();
   const { isDark, isAmoled } = useTheme();
   const { scrollY, triggerUp } = useFluidNav();
@@ -423,6 +427,30 @@ function CustomTabBar({
     () => state.routes.find((r: any) => r.name === 'index'),
     [state.routes]
   );
+  // Track downward anchor to let compose reappear when scrolling up without reaching top
+  const composeReappearOrigin = useSharedValue(0);
+  const composeReappearBoost = useDerivedValue(() => {
+    const y = scrollY.value;
+    const delta = y - composeReappearOrigin.value;
+    if (delta > REAPPEAR_RESET_DELTA) {
+      composeReappearOrigin.value = y;
+      return 0;
+    }
+    const climb = composeReappearOrigin.value - y;
+    return interpolate(climb, [0, REAPPEAR_WINDOW], [0, 1], Extrapolate.CLAMP);
+  });
+  // Track downward anchor for right drop so it can snap back fluidly on up-scroll
+  const upReappearOrigin = useSharedValue(0);
+  const upReappearBoost = useDerivedValue(() => {
+    const y = scrollY.value;
+    const delta = y - upReappearOrigin.value;
+    if (delta > REAPPEAR_RESET_DELTA) {
+      upReappearOrigin.value = y;
+      return 0;
+    }
+    const climb = upReappearOrigin.value - y;
+    return interpolate(climb, [0, REAPPEAR_WINDOW], [0, 1], Extrapolate.CLAMP);
+  });
 
   const visibleRoutes = useMemo(
     () => state.routes.filter((r: any) => r.name !== 'compose'),
@@ -587,9 +615,13 @@ function CustomTabBar({
     
     // Progress values for fluid dynamics phases
     // Phase 1: Compose merges INTO bar (disappears) as user scrolls
-    const mergeProgress = interpolate(scrollY.value, [DETACH_START, DETACH_END], [0, 1], Extrapolate.CLAMP);
+    const rawMergeProgress = interpolate(scrollY.value, [DETACH_START, DETACH_END], [0, 1], Extrapolate.CLAMP);
+    // Allow compose to reappear when scrolling back up without needing to reach top
+    const mergeProgress = Math.max(0, Math.min(1, rawMergeProgress - composeReappearBoost.value * REAPPEAR_FACTOR));
     // Phase 2: Scroll-to-top buds FROM bar as user scrolls further
-    const budProgress = interpolate(scrollY.value, [BUD_START, BUD_END], [0, 1], Extrapolate.CLAMP);
+    const rawBudProgress = interpolate(scrollY.value, [BUD_START, BUD_END], [0, 1], Extrapolate.CLAMP);
+    // Allow right drop to reappear fluidly on up-scroll
+    const budProgress = Math.max(0, Math.min(1, rawBudProgress - upReappearBoost.value * REAPPEAR_FACTOR));
     
     // ========================================
     // COMPOSE BUTTON (Left Floating Drop)
@@ -671,9 +703,17 @@ function CustomTabBar({
   // ============================================================================
   const leftBridgeProps = useAnimatedProps(() => {
     const l = layout.value;
+    const mergeCutoff = isDark ? 0.9 : 0.7;
+    const themeFade = isDark ? 1 : 0.6;
     
     // Early exit: No bridge if compose fully merged or no width
-    if (!l.width || !l.composeVisible || l.leftBridgeDistance > STRETCH_LEFT || l.leftBridgeDistance <= 0) {
+    if (
+      !l.width ||
+      !l.composeVisible ||
+      l.mergeProgress >= mergeCutoff ||
+      l.leftBridgeDistance > STRETCH_LEFT ||
+      l.leftBridgeDistance <= 0
+    ) {
       return { d: '', fill: gooFill, fillOpacity: 0 };
     }
     
@@ -691,7 +731,7 @@ function CustomTabBar({
     const bridgePath = getMetaballPath(x1, y1, r1, x2, y2, r2, STRETCH_LEFT);
     
     // Compute opacity: full at rest, fades as compose merges into bar
-    const bridgeOpacity = computeBridgeOpacity(l.leftBridgeDistance, STRETCH_LEFT, 'merge');
+    const bridgeOpacity = computeBridgeOpacity(l.leftBridgeDistance, STRETCH_LEFT, 'merge') * Math.max(0, 1 - l.mergeProgress) * themeFade;
     
     return { 
       d: bridgePath, 
@@ -707,9 +747,16 @@ function CustomTabBar({
   // ============================================================================
   const rightBridgeProps = useAnimatedProps(() => {
     const l = layout.value;
+    const budCutoff = isDark ? 0.9 : 0.7;
+    const themeFade = isDark ? 1 : 0.6;
     
     // Early exit: No bridge if button not visible or fully detached
-    if (!l.width || !l.upButtonVisible || l.rightBridgeDistance > STRETCH_RIGHT) {
+    if (
+      !l.width ||
+      !l.upButtonVisible ||
+      l.budProgress >= budCutoff ||
+      l.rightBridgeDistance > STRETCH_RIGHT
+    ) {
       return { d: '', fill: gooFill, fillOpacity: 0 };
     }
     
@@ -727,7 +774,7 @@ function CustomTabBar({
     const bridgePath = getMetaballPath(x1, y1, r1, x2, y2, r2, STRETCH_RIGHT);
     
     // Compute opacity for budding phase
-    const bridgeOpacity = computeBridgeOpacity(l.rightBridgeDistance, STRETCH_RIGHT, 'bud');
+    const bridgeOpacity = computeBridgeOpacity(l.rightBridgeDistance, STRETCH_RIGHT, 'bud') * Math.max(0, 1 - l.budProgress) * themeFade;
     
     return { 
       d: bridgePath, 

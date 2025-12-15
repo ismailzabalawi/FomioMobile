@@ -7,6 +7,8 @@ import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { queryClient, asyncStoragePersister } from '@/shared/query-client';
 import '../global.css';
 
 import { ThemeProvider, useTheme } from '@/components/theme';
@@ -112,15 +114,24 @@ export default function RootLayout(): React.ReactElement | null {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <BottomSheetModalProvider>
-        <ThemeProvider defaultTheme="system">
-          <AuthProvider>
-            <InitializationCoordinator>
-              <RootLayoutNav />
-            </InitializationCoordinator>
-          </AuthProvider>
-        </ThemeProvider>
-      </BottomSheetModalProvider>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: asyncStoragePersister,
+          maxAge: 24 * 60 * 60 * 1000, // 24 hours
+          buster: '1.0.0', // Increment to invalidate cache on app updates
+        }}
+      >
+        <BottomSheetModalProvider>
+          <ThemeProvider defaultTheme="system">
+            <AuthProvider>
+              <InitializationCoordinator>
+                <RootLayoutNav />
+              </InitializationCoordinator>
+            </AuthProvider>
+          </ThemeProvider>
+        </BottomSheetModalProvider>
+      </PersistQueryClientProvider>
     </GestureHandlerRootView>
   );
 }

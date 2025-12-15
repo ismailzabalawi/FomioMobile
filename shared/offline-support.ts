@@ -609,8 +609,23 @@ export function useNetworkStatus() {
   };
 }
 
-// Hook for offline data
+/**
+ * @deprecated Use TanStack Query hooks (useQuery, useInfiniteQuery) instead.
+ * TanStack Query provides built-in caching, background refetching, and
+ * offline support through PersistQueryClientProvider.
+ * 
+ * This hook is kept for backward compatibility but will be removed in a future version.
+ * 
+ * Migration guide:
+ * - useFeed, useTopic, useComments, etc. now use TanStack Query internally
+ * - For custom queries, use useQuery from @tanstack/react-query
+ */
 export function useOfflineData<T>(key: string, fetcher: () => Promise<T>, ttl?: number) {
+  console.warn(
+    'useOfflineData is deprecated. Use TanStack Query hooks instead. ' +
+    'See shared/query-client.ts for query configuration.'
+  );
+  
   const [data, setData] = React.useState<T | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<Error | null>(null);

@@ -424,17 +424,25 @@ function SearchResults({
       data={listData}
       renderItem={renderItem}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+      style={{ flex: 1 }}
+      contentContainerStyle={{ 
+        paddingHorizontal: 16, 
+        paddingBottom: 32,
+        flexGrow: listData.length === 0 ? 1 : 0
+      }}
       showsVerticalScrollIndicator={false}
       onScroll={scrollHandler}
       scrollEventThrottle={16}
+      keyboardDismissMode="on-drag"
+      keyboardShouldPersistTaps="handled"
+      scrollEnabled={true}
       ListHeaderComponent={
         normalizedResults.totalResults > 0 ? (
           <Animated.View 
             entering={FadeInDown.duration(300).springify()}
             className="mb-4"
           >
-            <FluidSection mode={isDark ? 'dark' : 'light'} style={{ paddingVertical: 12, paddingHorizontal: 16 }}>
+            <FluidSection mode={isDark ? 'dark' : 'light'} style={{ paddingVertical: 12 }}>
               <Text 
                 className="text-lg font-bold"
                 style={{ color: colors.foreground }}

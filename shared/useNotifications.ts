@@ -1,16 +1,24 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+/**
+ * useNotifications Hook - Notifications data fetching with TanStack Query
+ * 
+ * Uses useQuery for notifications data with short stale time since
+ * notifications are time-sensitive.
+ */
+
+import { useCallback, useEffect, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { discourseApi } from './discourseApi';
 import { onAuthEvent } from './auth-events';
+import { queryKeys } from './query-client';
 
 /**
  * Notification type matching Discourse API structure
- * Maps Discourse notification data to app-friendly format
  */
 export interface Notification {
   id: number;
-  type: string; // e.g., 'replied', 'mentioned', 'liked', 'quoted', etc.
+  type: string;
   isRead: boolean;
-  createdAt: string; // ISO date string
+  createdAt: string;
   topicId?: number;
   postNumber?: number;
   userId?: number;
@@ -22,10 +30,10 @@ export interface Notification {
     badge_name?: string;
     badge_description?: string;
     group_name?: string;
-    [key: string]: any; // Allow other Discourse data fields
+    [key: string]: any;
   };
-  message?: string; // Raw notification message from Discourse
-  title?: string; // Optional title (for some notification types)
+  message?: string;
+  title?: string;
 }
 
 /**
@@ -43,23 +51,17 @@ export interface UseNotificationsReturn {
 }
 
 /**
- * Normalize Discourse notification_type (numeric ID) to string type
- * Based on Discourse notification.rb model
- * Maps numeric IDs (1, 2, 3...) to string types ('mentioned', 'replied', etc.)
+ * Normalize Discourse notification_type to string type
  */
 function normalizeNotificationType(notificationType: number | string | undefined): string {
-  // If already a string, return as-is (already normalized)
   if (typeof notificationType === 'string') {
     return notificationType;
   }
 
-  // If undefined or not a number, return 'unknown'
   if (typeof notificationType !== 'number') {
     return 'unknown';
   }
 
-  // Map numeric IDs to string types (from Discourse notification.rb)
-  // Reference: https://github.com/discourse/discourse/blob/main/app/models/notification.rb
   const typeMap: Record<number, string> = {
     1: 'mentioned',
     2: 'replied',
@@ -114,147 +116,167 @@ function transformDiscourseNotification(discourseNotif: any): Notification {
 }
 
 /**
- * useNotifications hook
+ * Fetch notifications from API
+ */
+async function fetchNotifications(): Promise<Notification[]> {
+  const response = await discourseApi.getNotifications();
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error || 'Failed to load notifications');
+  }
+
+  // Handle different Discourse response formats
+  let rawNotifications: any[] = [];
+
+  if (Array.isArray(response.data)) {
+    rawNotifications = response.data;
+  } else if (response.data.notifications && Array.isArray(response.data.notifications)) {
+    rawNotifications = response.data.notifications;
+  } else if (response.data.notification && Array.isArray(response.data.notification)) {
+    rawNotifications = response.data.notification;
+  }
+
+  const transformed = rawNotifications.map(transformDiscourseNotification);
+
+  // Sort by created date (newest first)
+  transformed.sort((a, b) => {
+    const dateA = new Date(a.createdAt).getTime();
+    const dateB = new Date(b.createdAt).getTime();
+    return dateB - dateA;
+  });
+
+  return transformed;
+}
+
+/**
+ * useNotifications hook with TanStack Query
  * 
- * Fetches and manages notifications from Discourse API
- * Auto-refreshes on auth events (sign-in, token refresh)
- * 
- * Architecture: Pure hook, no preferences filtering
- * Preferences filtering happens at UI layer (see app/(tabs)/notifications.tsx)
+ * Provides notifications data with caching and short stale time.
+ * Notifications are time-sensitive so we refetch frequently.
  */
 export function useNotifications(): UseNotificationsReturn {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const notificationsQueryKey = queryKeys.notifications();
 
-  /**
-   * Load notifications from Discourse API
-   */
-  const loadNotifications = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setHasError(false);
-      setErrorMessage(null);
+  const {
+    data: notifications = [],
+    isLoading: isQueryLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: notificationsQueryKey,
+    queryFn: fetchNotifications,
+    staleTime: 30 * 1000, // 30 seconds - notifications are time-sensitive
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnMount: 'always',
+    refetchInterval: 60 * 1000, // Poll every minute when app is active
+  });
 
-      const response = await discourseApi.getNotifications();
-
-      if (response.success && response.data) {
-        // Discourse returns notifications in different formats
-        // Handle both array and object with notifications array
-        let rawNotifications: any[] = [];
-        
-        if (Array.isArray(response.data)) {
-          rawNotifications = response.data;
-        } else if (response.data.notifications && Array.isArray(response.data.notifications)) {
-          rawNotifications = response.data.notifications;
-        } else if (response.data.notification && Array.isArray(response.data.notification)) {
-          rawNotifications = response.data.notification;
-        }
-
-        const transformed = rawNotifications.map(transformDiscourseNotification);
-        
-        // Sort by created date (newest first)
-        transformed.sort((a, b) => {
-          const dateA = new Date(a.createdAt).getTime();
-          const dateB = new Date(b.createdAt).getTime();
-          return dateB - dateA;
-        });
-
-        setNotifications(transformed);
-      } else {
-        throw new Error(response.error || 'Failed to load notifications');
-      }
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to load notifications';
-      setHasError(true);
-      setErrorMessage(errorMsg);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  /**
-   * Mark a single notification as read
-   */
-  const markAsRead = useCallback(async (notificationId: number) => {
-    try {
+  // Mark as read mutation with optimistic update
+  const markAsReadMutation = useMutation({
+    mutationFn: async (notificationId: number) => {
       const response = await discourseApi.markNotificationAsRead(notificationId);
-
-      if (response.success) {
-        // Optimistic update
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n))
-        );
-      } else {
-        console.error('Failed to mark notification as read:', response.error);
-        // Revert optimistic update on error
-        await loadNotifications();
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to mark notification as read');
       }
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-      // Revert optimistic update on error
-      await loadNotifications();
-    }
-  }, [loadNotifications]);
+      return notificationId;
+    },
+    onMutate: async (notificationId) => {
+      await queryClient.cancelQueries({ queryKey: notificationsQueryKey });
+      const previousNotifications = queryClient.getQueryData<Notification[]>(notificationsQueryKey);
 
-  /**
-   * Mark all notifications as read
-   */
-  const markAllAsRead = useCallback(async () => {
-    try {
+      queryClient.setQueryData<Notification[]>(notificationsQueryKey, (old) =>
+        old?.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n)) ?? []
+      );
+
+      return { previousNotifications };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previousNotifications) {
+        queryClient.setQueryData(notificationsQueryKey, context.previousNotifications);
+      }
+    },
+  });
+
+  // Mark all as read mutation with optimistic update
+  const markAllAsReadMutation = useMutation({
+    mutationFn: async () => {
       const response = await discourseApi.markAllNotificationsAsRead();
-
-      if (response.success) {
-        // Optimistic update
-        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      } else {
-        console.error('Failed to mark all notifications as read:', response.error);
-        // Revert optimistic update on error
-        await loadNotifications();
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to mark all notifications as read');
       }
-    } catch (error) {
-      console.error('Error marking all notifications as read:', error);
-      // Revert optimistic update on error
-      await loadNotifications();
-    }
-  }, [loadNotifications]);
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: notificationsQueryKey });
+      const previousNotifications = queryClient.getQueryData<Notification[]>(notificationsQueryKey);
 
-  /**
-   * Calculate unread count
-   */
-  const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.isRead).length,
-    [notifications]
-  );
+      queryClient.setQueryData<Notification[]>(notificationsQueryKey, (old) =>
+        old?.map((n) => ({ ...n, isRead: true })) ?? []
+      );
 
-  /**
-   * Load notifications on mount
-   */
-  useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
+      return { previousNotifications };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousNotifications) {
+        queryClient.setQueryData(notificationsQueryKey, context.previousNotifications);
+      }
+    },
+  });
 
-  /**
-   * Auto-refresh on auth events
-   */
+  // Subscribe to auth events for auto-refresh
   useEffect(() => {
     const unsubscribe = onAuthEvent((event) => {
       if (event === 'auth:signed-in' || event === 'auth:refreshed') {
-        loadNotifications();
+        queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [loadNotifications]);
+  }, [queryClient, notificationsQueryKey]);
+
+  // Load notifications
+  const loadNotifications = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
+
+  // Mark single notification as read
+  const markAsRead = useCallback(
+    async (notificationId: number) => {
+      try {
+        await markAsReadMutation.mutateAsync(notificationId);
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+      }
+    },
+    [markAsReadMutation]
+  );
+
+  // Mark all notifications as read
+  const markAllAsRead = useCallback(async () => {
+    try {
+      await markAllAsReadMutation.mutateAsync();
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  }, [markAllAsReadMutation]);
+
+  // Calculate unread count
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.isRead).length,
+    [notifications]
+  );
+
+  // Compute states for backward compatibility
+  const isLoading = isQueryLoading && notifications.length === 0;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
 
   return {
     notifications,
     isLoading,
-    hasError,
+    hasError: !!error,
     errorMessage,
     loadNotifications,
     markAsRead,
@@ -262,4 +284,3 @@ export function useNotifications(): UseNotificationsReturn {
     unreadCount,
   };
 }
-

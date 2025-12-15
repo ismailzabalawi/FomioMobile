@@ -357,7 +357,7 @@ class DiscourseApiService {
       // Check cache for GET requests
       if (this.isCacheableRequest(method, endpoint)) {
         const cacheKey = await this.getCacheKey(endpoint, options);
-        const cachedData = this.getCachedData<T>(cacheKey);
+        const cachedData = this.getCachedData<T>(cacheKey, endpoint);
         if (cachedData) {
           return {
             success: true,
@@ -696,12 +696,19 @@ class DiscourseApiService {
     }
   }
 
-  private getCachedData<T>(cacheKey: string): T | null {
+  private getCachedData<T>(cacheKey: string, endpoint?: string): T | null {
     const cached = this.cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
-      console.log(`📦 Using cached data for: ${cacheKey}`);
+    if (!cached) return null;
+    
+    // Use endpoint-specific cache duration if available
+    const cacheDuration = endpoint ? this.getCacheDuration(endpoint) : this.CACHE_DURATION;
+    const age = Date.now() - cached.timestamp;
+    
+    if (age < cacheDuration) {
+      console.log(`📦 Using cached data for: ${cacheKey} (age: ${Math.round(age / 1000)}s)`);
       return cached.data as T;
     }
+    
     return null;
   }
 
@@ -716,15 +723,64 @@ class DiscourseApiService {
 
 
   private isCacheableRequest(method: string, endpoint: string): boolean {
-    // Only cache GET requests and specific endpoints
-    const cacheableEndpoints = [
+    // Only cache GET requests
+    if (method !== 'GET') return false;
+    
+    // Cache patterns for various endpoints
+    const cacheablePatterns = [
+      // Existing endpoints
       '/categories.json',
       '/site.json',
       '/session/current.json',
       '/notifications.json',
+      
+      // Feed endpoints
+      '/latest.json',
+      
+      // Topic endpoints (using regex patterns stored as strings)
+      '/t/',        // Topic details
+      '/c/',        // Category feeds
+      
+      // User endpoints
+      '/u/',        // User profiles
+      '/users/',    // User data
+      '/topics/created-by/', // User topics
+      '/user_actions.json',  // User activity
+      
+      // Search endpoints
+      '/search.json',
     ];
     
-    return method === 'GET' && cacheableEndpoints.some(ep => endpoint.includes(ep));
+    return cacheablePatterns.some(pattern => endpoint.includes(pattern));
+  }
+
+  /**
+   * Get cache duration based on endpoint type
+   * Different endpoints have different staleness requirements
+   */
+  private getCacheDuration(endpoint: string): number {
+    // Long cache for stable data
+    if (endpoint.includes('/categories.json') || 
+        endpoint.includes('/site.json')) {
+      return 30 * 60 * 1000; // 30 minutes
+    }
+    
+    // Medium cache for user data
+    if (endpoint.includes('/u/') || 
+        endpoint.includes('/users/') ||
+        endpoint.includes('/session/current.json')) {
+      return 10 * 60 * 1000; // 10 minutes
+    }
+    
+    // Short cache for dynamic content
+    if (endpoint.includes('/latest.json') || 
+        endpoint.includes('/notifications.json') ||
+        endpoint.includes('/search.json')) {
+      return 2 * 60 * 1000; // 2 minutes
+    }
+    
+    // Default cache duration
+    return this.CACHE_DURATION;
   }
 
   // Sanitize object recursively
@@ -2717,6 +2773,54 @@ class DiscourseApiService {
     }
   }
 
+  async getDraft(params: { draftKey: string; sequence?: number }): Promise<DiscourseApiResponse<any>> {
+    const { draftKey, sequence = 0 } = params;
+    try {
+      const endpoint = `/drafts/${encodeURIComponent(draftKey)}.json?sequence=${sequence}`;
+      return await this.makeRequest<any>(endpoint);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Network error fetching draft',
+      };
+    }
+  }
+
+  async saveDraft(params: { draftKey: string; draft: Record<string, any>; sequence?: number }): Promise<DiscourseApiResponse<any>> {
+    const { draftKey, draft, sequence = 0 } = params;
+    try {
+      const formData = new FormData();
+      formData.append('draft', JSON.stringify(draft));
+      formData.append('draft_key', draftKey);
+      formData.append('sequence', String(sequence));
+
+      return await this.makeRequest<any>(`/drafts/${encodeURIComponent(draftKey)}.json`, {
+        method: 'PUT',
+        body: formData,
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Network error saving draft',
+      };
+    }
+  }
+
+  async deleteDraft(params: { draftKey: string; sequence?: number }): Promise<DiscourseApiResponse<void>> {
+    const { draftKey, sequence = 0 } = params;
+    try {
+      const endpoint = `/drafts/${encodeURIComponent(draftKey)}.json?sequence=${sequence}`;
+      return await this.makeRequest<void>(endpoint, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Network error deleting draft',
+      };
+    }
+  }
+
   async getUserReadTopics(username: string, page: number = 0): Promise<DiscourseApiResponse<any>> {
     if (!SecurityValidator.validateUsername(username)) {
       return { success: false, error: 'Invalid username format' };
@@ -2841,4 +2945,3 @@ export const discourseApi = new DiscourseApiService(defaultConfig);
 // Export types and service class
 export { DiscourseApiService };
 export default discourseApi;
-

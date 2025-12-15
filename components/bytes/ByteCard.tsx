@@ -37,21 +37,15 @@ function ByteCardComponent({
   const colors = getThemeColors(themeMode, isAmoled);
   const [isTrayOpen, setIsTrayOpen] = useState(false);
 
-  // Guard against invalid bytes
-  if (!byte || !byte.id || !byte.title) {
-    if (__DEV__) {
-      console.warn('⚠️ [ByteCard] Invalid byte prop:', { 
-        hasByte: !!byte, 
-        hasId: !!byte?.id, 
-        hasTitle: !!byte?.title 
-      });
-    }
-    return null;
-  }
+  // Always call hooks unconditionally (Rules of Hooks)
+  // Use a safe fallback byte for hooks when byte is invalid
+  const isValidByte = !!(byte && byte.id && byte.title);
+  const safeByte = isValidByte ? byte : { id: 0, title: '', author: { id: 0, name: '', username: '', avatar: '' }, raw: '', cooked: '', createdAt: '', stats: { likes: 0, replies: 0 } } as Byte;
+  
+  const { onCardPress } = useByteCardActions(safeByte);
+  const actions = useByteCardActions(safeByte);
 
-  const { onCardPress } = useByteCardActions(byte);
-  const actions = useByteCardActions(byte);
-
+  // All hooks must be called unconditionally (Rules of Hooks)
   const translateX = useRef(new Animated.Value(0)).current;
   const likeThreshold = 28;
   const trayThreshold = -28;
@@ -71,28 +65,6 @@ function ByteCardComponent({
 
   // Track if header area was pressed to prevent parent Pressable from handling
   const headerPressedRef = useRef(false);
-
-  const handlePress = () => {
-    if (panActiveRef.current) {
-      return;
-    }
-    // If header was pressed, skip card navigation
-    if (headerPressedRef.current) {
-      headerPressedRef.current = false;
-      return;
-    }
-    
-    if (onPress) {
-      onPress();
-    } else {
-      onCardPress();
-    }
-  };
-
-  const handlePressIn = () => {
-    // Reset flag on press start to allow new presses
-    headerPressedRef.current = false;
-  };
 
   const handleHeaderPress = useCallback(() => {
     headerPressedRef.current = true;
@@ -151,11 +123,6 @@ function ByteCardComponent({
     })
   ).current;
 
-  const handleToggleTray = () => {
-    setIsTrayOpen(prev => !prev);
-    resetPosition();
-  };
-
   // Animate padding around the action row and arrow rotation when tray toggles
   React.useEffect(() => {
     Animated.timing(actionPadding, {
@@ -172,6 +139,45 @@ function ByteCardComponent({
       useNativeDriver: true,
     }).start();
   }, [actionPadding, arrowRotation, isTrayOpen]);
+
+  // Guard against invalid bytes - AFTER all hooks
+  if (!isValidByte) {
+    if (__DEV__) {
+      console.warn('⚠️ [ByteCard] Invalid byte prop:', { 
+        hasByte: !!byte, 
+        hasId: !!byte?.id, 
+        hasTitle: !!byte?.title 
+      });
+    }
+    return null;
+  }
+
+  const handlePress = () => {
+    if (panActiveRef.current) {
+      return;
+    }
+    // If header was pressed, skip card navigation
+    if (headerPressedRef.current) {
+      headerPressedRef.current = false;
+      return;
+    }
+    
+    if (onPress) {
+      onPress();
+    } else {
+      onCardPress();
+    }
+  };
+
+  const handlePressIn = () => {
+    // Reset flag on press start to allow new presses
+    headerPressedRef.current = false;
+  };
+
+  const handleToggleTray = () => {
+    setIsTrayOpen(prev => !prev);
+    resetPosition();
+  };
 
   return (
     <Pressable

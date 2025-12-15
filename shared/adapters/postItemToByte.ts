@@ -23,6 +23,10 @@ export interface PostItem {
   hasMedia?: boolean;
   coverImage?: string;
   slug: string;
+  draftKey?: string;
+  draftSequence?: number;
+  rawContent?: string;
+  categoryId?: number;
 }
 
 /**
@@ -75,4 +79,3 @@ export function postItemToByte(item: PostItem): Byte {
     },
   };
 }
-

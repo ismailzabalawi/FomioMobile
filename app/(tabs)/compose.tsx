@@ -7,13 +7,14 @@
 // - Inline validation (no Alert dialogs)
 // - Smart Post button enable/disable
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Pressable, Keyboard } from 'react-native';
 
 // Accessibility: Larger hitSlop for better touch targets
 const DEFAULT_HIT_SLOP = Platform.OS === 'ios' ? 16 : 20;
-import { router } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/theme';
@@ -41,9 +42,13 @@ interface ValidationErrors {
   general?: string;
 }
 
+const COMPOSE_DRAFT_META_KEY = 'compose_draft_meta_v1';
+const NEW_TOPIC_DRAFT_KEY = 'new_topic';
+
 export default function ComposeScreen(): React.ReactElement {
   const { isDark } = useTheme();
   const { safeBack } = useSafeNavigation();
+  const params = useLocalSearchParams<{ draftKey?: string; draftSequence?: string }>();
   const { 
     terets, 
     allCategories, // All categories (Hubs + Terets) for picker
@@ -70,6 +75,33 @@ export default function ComposeScreen(): React.ReactElement {
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [showHelpTip, setShowHelpTip] = useState(false);
   const [editorMode, setEditorMode] = useState<'write' | 'preview'>('write');
+  const [draftKey, setDraftKey] = useState<string>(NEW_TOPIC_DRAFT_KEY);
+  const [draftSequence, setDraftSequence] = useState<number>(0);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+
+  const paramDraftKey = useMemo(
+    () => (typeof params?.draftKey === 'string' ? params.draftKey : undefined),
+    [params]
+  );
+  const paramDraftSequence = useMemo(() => {
+    const value =
+      typeof params?.draftSequence === 'string'
+        ? parseInt(params.draftSequence, 10)
+        : undefined;
+    return Number.isFinite(value) ? (value as number) : 0;
+  }, [params]);
+
+  const latestDraftRef = useRef({
+    title: '',
+    body: '',
+    teretId: 0,
+    images: [] as MediaItem[],
+    draftKey: NEW_TOPIC_DRAFT_KEY,
+    draftSequence: 0,
+  });
 
   // Configure header - moved after handleCancel definition
 
@@ -116,9 +148,144 @@ export default function ComposeScreen(): React.ReactElement {
     });
   }, [terets, teretsLoading, teretsError, isTeretSheetOpen]);
 
+  const persistDraftMeta = useCallback(async (key: string, sequence: number) => {
+    try {
+      await AsyncStorage.setItem(
+        COMPOSE_DRAFT_META_KEY,
+        JSON.stringify({ draftKey: key, sequence })
+      );
+    } catch {
+      // Best-effort only
+    }
+  }, []);
+
+  const clearDraftMeta = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(COMPOSE_DRAFT_META_KEY);
+    } catch {
+      // Best-effort only
+    }
+  }, []);
+
+  const parseDraftContent = useCallback((rawDraft: any) => {
+    if (!rawDraft) return {};
+    if (typeof rawDraft === 'object') return rawDraft;
+    try {
+      return JSON.parse(rawDraft);
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const hydrateDraft = useCallback(
+    async (key: string, sequence: number) => {
+      if (isAuthLoading || !isAuthenticated) return;
+      setDraftError(null);
+
+      try {
+        const response = await discourseApi.getDraft({ draftKey: key, sequence });
+        if (!response.success || !response.data) {
+          return;
+        }
+
+        const payload = response.data;
+        const parsed = parseDraftContent(payload.draft || payload.data);
+
+        if (parsed.title) setTitle(parsed.title);
+        if (parsed.raw || parsed.reply) setBody(parsed.raw || parsed.reply || '');
+
+        const categoryId = parsed.category_id || payload.category_id;
+        if (categoryId) {
+          const foundTeret = terets.find((t) => t.id === categoryId);
+          if (foundTeret) {
+            setSelectedTeret(foundTeret);
+          }
+        }
+
+        const nextKey = payload.draft_key || key;
+        const nextSequence = payload.draft_sequence ?? payload.sequence ?? sequence;
+        setDraftKey(nextKey);
+        setDraftSequence(nextSequence);
+        await persistDraftMeta(nextKey, nextSequence);
+      } catch (error) {
+        setDraftError(
+          error instanceof Error ? error.message : 'Failed to load draft'
+        );
+      } finally {
+        setHasHydratedDraft(true);
+      }
+    },
+    [
+      isAuthLoading,
+      isAuthenticated,
+      parseDraftContent,
+      terets,
+      persistDraftMeta,
+    ]
+  );
+
+  // Prime draft metadata from route params or cached value
+  useEffect(() => {
+    if (paramDraftKey) {
+      setDraftKey(paramDraftKey);
+      setDraftSequence(paramDraftSequence || 0);
+      return;
+    }
+
+    (async () => {
+      try {
+        const cached = await AsyncStorage.getItem(COMPOSE_DRAFT_META_KEY);
+        if (!cached) return;
+        const parsed = JSON.parse(cached);
+        if (parsed?.draftKey) {
+          setDraftKey(parsed.draftKey);
+        }
+        if (typeof parsed?.sequence === 'number') {
+          setDraftSequence(parsed.sequence);
+        }
+      } catch {
+        // ignore cache errors
+      }
+    })();
+  }, [paramDraftKey, paramDraftSequence]);
+
+  // Hydrate draft content after terets/auth are ready
+  useEffect(() => {
+    if (hasHydratedDraft) return;
+    if (teretsLoading || isAuthLoading || !isAuthenticated) return;
+
+    const keyToLoad = paramDraftKey || draftKey || NEW_TOPIC_DRAFT_KEY;
+    const seqToLoad =
+      paramDraftKey !== undefined ? paramDraftSequence : draftSequence;
+
+    hydrateDraft(keyToLoad, seqToLoad);
+  }, [
+    draftKey,
+    draftSequence,
+    paramDraftKey,
+    paramDraftSequence,
+    hydrateDraft,
+    hasHydratedDraft,
+    teretsLoading,
+    isAuthLoading,
+    isAuthenticated,
+  ]);
+
   // Compute lengths for validation
   const titleLen = title.trim().length;
   const bodyLen = body.trim().length;
+
+  // Track latest draft state to avoid stale closures when saving on blur
+  useEffect(() => {
+    latestDraftRef.current = {
+      title,
+      body,
+      teretId: selectedTeret?.id || 0,
+      images,
+      draftKey,
+      draftSequence,
+    };
+  }, [title, body, selectedTeret, images, draftKey, draftSequence]);
 
   // Smart Post button enable logic - enforces Discourse minimums
   const canPost = useMemo(() => {
@@ -133,9 +300,103 @@ export default function ComposeScreen(): React.ReactElement {
     );
   }, [titleLen, bodyLen, minTitle, minPost, selectedTeret, isAuthenticated, isAuthLoading, isCreating, settingsLoading]);
 
+  const saveDraftIfNeeded = useCallback(
+    async (_reason: 'blur' | 'manual' | 'cancel' = 'manual') => {
+      if (isAuthLoading || !isAuthenticated) return;
+
+      const {
+        title: latestTitle,
+        body: latestBody,
+        teretId,
+        images: latestImages,
+        draftKey: latestKey,
+        draftSequence: latestSequence,
+      } = latestDraftRef.current;
+
+      const trimmedTitle = latestTitle.trim();
+      const trimmedBody = latestBody.trim();
+      const hasContent =
+        trimmedTitle.length > 0 ||
+        trimmedBody.length > 0 ||
+        (latestImages && latestImages.length > 0);
+
+      if (!hasContent) {
+        // If there is nothing to save, clear remote draft if one existed
+        if (latestSequence > 0) {
+          await discourseApi.deleteDraft({
+            draftKey: latestKey,
+            sequence: latestSequence,
+          });
+          setDraftSequence(0);
+          await clearDraftMeta();
+        }
+        return;
+      }
+
+      setIsSavingDraft(true);
+      setDraftError(null);
+
+      const response = await discourseApi.saveDraft({
+        draftKey: latestKey || NEW_TOPIC_DRAFT_KEY,
+        sequence: latestSequence,
+        draft: {
+          title: trimmedTitle,
+          raw: trimmedBody,
+          category_id: teretId || undefined,
+        },
+      });
+
+      if (response.success) {
+        const nextKey = response.data?.draft_key || latestKey || NEW_TOPIC_DRAFT_KEY;
+        const nextSequence =
+          response.data?.draft_sequence ??
+          response.data?.sequence ??
+          latestSequence + 1;
+
+        setDraftKey(nextKey);
+        setDraftSequence(nextSequence);
+        latestDraftRef.current.draftKey = nextKey;
+        latestDraftRef.current.draftSequence = nextSequence;
+        await persistDraftMeta(nextKey, nextSequence);
+        setLastSavedAt(new Date().toISOString());
+      } else {
+        setDraftError(response.error || 'Failed to save draft');
+      }
+
+      setIsSavingDraft(false);
+    },
+    [isAuthLoading, isAuthenticated, persistDraftMeta, clearDraftMeta]
+  );
+
+  // Save on screen blur (e.g., user navigates away)
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void saveDraftIfNeeded('blur');
+      };
+    }, [saveDraftIfNeeded])
+  );
+
+  const clearDraftAfterPost = useCallback(async () => {
+    try {
+      await discourseApi.deleteDraft({
+        draftKey: draftKey || NEW_TOPIC_DRAFT_KEY,
+        sequence: draftSequence,
+      });
+    } catch {
+      // Best-effort only
+    }
+    setDraftSequence(0);
+    setDraftKey(NEW_TOPIC_DRAFT_KEY);
+    setLastSavedAt(null);
+    setHasHydratedDraft(false);
+    await clearDraftMeta();
+  }, [draftKey, draftSequence, clearDraftMeta]);
+
   const handleCancel = useCallback((): void => {
+    void saveDraftIfNeeded('cancel');
     safeBack();
-  }, [safeBack]);
+  }, [safeBack, saveDraftIfNeeded]);
 
   const handleModeChange = useCallback((mode: 'write' | 'preview') => {
     setEditorMode(mode);
@@ -282,6 +543,7 @@ export default function ComposeScreen(): React.ReactElement {
       }
 
       setSuccessMessage('Your post has been published!');
+      await clearDraftAfterPost();
 
       // Clear form and navigate back after short delay
       setTimeout(() => {
@@ -316,6 +578,7 @@ export default function ComposeScreen(): React.ReactElement {
     minTitle,
     minPost,
     safeBack,
+    clearDraftAfterPost,
   ]);
 
   const handleTeretPress = useCallback(() => {
@@ -544,8 +807,25 @@ export default function ComposeScreen(): React.ReactElement {
           {successMessage && (
             <View className="mx-4 mt-4 p-3 rounded-fomio-card bg-fomio-accent/20 dark:bg-fomio-accent-dark/20 flex-row items-center">
               <Check size={16} color="#22C55E" weight="regular" />
-              <Text className="text-body text-fomio-accent dark:text-fomio-accent-dark ml-2 flex-1">
-                {successMessage}
+          <Text className="text-body text-fomio-accent dark:text-fomio-accent-dark ml-2 flex-1">
+            {successMessage}
+          </Text>
+        </View>
+      )}
+
+          {draftError && (
+            <View className="mx-4 mt-2 p-3 rounded-fomio-card bg-fomio-danger/15 dark:bg-fomio-danger-dark/15 flex-row items-center">
+              <Warning size={14} color="#EF4444" weight="regular" />
+              <Text className="text-caption text-fomio-danger dark:text-fomio-danger-dark ml-2 flex-1">
+                {draftError}
+              </Text>
+            </View>
+          )}
+
+          {!draftError && (isSavingDraft || lastSavedAt) && (
+            <View className="mx-4 mt-2 flex-row items-center">
+              <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
+                {isSavingDraft ? 'Saving draft…' : 'Draft saved'}
               </Text>
             </View>
           )}

@@ -8,7 +8,25 @@ export { useSearch } from './useSearch';
 export { useCategories } from './useCategories';
 export { useTerets } from './useTerets';
 export { useRecentTopics } from './useRecentTopics';
+export { useTopic } from './useTopic';
+export { useComments, useCommentDraft } from './useComments';
+export { useHubs, useHub, useHubSubscription } from './useHubs';
+export { useNotifications } from './useNotifications';
 export { logger, logError, withLogging } from './logger';
+
+// TanStack Query exports
+export {
+  queryClient,
+  queryKeys,
+  invalidateQueriesByPrefix,
+  prefetchQuery,
+  prefetchInfiniteQuery,
+  setQueryData,
+  getQueryData,
+} from './query-client';
+
+// Mutation hooks
+export * from './mutations';
 
 // Design System exports
 export * from './design-system';

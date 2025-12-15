@@ -1,12 +1,15 @@
-// Hook to fetch bookmarked topics
-// Only available for own profile
-// Can leverage bookmark store for better performance
+/**
+ * useUserBookmarked Hook - Bookmarked topics with TanStack Query
+ * 
+ * Uses useInfiniteQuery for paginated bookmarked topics.
+ */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { discourseApi } from '../discourseApi';
 import { PostItem } from '@/components/profile/ProfilePostList';
-import { useBookmarkStore } from '../useBookmarkSync';
 import { discourseTopicToPostItem } from '../adapters/byteToPostItem';
+import { queryKeys } from '../query-client';
 
 export interface UseUserBookmarkedReturn {
   items: PostItem[];
@@ -18,96 +21,115 @@ export interface UseUserBookmarkedReturn {
   refresh: () => Promise<void>;
 }
 
-export function useUserBookmarked(username: string | undefined): UseUserBookmarkedReturn {
-  const [items, setItems] = useState<PostItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
-  const [hasMore, setHasMore] = useState(true);
-  const [currentPage, setCurrentPage] = useState(0);
-  const bookmarks = useBookmarkStore((state) => state.bookmarks);
+interface BookmarkedPageData {
+  items: PostItem[];
+  page: number;
+  hasMore: boolean;
+}
 
-  const loadBookmarked = useCallback(
-    async (page: number = 0, append: boolean = false) => {
-      if (!username) return;
+/**
+ * Fetch bookmarked topics page from API
+ */
+async function fetchUserBookmarkedPage(
+  username: string,
+  page: number
+): Promise<BookmarkedPageData> {
+  const response = await discourseApi.getUserBookmarkedTopics(username, page);
 
-      setIsLoading(true);
-      setHasError(false);
-      setErrorMessage(undefined);
+  if (!response.success || !response.data) {
+    throw new Error(response.error || 'Failed to load bookmarks');
+  }
 
-      try {
-        const response = await discourseApi.getUserBookmarkedTopics(username, page);
+  const userActions = response.data.user_actions || [];
+  const topicsList = response.data.topic_list?.topics || [];
 
-        if (!response.success || !response.data) {
-          throw new Error(response.error || 'Failed to load bookmarks');
-        }
-
-        const userActions = response.data.user_actions || [];
-        const topicsList = response.data.topic_list?.topics || [];
-        
-        // Extract topics from user_actions (which may have nested topic objects)
-        const topics: any[] = [];
-        if (userActions.length > 0) {
-          userActions.forEach((action: any) => {
-            if (action.topic) {
-              topics.push({ ...action.topic, bookmarked: true });
-            } else if (action.id) {
-              topics.push({ ...action, bookmarked: true });
-            }
-          });
-        } else {
-          topics.push(...topicsList.map((t: any) => ({ ...t, bookmarked: true })));
-        }
-        
-        const mappedItems: PostItem[] = topics.map((topic: any) => {
-          const item = discourseTopicToPostItem(topic, discourseApi);
-          return { ...item, isBookmarked: true }; // All items here are bookmarked
-        }).filter(Boolean);
-
-        if (append) {
-          setItems((prev) => [...prev, ...mappedItems]);
-        } else {
-          setItems(mappedItems);
-        }
-
-        setHasMore(mappedItems.length === 20);
-        setCurrentPage(page);
-      } catch (error) {
-        setHasError(true);
-        setErrorMessage(
-          error instanceof Error ? error.message : 'Failed to load bookmarks'
-        );
-      } finally {
-        setIsLoading(false);
+  // Extract topics from user_actions
+  const topics: any[] = [];
+  if (userActions.length > 0) {
+    userActions.forEach((action: any) => {
+      if (action.topic) {
+        topics.push({ ...action.topic, bookmarked: true });
+      } else if (action.id) {
+        topics.push({ ...action, bookmarked: true });
       }
+    });
+  } else {
+    topics.push(...topicsList.map((t: any) => ({ ...t, bookmarked: true })));
+  }
+
+  const items: PostItem[] = topics
+    .map((topic: any) => {
+      const item = discourseTopicToPostItem(topic, discourseApi);
+      return { ...item, isBookmarked: true };
+    })
+    .filter(Boolean);
+
+  return {
+    items,
+    page,
+    hasMore: items.length === 20,
+  };
+}
+
+/**
+ * useUserBookmarked hook with TanStack Query
+ */
+export function useUserBookmarked(username: string | undefined): UseUserBookmarkedReturn {
+  const queryClient = useQueryClient();
+  const bookmarksQueryKey = username ? queryKeys.userBookmarks(username) : ['user', null, 'bookmarks'];
+
+  const {
+    data,
+    isLoading: isQueryLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    error,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: bookmarksQueryKey,
+    queryFn: async ({ pageParam = 0 }) => {
+      if (!username) {
+        return { items: [], page: 0, hasMore: false };
+      }
+      return fetchUserBookmarkedPage(username, pageParam);
     },
-    [username]
-  );
+    getNextPageParam: (lastPage) => {
+      return lastPage.hasMore ? lastPage.page + 1 : undefined;
+    },
+    initialPageParam: 0,
+    enabled: !!username,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+  });
 
+  // Flatten pages into single array
+  const items: PostItem[] = data?.pages.flatMap((page) => page.items) ?? [];
+
+  // Load more
   const loadMore = useCallback(async () => {
-    if (!hasMore || isLoading) return;
-    await loadBookmarked(currentPage + 1, true);
-  }, [hasMore, isLoading, currentPage, loadBookmarked]);
-
-  const refresh = useCallback(async () => {
-    setCurrentPage(0);
-    await loadBookmarked(0, false);
-  }, [loadBookmarked]);
-
-  useEffect(() => {
-    if (username) {
-      loadBookmarked(0, false);
+    if (hasNextPage && !isFetchingNextPage) {
+      await fetchNextPage();
     }
-  }, [username, loadBookmarked]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Refresh
+  const refresh = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: bookmarksQueryKey });
+  }, [queryClient, bookmarksQueryKey]);
+
+  // Compute states for backward compatibility
+  const isLoading = isQueryLoading && items.length === 0;
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : undefined;
 
   return {
     items,
     isLoading,
-    hasError,
+    hasError: !!error,
     errorMessage,
-    hasMore,
+    hasMore: hasNextPage ?? false,
     loadMore,
     refresh,
   };
 }
-

@@ -85,6 +85,8 @@ export function SearchInput({
           marginLeft: 12,
           backgroundColor: 'transparent',
           borderWidth: 0,
+          paddingHorizontal: 0,
+          paddingVertical: 0,
         }}
         inputStyle={{ 
           fontSize: 16, 

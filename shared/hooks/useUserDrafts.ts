@@ -33,25 +33,49 @@ export function useUserDrafts(): UseUserDraftsReturn {
 
       // Transform drafts to PostItem format
       const draftsList = response.data.drafts || [];
-      const mappedDrafts: PostItem[] = draftsList.map((draft: any) => ({
-        id: draft.id || 0,
-        title: draft.title || draft.raw || 'Untitled Draft',
-        hubName: draft.category?.name || 'Uncategorized',
-        teretName: draft.category?.slug,
-        author: {
-          name: draft.user?.name || draft.user?.username || 'You',
-          avatar: draft.user?.avatar_template
-            ? discourseApi.getAvatarUrl(draft.user.avatar_template, 120)
-            : '',
-        },
-        replyCount: 0,
-        likeCount: 0,
-        createdAt: draft.created_at || new Date().toISOString(),
-        lastPostedAt: draft.updated_at || draft.created_at,
-        isBookmarked: false,
-        hasMedia: false,
-        slug: `draft/${draft.id}`,
-      }));
+      const mappedDrafts: PostItem[] = draftsList.map((draft: any) => {
+        const rawDraft = draft.draft || draft.data;
+        let parsedDraft: any = {};
+
+        try {
+          parsedDraft =
+            typeof rawDraft === 'string'
+              ? JSON.parse(rawDraft)
+              : rawDraft && typeof rawDraft === 'object'
+                ? rawDraft
+                : {};
+        } catch {
+          parsedDraft = {};
+        }
+
+        const title = draft.title || parsedDraft.title || parsedDraft.raw || 'Untitled Draft';
+        const rawContent = parsedDraft.raw || parsedDraft.reply || '';
+        const categoryId = parsedDraft.category_id || draft.category_id;
+
+        return {
+          id: draft.id || 0,
+          title,
+          hubName: draft.category?.name || 'Uncategorized',
+          teretName: draft.category?.slug,
+          author: {
+            name: draft.user?.name || draft.user?.username || 'You',
+            avatar: draft.user?.avatar_template
+              ? discourseApi.getAvatarUrl(draft.user.avatar_template, 120)
+              : '',
+          },
+          replyCount: 0,
+          likeCount: 0,
+          createdAt: draft.created_at || new Date().toISOString(),
+          lastPostedAt: draft.updated_at || draft.created_at,
+          isBookmarked: false,
+          hasMedia: false,
+          slug: `draft/${draft.id}`,
+          draftKey: draft.draft_key || draft.draftKey,
+          draftSequence: draft.sequence ?? draft.draft_sequence ?? 0,
+          rawContent,
+          categoryId,
+        };
+      });
 
       setDrafts(mappedDrafts);
     } catch (error) {
@@ -80,4 +104,3 @@ export function useUserDrafts(): UseUserDraftsReturn {
     refresh,
   };
 }
-
