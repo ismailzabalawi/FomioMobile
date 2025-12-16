@@ -23,6 +23,7 @@ import { useAuth } from '@/shared/auth-context';
 import { useDiscourseSettings } from '../../shared/useDiscourseSettings';
 import { createTopic } from '../../lib/discourse';
 import { discourseApi } from '@/shared/discourseApi';
+import { useSettingsStorage } from '../../shared/useSettingsStorage';
 import { SignIn, Check, Warning, Question } from 'phosphor-react-native';
 import { 
   ComposeEditor,
@@ -59,6 +60,7 @@ export default function ComposeScreen(): React.ReactElement {
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const { minTitle, minPost, loading: settingsLoading } = useDiscourseSettings();
   const { pickImages, isPicking } = useImagePicker();
+  const { settings, loading: settingsStorageLoading } = useSettingsStorage();
   
   // Editor state - structured cleanly for future draft autosave
   const [title, setTitle] = useState<string>('');
@@ -81,6 +83,7 @@ export default function ComposeScreen(): React.ReactElement {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const autoSave = settings.autoSave;
 
   const paramDraftKey = useMemo(
     () => (typeof params?.draftKey === 'string' ? params.draftKey : undefined),
@@ -306,22 +309,11 @@ export default function ComposeScreen(): React.ReactElement {
     };
   }, [title, body, selectedTeret, images, draftKey, draftSequence]);
 
-  // Smart Post button enable logic - enforces Discourse minimums
-  const canPost = useMemo(() => {
-    return (
-      titleLen >= minTitle &&
-      bodyLen >= minPost &&
-      selectedTeret !== null &&
-      isAuthenticated &&
-      !isAuthLoading &&
-      !isCreating &&
-      !settingsLoading
-    );
-  }, [titleLen, bodyLen, minTitle, minPost, selectedTeret, isAuthenticated, isAuthLoading, isCreating, settingsLoading]);
-
+  // Define saveDraftIfNeeded before the effects that use it
   const saveDraftIfNeeded = useCallback(
-    async (_reason: 'blur' | 'manual' | 'cancel' = 'manual') => {
+    async (reason: 'blur' | 'manual' | 'cancel' | 'debounce' = 'manual') => {
       if (isAuthLoading || !isAuthenticated) return;
+      if (!autoSave && reason !== 'manual') return;
 
       const {
         title: latestTitle,
@@ -384,16 +376,49 @@ export default function ComposeScreen(): React.ReactElement {
 
       setIsSavingDraft(false);
     },
-    [isAuthLoading, isAuthenticated, persistDraftMeta, clearDraftMeta]
+    [isAuthLoading, isAuthenticated, persistDraftMeta, clearDraftMeta, autoSave]
   );
+
+  // Debounced auto-save on content changes when autoSave is enabled
+  useEffect(() => {
+    if (!autoSave || settingsStorageLoading || !hasHydratedDraft) return;
+    const timeout = setTimeout(() => {
+      void saveDraftIfNeeded('debounce');
+    }, 1200);
+    return () => clearTimeout(timeout);
+  }, [
+    autoSave,
+    settingsStorageLoading,
+    hasHydratedDraft,
+    title,
+    body,
+    selectedTeret,
+    images,
+    saveDraftIfNeeded,
+  ]);
+
+  // Smart Post button enable logic - enforces Discourse minimums
+  const canPost = useMemo(() => {
+    return (
+      titleLen >= minTitle &&
+      bodyLen >= minPost &&
+      selectedTeret !== null &&
+      isAuthenticated &&
+      !isAuthLoading &&
+      !isCreating &&
+      !settingsLoading
+    );
+  }, [titleLen, bodyLen, minTitle, minPost, selectedTeret, isAuthenticated, isAuthLoading, isCreating, settingsLoading]);
 
   // Save on screen blur (e.g., user navigates away)
   useFocusEffect(
     useCallback(() => {
       return () => {
-        void saveDraftIfNeeded('blur');
+        if (autoSave) {
+          void saveDraftIfNeeded('blur');
+        }
       };
-    }, [saveDraftIfNeeded])
+    }, [saveDraftIfNeeded, autoSave])
   );
 
   const clearDraftAfterPost = useCallback(async () => {
@@ -413,9 +438,11 @@ export default function ComposeScreen(): React.ReactElement {
   }, [draftKey, draftSequence, clearDraftMeta]);
 
   const handleCancel = useCallback((): void => {
-    void saveDraftIfNeeded('cancel');
+    if (autoSave) {
+      void saveDraftIfNeeded('cancel');
+    }
     safeBack();
-  }, [safeBack, saveDraftIfNeeded]);
+  }, [safeBack, saveDraftIfNeeded, autoSave]);
 
   const handleModeChange = useCallback((mode: 'write' | 'preview') => {
     setEditorMode(mode);
@@ -425,49 +452,79 @@ export default function ComposeScreen(): React.ReactElement {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
 
-  const headerActions = useMemo(() => [
-    <Pressable
-      key="mode-toggle"
-      onPress={() => handleModeChange(editorMode === 'write' ? 'preview' : 'write')}
-      hitSlop={DEFAULT_HIT_SLOP}
-      className="px-3 py-1.5 rounded-full active:opacity-70"
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={editorMode === 'write' ? "Switch to preview mode" : "Switch to write mode"}
-      accessibilityHint={editorMode === 'write' ? "Preview your post before publishing" : "Return to editing mode"}
-      testID="header-mode-toggle"
-    >
-      <Text
-        className={
-          editorMode === 'write'
-            ? 'text-caption font-semibold text-fomio-accent dark:text-fomio-accent-dark'
-            : 'text-caption text-fomio-muted dark:text-fomio-muted-dark'
-        }
+  const headerActions = useMemo(() => {
+    const actions = [
+      <Pressable
+        key="mode-toggle"
+        onPress={() => handleModeChange(editorMode === 'write' ? 'preview' : 'write')}
+        hitSlop={DEFAULT_HIT_SLOP}
+        className="px-3 py-1.5 rounded-full active:opacity-70"
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={editorMode === 'write' ? "Switch to preview mode" : "Switch to write mode"}
+        accessibilityHint={editorMode === 'write' ? "Preview your post before publishing" : "Return to editing mode"}
+        testID="header-mode-toggle"
       >
-        {editorMode === 'write' ? 'Preview' : 'Write'}
-      </Text>
-    </Pressable>,
-    <Pressable
-      key="help-tip"
-      onPress={() => {
-        setShowHelpTip(prev => !prev);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      }}
-      hitSlop={DEFAULT_HIT_SLOP}
-      className="p-2 rounded-full active:opacity-70"
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={showHelpTip ? "Hide help tip" : "Show help tip"}
-      accessibilityHint="Show or hide tips for using slash commands"
-      testID="header-help-button"
-    >
-      <Question 
-        size={20} 
-        color={isDark ? '#A1A1AA' : '#6B6B72'} 
-        weight="regular" 
-      />
-    </Pressable>,
-  ], [handleModeChange, editorMode, isDark, showHelpTip]);
+        <Text
+          className={
+            editorMode === 'write'
+              ? 'text-caption font-semibold text-fomio-accent dark:text-fomio-accent-dark'
+              : 'text-caption text-fomio-muted dark:text-fomio-muted-dark'
+          }
+        >
+          {editorMode === 'write' ? 'Preview' : 'Write'}
+        </Text>
+      </Pressable>,
+      <Pressable
+        key="help-tip"
+        onPress={() => {
+          setShowHelpTip(prev => !prev);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        }}
+        hitSlop={DEFAULT_HIT_SLOP}
+        className="p-2 rounded-full active:opacity-70"
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={showHelpTip ? "Hide help tip" : "Show help tip"}
+        accessibilityHint="Show or hide tips for using slash commands"
+        testID="header-help-button"
+      >
+        <Question 
+          size={20} 
+          color={isDark ? '#A1A1AA' : '#6B6B72'} 
+          weight="regular" 
+        />
+      </Pressable>,
+    ];
+
+    if (!autoSave) {
+      actions.unshift(
+        <Pressable
+          key="manual-save"
+          onPress={() => saveDraftIfNeeded('manual')}
+          hitSlop={DEFAULT_HIT_SLOP}
+          className="px-3 py-1.5 rounded-full active:opacity-70"
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Save draft"
+          accessibilityHint="Save your current draft to the server"
+          testID="header-save-draft"
+        >
+          <Text
+            className={
+              isSavingDraft
+                ? 'text-caption text-fomio-muted dark:text-fomio-muted-dark'
+                : 'text-caption font-semibold text-fomio-accent dark:text-fomio-accent-dark'
+            }
+          >
+            {isSavingDraft ? 'Saving…' : 'Save'}
+          </Text>
+        </Pressable>
+      );
+    }
+
+    return actions;
+  }, [handleModeChange, editorMode, isDark, showHelpTip, autoSave, saveDraftIfNeeded, isSavingDraft]);
 
   // Configure header with help icon and mode toggle
   useComposeHeader({

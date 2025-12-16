@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,11 @@ import {
   Alert,
   Linking,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Moon,
-  Sun,
   Bell,
   Shield,
   Question,
@@ -21,7 +21,6 @@ import {
   Trash,
   WifiHigh,
   WifiSlash,
-  Eye,
   Lock,
   Globe,
   Star,
@@ -30,6 +29,7 @@ import {
   Monitor,
 } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
+import * as Application from 'expo-application';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
@@ -38,15 +38,15 @@ import { useAuth } from '@/shared/auth-context';
 import { revokeKey } from '../../lib/discourse';
 import { clearAll } from '../../lib/store';
 import { router } from 'expo-router';
-import { useDiscourseUser } from '../../shared/useDiscourseUser';
 import { useSettingsStorage } from '../../shared/useSettingsStorage';
 import { getThemeColors } from '@/shared/theme-constants';
 
 export default function SettingsScreen(): React.ReactElement {
   const { themeMode, setThemeMode, isDark } = useTheme();
-  const { user, isAuthenticated, signOut } = useAuth();
-  const { user: discourseUser, loading: userLoading } = useDiscourseUser();
-  const { settings, updateSettings } = useSettingsStorage();
+  const { isAuthenticated, signOut } = useAuth();
+  const { settings, updateSettings, loading: settingsLoading } = useSettingsStorage();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [busyAction, setBusyAction] = useState<null | 'signOut' | 'revoke' | 'delete'>(null);
 
   // Configure header
   useScreenHeader({
@@ -60,6 +60,25 @@ export default function SettingsScreen(): React.ReactElement {
 
   // Memoize theme colors - dark mode always uses AMOLED
   const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
+
+  const appVersion = useMemo(
+    () => Application.nativeApplicationVersion || '0.1.0',
+    []
+  );
+
+  const safeOpenURL = useCallback(async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Unable to open link', 'Please try again later.');
+      }
+    } catch (error) {
+      console.error('Failed to open URL:', error);
+      Alert.alert('Unable to open link', 'Please try again later.');
+    }
+  }, []);
 
   // Theme handlers with haptics
   const handleFollowSystemToggle = useCallback(
@@ -102,6 +121,7 @@ export default function SettingsScreen(): React.ReactElement {
 
   // Security handlers
   const handleSignOut = useCallback(async () => {
+    if (busyAction) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     Alert.alert(
       'Sign Out',
@@ -113,20 +133,24 @@ export default function SettingsScreen(): React.ReactElement {
           style: 'destructive',
           onPress: async () => {
             try {
+              setBusyAction('signOut');
               await signOut();
               console.log('User signed out successfully');
               router.replace('/(auth)/signin');
             } catch (error) {
               console.error('Sign out failed:', error);
               Alert.alert('Error', 'Failed to sign out. Please try again.');
+            } finally {
+              setBusyAction(null);
             }
           },
         },
       ]
     );
-  }, [signOut]);
+  }, [busyAction, signOut]);
 
   const handleRevokeKey = useCallback(() => {
+    if (busyAction) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     Alert.alert(
       'Revoke User API Key',
@@ -138,6 +162,7 @@ export default function SettingsScreen(): React.ReactElement {
           style: 'destructive',
           onPress: async () => {
             try {
+              setBusyAction('revoke');
               await revokeKey();
               // Clear all AsyncStorage
               try {
@@ -155,14 +180,17 @@ export default function SettingsScreen(): React.ReactElement {
             } catch (error) {
               console.error('Revoke failed:', error);
               Alert.alert('Error', 'Failed to revoke key. Please try again.');
+            } finally {
+              setBusyAction(null);
             }
           },
         },
       ]
     );
-  }, []);
+  }, [busyAction]);
 
   const handleDeleteAccount = useCallback(() => {
+    if (busyAction) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
     // First confirmation
     Alert.alert(
@@ -185,6 +213,7 @@ export default function SettingsScreen(): React.ReactElement {
                   style: 'destructive',
                   onPress: async () => {
                     try {
+                      setBusyAction('delete');
                       // Clear all local data
                       await AsyncStorage.clear();
                       await clearAll();
@@ -194,6 +223,8 @@ export default function SettingsScreen(): React.ReactElement {
                     } catch (error) {
                       console.error('Delete account failed:', error);
                       Alert.alert('Error', 'Failed to delete account. Please try again.');
+                    } finally {
+                      setBusyAction(null);
                     }
                   },
                 },
@@ -203,28 +234,28 @@ export default function SettingsScreen(): React.ReactElement {
         },
       ]
     );
-  }, []);
+  }, [busyAction]);
 
   // Other handlers
   const handleContactSupport = useCallback(() => {
-    Linking.openURL('mailto:support@fomio.app?subject=Support Request');
-  }, []);
+    safeOpenURL('mailto:support@fomio.app?subject=Support Request');
+  }, [safeOpenURL]);
 
   const handlePrivacyPolicy = useCallback(() => {
-    Linking.openURL('https://fomio.app/privacy');
-  }, []);
+    safeOpenURL('https://fomio.app/privacy');
+  }, [safeOpenURL]);
 
   const handleTermsOfService = useCallback(() => {
-    Linking.openURL('https://fomio.app/terms');
-  }, []);
+    safeOpenURL('https://fomio.app/terms');
+  }, [safeOpenURL]);
 
   const handleRateApp = useCallback(() => {
-    if (Platform.OS === 'ios') {
-      Linking.openURL('https://apps.apple.com/app/fomio');
-    } else {
-      Linking.openURL('https://play.google.com/store/apps/details?id=com.fomio.app');
-    }
-  }, []);
+    const url =
+      Platform.OS === 'ios'
+        ? 'https://apps.apple.com/app/fomio'
+        : 'https://play.google.com/store/apps/details?id=com.fomio.app';
+    safeOpenURL(url);
+  }, [safeOpenURL]);
 
   const handleClearCache = useCallback(() => {
     Alert.alert('Clear Cache', 'This will free up storage space. Continue?', [
@@ -242,18 +273,12 @@ export default function SettingsScreen(): React.ReactElement {
   // Settings handlers with persistence
   const handleNotificationsToggle = useCallback(
     async (value: boolean) => {
+      setNotificationsEnabled(value);
       // This is a local preference, not persisted to useSettingsStorage
       // as it might be synced with Discourse settings
       console.log('Notifications enabled:', value);
     },
     []
-  );
-
-  const handleNSFWToggle = useCallback(
-    async (value: boolean) => {
-      await updateSettings({ showNSFW: value });
-    },
-    [updateSettings]
   );
 
   const handleOfflineModeToggle = useCallback(
@@ -277,6 +302,13 @@ export default function SettingsScreen(): React.ReactElement {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {settingsLoading && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={[styles.loadingText, { color: colors.secondary }]}>Loading preferences…</Text>
+          </View>
+        )}
+
         {/* Appearance */}
         <SettingSection title="Appearance">
           <SettingItem
@@ -289,6 +321,7 @@ export default function SettingsScreen(): React.ReactElement {
                 onValueChange={handleFollowSystemToggle}
                 trackColor={{ false: colors.border, true: colors.accent }}
                 thumbColor="#ffffff"
+                disabled={settingsLoading}
               />
             }
             showChevron={false}
@@ -312,10 +345,11 @@ export default function SettingsScreen(): React.ReactElement {
             icon={<Bell size={24} color={colors.accent} weight="fill" />}
             rightElement={
               <Switch
-                value={true} // TODO: Connect to actual notification preference
+                value={notificationsEnabled}
                 onValueChange={handleNotificationsToggle}
                 trackColor={{ false: colors.border, true: colors.accent }}
                 thumbColor="#ffffff"
+                disabled={settingsLoading}
               />
             }
             showChevron={false}
@@ -334,32 +368,17 @@ export default function SettingsScreen(): React.ReactElement {
         {/* Content & Privacy */}
         <SettingSection title="Content & Privacy">
           <SettingItem
-            title="Show NSFW Content"
-            subtitle="Display sensitive content in feeds"
-            icon={<Eye size={24} color={colors.accent} weight="regular" />}
-            rightElement={
-              <Switch
-                value={settings.showNSFW}
-                onValueChange={handleNSFWToggle}
-                trackColor={{ false: colors.border, true: colors.accent }}
-                thumbColor="#ffffff"
-              />
-            }
+            title="Privacy Settings"
+            subtitle="Control who can see your activity (coming soon)"
+            icon={<Shield size={24} color={colors.accent} weight="regular" />}
             showChevron={false}
           />
 
           <SettingItem
-            title="Privacy Settings"
-            subtitle="Control who can see your activity"
-            icon={<Shield size={24} color={colors.accent} weight="regular" />}
-            onPress={() => console.log('Open privacy settings')}
-          />
-
-          <SettingItem
             title="Blocked Users"
-            subtitle="Manage your blocked users list"
+            subtitle="Manage your blocked users list (coming soon)"
             icon={<Lock size={24} color={colors.accent} weight="regular" />}
-            onPress={() => console.log('Open blocked users')}
+            showChevron={false}
           />
         </SettingSection>
 
@@ -367,7 +386,7 @@ export default function SettingsScreen(): React.ReactElement {
         <SettingSection title="Data & Storage">
           <SettingItem
             title="Offline Mode"
-            subtitle="Browse without internet connection"
+            subtitle="Browse without internet connection (coming soon)"
             icon={
               settings.offlineMode ? (
                 <WifiSlash size={24} color={colors.accent} weight="fill" />
@@ -381,6 +400,7 @@ export default function SettingsScreen(): React.ReactElement {
                 onValueChange={handleOfflineModeToggle}
                 trackColor={{ false: colors.border, true: colors.accent }}
                 thumbColor="#ffffff"
+                disabled
               />
             }
             showChevron={false}
@@ -396,6 +416,7 @@ export default function SettingsScreen(): React.ReactElement {
                 onValueChange={handleAutoSaveToggle}
                 trackColor={{ false: colors.border, true: colors.accent }}
                 thumbColor="#ffffff"
+                disabled={settingsLoading}
               />
             }
             showChevron={false}
@@ -472,16 +493,16 @@ export default function SettingsScreen(): React.ReactElement {
               title="Sign In"
               subtitle="Sign in to access your account settings"
               icon={<SignIn size={24} color={colors.accent} weight="regular" />}
-              onPress={() => router.push('/(auth)/signin' as any)}
+              onPress={() => router.push('/(auth)/signin')}
             />
           </SettingSection>
         )}
 
         {/* App Info */}
         <View style={styles.appInfo}>
-          <Text style={[styles.appVersion, { color: colors.secondary }]}>Fomio v1.0.0</Text>
+          <Text style={[styles.appVersion, { color: colors.secondary }]}>Fomio v{appVersion}</Text>
           <Text style={[styles.appDescription, { color: colors.secondary }]}>
-            A modern, privacy-focused forum app
+            A modern, privacy-focused community
           </Text>
         </View>
       </ScrollView>
@@ -498,6 +519,17 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 32,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '400',
   },
   appInfo: {
     alignItems: 'center',

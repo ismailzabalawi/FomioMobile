@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { useColorScheme as useRNColorScheme } from 'react-native';
+import { useColorScheme as useRNColorScheme, Appearance } from 'react-native';
 import { DarkTheme, DefaultTheme, Theme as NavigationTheme } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
@@ -19,6 +19,7 @@ type ThemeProviderProps = {
 type ThemeProviderState = {
   themeMode: ThemeMode;
   setThemeMode: (themeMode: ThemeMode) => Promise<void>;
+  resetThemeToSystem: () => Promise<void>;
   toggleTheme: () => Promise<void>;
   isDark: boolean;
   isAmoled: boolean; // Always equals isDark - dark mode is always AMOLED
@@ -33,6 +34,7 @@ type ThemeProviderState = {
 const initialState: ThemeProviderState = {
   themeMode: 'system',
   setThemeMode: async () => {},
+  resetThemeToSystem: async () => {},
   toggleTheme: async () => {},
   isDark: false,
   isAmoled: false,
@@ -51,8 +53,59 @@ export function ThemeProvider({
   storageKey = 'fomio-theme',
 }: ThemeProviderProps) {
   const [themeMode, setThemeModeState] = useState<ThemeMode>(defaultTheme);
-  const systemColorScheme = useRNColorScheme();
+  const systemColorSchemeHook = useRNColorScheme();
+  // Track system color scheme in state to ensure reactivity
+  // Initialize from Appearance API directly for immediate value
+  const [systemColorSchemeState, setSystemColorSchemeState] = useState<'light' | 'dark'>(() => {
+    const initial = Appearance.getColorScheme();
+    return initial === 'dark' ? 'dark' : 'light';
+  });
   const { setColorScheme: setNativeWindColorScheme } = useNativeWindColorScheme();
+
+  // Initialize and listen for system theme changes
+  useEffect(() => {
+    // Initialize from current system theme immediately
+    const currentSystemTheme = Appearance.getColorScheme();
+    console.log('[ThemeProvider] Initial system theme:', currentSystemTheme);
+    if (currentSystemTheme) {
+      setSystemColorSchemeState(currentSystemTheme === 'dark' ? 'dark' : 'light');
+    }
+
+    // Listen for system theme changes - this is critical for reactivity
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      console.log('[ThemeProvider] System theme changed:', colorScheme);
+      if (colorScheme) {
+        const newScheme = colorScheme === 'dark' ? 'dark' : 'light';
+        setSystemColorSchemeState(newScheme);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  // Also sync with hook value when it changes (backup)
+  useEffect(() => {
+    if (systemColorSchemeHook) {
+      const hookScheme = systemColorSchemeHook === 'dark' ? 'dark' : 'light';
+      if (hookScheme !== systemColorSchemeState) {
+        setSystemColorSchemeState(hookScheme);
+      }
+    }
+  }, [systemColorSchemeHook, systemColorSchemeState]);
+
+  // When themeMode changes to 'system', immediately sync with current system theme
+  useEffect(() => {
+    if (themeMode === 'system') {
+      const currentSystemTheme = Appearance.getColorScheme();
+      if (currentSystemTheme) {
+        const newScheme = currentSystemTheme === 'dark' ? 'dark' : 'light';
+        setSystemColorSchemeState(newScheme);
+      }
+    }
+  }, [themeMode]);
+
+  // Use state value (most reliable), fallback to hook, then default to 'light'
+  const systemColorScheme = systemColorSchemeState;
 
   // Load theme from storage on mount
   useEffect(() => {
@@ -69,6 +122,7 @@ export function ThemeProvider({
           return; // Exit early if we can't read storage
         }
 
+        console.log('[ThemeProvider] Loaded stored theme:', storedTheme);
         if (storedTheme) {
           // Handle migration from old 'amoled' values to 'dark'
           if (storedTheme === 'amoled') {
@@ -80,7 +134,15 @@ export function ThemeProvider({
               // Ignore storage errors during migration - theme is already set in state
             }
           } else if (['light', 'dark', 'system'].includes(storedTheme)) {
+            console.log('[ThemeProvider] Setting theme mode to:', storedTheme);
             setThemeModeState(storedTheme as ThemeMode);
+          }
+        } else {
+          // First run or cleared storage: persist default so we don't get stuck on an old value
+          try {
+            await AsyncStorage.setItem(storageKey, defaultTheme);
+          } catch {
+            // Non-critical: theme already set in state
           }
         }
         
@@ -101,13 +163,16 @@ export function ThemeProvider({
     };
 
     loadPreferences();
-  }, [storageKey]);
+  }, [storageKey, defaultTheme]);
 
   // Compute resolved color scheme
+  // This must be reactive to both themeMode and systemColorScheme changes
   const colorScheme = useMemo<'light' | 'dark'>(() => {
     if (themeMode === 'system') {
-      return systemColorScheme === 'dark' ? 'dark' : 'light';
+      // When following system, use the tracked system color scheme
+      return systemColorScheme;
     }
+    // When manually set, use the themeMode directly
     return themeMode === 'dark' ? 'dark' : 'light';
   }, [themeMode, systemColorScheme]);
 
@@ -117,9 +182,25 @@ export function ThemeProvider({
 
   // SYNC: ThemeProvider → NativeWind
   // This ensures `dark:` classes follow our theme choice, not just system preference
+  // This is critical - NativeWind needs to know the color scheme for dark: classes to work
   useEffect(() => {
-    setNativeWindColorScheme(colorScheme);
-  }, [colorScheme, setNativeWindColorScheme]);
+    // When following system, tell NativeWind to use 'system' so it handles changes automatically
+    // Otherwise, set the explicit color scheme
+    if (themeMode === 'system') {
+      setNativeWindColorScheme('system');
+    } else {
+      setNativeWindColorScheme(colorScheme);
+    }
+    // Debug log (can be removed later)
+    if (__DEV__) {
+      console.log('[ThemeProvider] Color scheme updated:', { 
+        themeMode, 
+        colorScheme, 
+        systemColorScheme,
+        nativeWindValue: themeMode === 'system' ? 'system' : colorScheme 
+      });
+    }
+  }, [colorScheme, setNativeWindColorScheme, themeMode, systemColorScheme]);
 
   // Create navigation theme object
   // Dark mode always uses true black (#000000)
@@ -158,6 +239,10 @@ export function ThemeProvider({
     await setThemeMode(newThemeMode);
   };
 
+  const resetThemeToSystem = async () => {
+    await setThemeMode('system');
+  };
+
   // Legacy compatibility: map themeMode to theme
   const theme = themeMode;
   const setTheme = setThemeMode;
@@ -165,6 +250,7 @@ export function ThemeProvider({
   const value: ThemeProviderState = {
     themeMode,
     setThemeMode,
+    resetThemeToSystem,
     toggleTheme,
     isDark,
     isAmoled, // Always equals isDark
@@ -192,4 +278,3 @@ export const useTheme = () => {
 
   return context;
 };
-

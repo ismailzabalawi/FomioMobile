@@ -1,13 +1,15 @@
-import React, { useEffect, useMemo, useCallback, useState } from 'react';
-import { Tabs, router } from 'expo-router';
+import React, { useEffect, useMemo, useCallback, useState, useRef } from 'react';
+import { Tabs, router, useFocusEffect } from 'expo-router';
 import { House, MagnifyingGlass, Plus, Bell, User, ArrowUp, CheckCircle, PencilSimple } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
-import { View, StyleSheet, Pressable, Text, Platform, Alert } from 'react-native';
+import { View, StyleSheet, Pressable, Text, Platform, Alert, AppState, AppStateStatus } from 'react-native';
 import { useNotifications } from '../../shared/useNotifications';
 import { useNotificationPreferences } from '../../shared/useNotificationPreferences';
 import { filterNotificationsByPreferences } from '../../lib/utils/notifications';
 import { useAuth } from '@/shared/auth-context';
+import { discourseApi } from '@/shared/discourseApi';
+import { useSettingsStorage } from '@/shared/useSettingsStorage';
 import * as Haptics from 'expo-haptics';
 import { getThemeColors } from '@/shared/theme-constants';
 import { BlurView } from 'expo-blur';
@@ -93,10 +95,12 @@ function CustomTabBar({
   state,
   descriptors,
   navigation,
-  unreadCount,
-  markAllAsRead,
-  hasUnreadNotifications,
-  isAuthenticated,
+ unreadCount,
+ markAllAsRead,
+ hasUnreadNotifications,
+ isAuthenticated,
+  draftCount = 0,
+  showDraftBadge = false,
 }: any) {
   // Constants imported from tabBarConstants.ts
   const insets = useSafeAreaInsets();
@@ -724,8 +728,11 @@ function CustomTabBar({
                   accessibilityLabel={options.tabBarAccessibilityLabel}
                   onPress={onPress}
                   renderIcon={renderIcon}
-                  showBadge={route.name === 'notifications'}
-                  badgeCount={unreadCount}
+                  showBadge={
+                    (route.name === 'notifications' && unreadCount > 0) ||
+                    (route.name === 'profile' && showDraftBadge)
+                  }
+                  badgeCount={route.name === 'notifications' ? unreadCount : draftCount}
                   badgeBg={colors.badgeBg}
                   badgeText={colors.badgeText}
                   isDark={isDark}
@@ -785,6 +792,9 @@ export default function TabLayout(): React.ReactElement {
   const { notifications, markAllAsRead } = useNotifications();
   const { preferences } = useNotificationPreferences();
   const { isAuthenticated } = useAuth();
+  const { settings } = useSettingsStorage();
+  const [draftCount, setDraftCount] = useState(0);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   // Filter notifications by preferences, then count unread
   const preferenceFiltered = useMemo(
@@ -796,6 +806,48 @@ export default function TabLayout(): React.ReactElement {
     () => preferenceFiltered.filter(n => !n.isRead).length,
     [preferenceFiltered]
   );
+
+  const refreshDraftCount = useCallback(async () => {
+    if (!isAuthenticated) {
+      setDraftCount(0);
+      return;
+    }
+    try {
+      const response = await discourseApi.getUserDrafts();
+      if (response.success && response.data?.drafts) {
+        setDraftCount(response.data.drafts.length);
+      }
+    } catch {
+      // Best effort; ignore errors
+    }
+  }, [isAuthenticated]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    refreshDraftCount();
+  }, [refreshDraftCount]);
+
+  // Refresh on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      refreshDraftCount();
+    }, [refreshDraftCount])
+  );
+
+  // Refresh when app comes to foreground (throttled via AppState)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        refreshDraftCount();
+      }
+      appStateRef.current = nextAppState;
+    });
+    return () => subscription.remove();
+  }, [refreshDraftCount]);
+
+  // Only show draft badge when auto-save is enabled (or if drafts exist from manual saves)
+  // When auto-save is off, users explicitly save, so we still show the badge to indicate saved drafts
+  const showDraftBadge = draftCount > 0;
   
   // Check if there are any unread notifications (for "Mark all read" button state)
   const hasUnreadNotifications = unreadCount > 0;
@@ -818,13 +870,15 @@ export default function TabLayout(): React.ReactElement {
         tabBar={(props) => (
           <CustomTabBar
             {...props}
-            unreadCount={unreadCount}
-            markAllAsRead={markAllAsRead}
-            hasUnreadNotifications={hasUnreadNotifications}
-            isAuthenticated={isAuthenticated}
-          />
-        )}
-      >
+          unreadCount={unreadCount}
+          markAllAsRead={markAllAsRead}
+          hasUnreadNotifications={hasUnreadNotifications}
+          isAuthenticated={isAuthenticated}
+          draftCount={draftCount}
+          showDraftBadge={showDraftBadge}
+        />
+      )}
+    >
         <Tabs.Screen
           name="index"
           options={{

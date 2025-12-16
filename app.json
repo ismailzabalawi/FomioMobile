@@ -2,19 +2,19 @@
   "expo": {
     "name": "FomioMobile",
     "slug": "FomioMobile",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "fomio",
     "android": {
       "package": "com.fomio.mobile",
+      "userInterfaceStyle": "automatic",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "allowBackup": false,
       "softwareKeyboardLayoutMode": "pan",
-      "windowSoftInputMode": "adjustResize",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -51,6 +51,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.fomio.mobile",
+      "userInterfaceStyle": "automatic",
       "infoPlist": {
         "CFBundleURLTypes": [
           {
