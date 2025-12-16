@@ -184,7 +184,26 @@ export default function ComposeScreen(): React.ReactElement {
 
       try {
         const response = await discourseApi.getDraft({ draftKey: key, sequence });
-        if (!response.success || !response.data) {
+        
+        // Handle case where draft doesn't exist (500 or 404)
+        if (!response.success) {
+          // If it's a 500 on drafts endpoint, treat as no draft exists
+          if (response.status === 500) {
+            console.log('📝 No draft found - starting fresh');
+            setDraftKey(key);
+            setDraftSequence(0);
+            await persistDraftMeta(key, 0);
+            setHasHydratedDraft(true);
+            return;
+          }
+          // For other errors, show error but don't block
+          setDraftError(response.error || 'Failed to load draft');
+          setHasHydratedDraft(true);
+          return;
+        }
+        
+        if (!response.data) {
+          setHasHydratedDraft(true);
           return;
         }
 

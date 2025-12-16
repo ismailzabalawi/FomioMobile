@@ -572,14 +572,19 @@ export default function SearchScreen(): React.ReactElement {
 
   // Fluid nav: Scroll-to-top handler
   const handleScrollToTop = useCallback(() => {
+    console.log('[Search] Scroll-to-top handler called');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
   // Share scroll position with fluid nav and keep scroll-to-top handler accessible
   useEffect(() => {
+    console.log('[Search] Registering scroll-to-top handler');
     setUpHandler(() => handleScrollToTop);
-    return () => setUpHandler(null);
+    return () => {
+      console.log('[Search] Clearing scroll-to-top handler');
+      setUpHandler(null);
+    };
   }, [handleScrollToTop, setUpHandler]);
 
   // Animated scroll handler for fluid nav
@@ -588,6 +593,11 @@ export default function SearchScreen(): React.ReactElement {
       scrollY.value = event.contentOffset.y;
     },
   });
+
+  // Reset shared scroll on mount so tab bar starts composed on this screen
+  useEffect(() => {
+    scrollY.value = 0;
+  }, [scrollY]);
 
   // Handle search submission
   const handleSearchSubmit = useCallback(() => {

@@ -11,39 +11,39 @@ import { SkeletonEnhanced } from '@/components/shared/loading.enhanced';
 export function ProfileSkeleton() {
   return (
     <View className="px-4 pt-6 pb-4">
-      {/* Avatar */}
-      <View className="mb-4">
-        <SkeletonEnhanced 
-          width={72} 
-          height={72} 
-          borderRadius={36} 
-        />
+      {/* Hero cover */}
+      <View className="mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
+        <SkeletonEnhanced width="100%" height="100%" />
       </View>
 
-      {/* Name and Username */}
+      {/* Avatar + name stack */}
+      <View className="items-center" style={{ marginTop: -56 }}>
+        <SkeletonEnhanced width={88} height={88} borderRadius={44} />
+        <View className="mt-3 items-center">
+          <SkeletonEnhanced
+            width={140}
+            height={26}
+            borderRadius={6}
+            style={{ marginBottom: 8 }}
+          />
+          <SkeletonEnhanced width={90} height={16} borderRadius={6} />
+        </View>
+      </View>
+
+      {/* Stats pill */}
+      <View className="mt-6 mb-4">
+        <SkeletonEnhanced width="100%" height={52} borderRadius={14} />
+      </View>
+
+      {/* Actions row */}
+      <View className="mb-6">
+        <SkeletonEnhanced width="100%" height={44} borderRadius={12} />
+      </View>
+
+      {/* Tab bar */}
       <View className="mb-2">
-        <SkeletonEnhanced 
-          width="60%" 
-          height={28} 
-          borderRadius={4}
-          style={{ marginBottom: 8 }}
-        />
-        <SkeletonEnhanced 
-          width="40%" 
-          height={18} 
-          borderRadius={4}
-        />
-      </View>
-
-      {/* Meta row (joined date) */}
-      <View className="flex-row items-center gap-3 mt-2">
-        <SkeletonEnhanced 
-          width={140} 
-          height={16} 
-          borderRadius={4}
-        />
+        <SkeletonEnhanced width="100%" height={56} borderRadius={18} />
       </View>
     </View>
   );
 }
-

@@ -343,6 +343,31 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
     }
   }, [user?.username, refreshUser]);
 
+  // Upload profile/hero header
+  const uploadProfileHeader = useCallback(async (imageFile: { uri: string; type?: string; name?: string; fileSize?: number }): Promise<boolean> => {
+    if (!user?.username) return false;
+    
+    setUpdating(true);
+    setError(null);
+    
+    try {
+      const response = await discourseApi.uploadProfileHeader(user.username, imageFile);
+      
+      if (response.success) {
+        await refreshUser();
+        return true;
+      } else {
+        setError(response.error || 'Failed to upload cover image');
+        return false;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    } finally {
+      setUpdating(false);
+    }
+  }, [user?.username, refreshUser]);
+
   // Load initial data when authenticated
   useEffect(() => {
     console.log('🔄 useDiscourseUser effect: Checking auth state', {
@@ -426,6 +451,7 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
     changePassword,
     changeEmail,
     uploadAvatar,
+    uploadProfileHeader,
     
     // Utility
     isAuthenticated,
@@ -434,4 +460,3 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
 }
 
 export default useDiscourseUser;
-

@@ -157,6 +157,8 @@ export interface DiscourseUser {
   name?: string;
   email?: string;
   avatar_template: string;
+  profile_background?: string;
+  card_background?: string;
   bio_raw?: string;
   location?: string;
   website?: string;
@@ -366,7 +368,8 @@ class DiscourseApiService {
         }
       }
       
-      console.log(`🌐 Making request to: ${url} (attempt ${4 - retries}/3)`);
+      const attemptNumber = (3 - retries) + 1;
+      console.log(`🌐 Making request to: ${url} (attempt ${attemptNumber}/3)`);
       
       // Security headers
       // Don't set Content-Type for FormData - let the browser/React Native set it with boundary
@@ -470,12 +473,24 @@ class DiscourseApiService {
           const isSessionCheck = endpoint === '/session/current.json' && response.status === 404;
           const isAdminUserEndpoint = endpoint.includes('/admin/users/') && response.status === 404;
           
+          // Handle 500 errors on drafts endpoint - Discourse may return 500 when draft doesn't exist
+          // Treat this as "no draft exists" rather than a server error
+          const isDraftEndpoint = endpoint.includes('/drafts/') && response.status === 500;
+          
           if (isSessionCheck) {
             console.log('📱 No active session (user not authenticated)');
           } else if (isAdminUserEndpoint) {
             // Admin endpoint requires admin access - 404 is expected for non-admin users
             // Silently handle this - the caller will use fallback user data
             console.debug(`⚠️ Admin endpoint not accessible (expected for non-admin): ${endpoint}`);
+          } else if (isDraftEndpoint) {
+            // Draft doesn't exist - return empty draft response instead of error
+            console.log('📝 Draft not found (500 treated as empty draft)');
+            return {
+              success: true,
+              data: { draft: null, draft_key: null, sequence: 0 } as T,
+              status: 200,
+            };
           } else {
             console.error(`❌ HTTP Error ${response.status}:`, errorData);
           }
@@ -977,6 +992,20 @@ class DiscourseApiService {
         extractedFrom: response.data.user ? 'user' : (response.data.current_user ? 'current_user' : 'direct'),
       });
       
+      // Hoist profile/card backgrounds if available (Discourse nests under user_profile)
+      const userProfile =
+        response.data.user?.user_profile ||
+        response.data.current_user?.user_profile ||
+        null;
+
+      if (userProfile) {
+        userData = {
+          ...userData,
+          profile_background: userProfile.profile_background || userData.profile_background,
+          card_background: userProfile.card_background || userData.card_background,
+        };
+      }
+      
       return {
         success: true,
         data: userData as DiscourseUser,
@@ -1132,6 +1161,78 @@ class DiscourseApiService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error during avatar upload',
+      };
+    }
+  }
+
+  // Upload profile/hero background image
+  async uploadProfileHeader(
+    username: string,
+    imageFile: { uri: string; type?: string; name?: string; fileSize?: number }
+  ): Promise<DiscourseApiResponse<any>> {
+    if (!SecurityValidator.validateUsername(username)) {
+      return { success: false, error: 'Invalid username format' };
+    }
+
+    // Validate file type and size (reuse avatar constraints)
+    const fileType = imageFile.type || 'image/jpeg';
+    const fileSize = imageFile.fileSize;
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/jpg'];
+    if (!allowedTypes.some(type => fileType.includes(type))) {
+      return { success: false, error: 'Invalid file type. Only JPEG, PNG, and GIF are allowed.' };
+    }
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (fileSize && fileSize > maxSize) {
+      return { success: false, error: 'File too large. Maximum size is 5MB.' };
+    }
+
+    try {
+      // Step 1: Upload the image
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', {
+        uri: imageFile.uri,
+        type: fileType,
+        name: imageFile.name || 'profile-header.jpg',
+      } as any);
+      uploadFormData.append('type', 'profile_background');
+
+      // Get user ID for the upload
+      const userResponse = await this.getUserProfile(username);
+      if (!userResponse.success || !userResponse.data?.id) {
+        return { success: false, error: 'Failed to get user information' };
+      }
+      uploadFormData.append('user_id', userResponse.data.id.toString());
+
+      const uploadResponse = await this.makeRequest<any>('/uploads.json', {
+        method: 'POST',
+        body: uploadFormData,
+      });
+
+      if (!uploadResponse.success || !uploadResponse.data) {
+        return { success: false, error: uploadResponse.error || 'Failed to upload image' };
+      }
+
+      const uploadId = uploadResponse.data.id || uploadResponse.data.upload_id;
+      if (!uploadId) {
+        return { success: false, error: 'Upload succeeded but no upload ID returned' };
+      }
+
+      // Step 2: Set as profile/card background
+      const applyResponse = await this.updateUserProfile(username, {
+        profile_background_upload_id: uploadId,
+        card_background_upload_id: uploadId,
+      } as any);
+
+      if (!applyResponse.success) {
+        return { success: false, error: applyResponse.error || 'Failed to set profile header' };
+      }
+
+      return { success: true, data: applyResponse.data };
+    } catch (error) {
+      console.error('❌ uploadProfileHeader exception:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error during profile header upload',
       };
     }
   }
@@ -1622,8 +1723,9 @@ class DiscourseApiService {
   }
 
   async markAllNotificationsAsRead(): Promise<DiscourseApiResponse<void>> {
-    return this.makeRequest<void>('/notifications/read.json', {
-      method: 'POST',
+    // Discourse API uses PUT /notifications/mark-read.json
+    return this.makeRequest<void>('/notifications/mark-read.json', {
+      method: 'PUT',
     });
   }
 
@@ -1840,9 +1942,57 @@ class DiscourseApiService {
       usersCount: users.length
     });
     
-    // Map topics to bytes
+    // Create a category lookup map to enrich topic category data
+    const categoryLookup = new Map<number, any>();
+    categories.forEach((cat: any) => {
+      if (cat.id) {
+        categoryLookup.set(cat.id, {
+          name: cat.name || '',
+          color: cat.color || '000000',
+          parent_category_id: cat.parent_category_id,
+        });
+      }
+    });
+    
+    // Map topics to bytes - enrich with category and author data if missing
     const bytes: Byte[] = topics.map((topic: any) => {
       try {
+        // Enrich topic with category data if category name is missing
+        if (topic.category_id && (!topic.category || !topic.category.name)) {
+          const categoryInfo = categoryLookup.get(topic.category_id);
+          if (categoryInfo) {
+            if (!topic.category) {
+              topic.category = {};
+            }
+            topic.category.id = topic.category_id;
+            topic.category.name = categoryInfo.name;
+            topic.category.color = categoryInfo.color;
+            topic.category.parent_category_id = categoryInfo.parent_category_id;
+          }
+        }
+        
+        // Enrich topic with author data if missing
+        // Search results might have author in posters array or other fields
+        if (!topic.details?.created_by && !topic.last_poster) {
+          // Try to get author from posters array (first poster is usually the author)
+          if (topic.posters && topic.posters.length > 0) {
+            const firstPoster = topic.posters[0];
+            if (firstPoster.user) {
+              topic.details = topic.details || {};
+              topic.details.created_by = firstPoster.user;
+            }
+          }
+          // Fallback to last_poster if available
+          if (!topic.details?.created_by && topic.last_poster_username) {
+            topic.last_poster = {
+              id: 0, // Search results might not have user ID
+              username: topic.last_poster_username,
+              name: topic.last_poster_username,
+              avatar_template: topic.last_poster_avatar_template || '',
+            };
+          }
+        }
+        
         return this.mapTopicToByte(topic);
       } catch (error) {
         console.error('Error mapping topic to byte:', error, topic);

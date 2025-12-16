@@ -4,10 +4,12 @@
 // - Muted grey, medium weight
 // - Uses data from DiscourseUser interface
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { DiscourseUser } from '@/shared/discourseApi';
+import { getTokens } from '@/shared/design/tokens';
+import { FluidSection } from '@/shared/ui/FluidSection';
 
 export interface ProfileStatsProps {
   user: DiscourseUser;
@@ -15,6 +17,8 @@ export interface ProfileStatsProps {
 
 export function ProfileStats({ user }: ProfileStatsProps) {
   const { isDark } = useTheme();
+  const mode = isDark ? 'dark' : 'light';
+  const tokens = useMemo(() => getTokens(mode), [mode]);
 
   const bytesCount = user.topic_count || 0;
   const repliesCount = Math.max(0, (user.post_count || 0) - (user.topic_count || 0));
@@ -52,28 +56,55 @@ export function ProfileStats({ user }: ProfileStatsProps) {
   ].filter((stat) => stat.value !== '0' || stat.label === 'Trust'); // Always show trust level
 
   return (
-    <View className="px-4 py-3" style={{ width: '100%', overflow: 'hidden' }}>
-      <View className="flex-row items-center flex-wrap gap-2" style={{ width: '100%' }}>
+    <View className="px-4" style={{ width: '100%', marginTop: 12 }}>
+      <FluidSection
+        mode={mode}
+        style={{
+          paddingVertical: 12,
+          paddingHorizontal: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
         {stats.map((stat, index) => (
-          <React.Fragment key={stat.label}>
-            <Text
-              className="text-sm font-medium"
-              style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
-            >
-              {stat.value} {stat.label}
-            </Text>
-            {index < stats.length - 1 && (
+          <View
+            key={stat.label}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              gap: 2,
+              flexDirection: 'row',
+              justifyContent: 'center',
+            }}
+          >
+            <View style={{ alignItems: 'center' }}>
               <Text
-                className="text-sm"
-                style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
+                className="text-sm font-semibold"
+                style={{ color: tokens.colors.text }}
               >
-                ·
+                {stat.value}
               </Text>
+              <Text
+                className="text-xs"
+                style={{ color: tokens.colors.muted }}
+              >
+                {stat.label}
+              </Text>
+            </View>
+            {index < stats.length - 1 && (
+              <View
+                style={{
+                  width: 1,
+                  height: 28,
+                  backgroundColor: tokens.colors.border,
+                  marginLeft: 12,
+                }}
+              />
             )}
-          </React.Fragment>
+          </View>
         ))}
-      </View>
+      </FluidSection>
     </View>
   );
 }
-

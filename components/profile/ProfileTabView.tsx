@@ -6,8 +6,9 @@
 // - Pull-to-refresh support
 // - Lazy loading tabs
 
-import React, { useMemo, useCallback, useEffect } from 'react';
-import { View, Platform, useWindowDimensions } from 'react-native';
+import React, { useMemo, useCallback } from 'react';
+import { View, Platform, useWindowDimensions, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'react-native-collapsible-tab-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAnimatedScrollHandler } from 'react-native-reanimated';
@@ -27,7 +28,8 @@ import { DiscourseUser } from '@/shared/discourseApi';
 import { useHeader } from '@/components/ui/header';
 import { ProfileHeader, ProfileBio, ProfileStats, ProfileActions } from './';
 import { ProfileTabBar, TabItem } from './ProfileTabBar';
-import { cn } from '@/lib/utils/cn';
+import { FluidSection } from '@/shared/ui/FluidSection';
+import { getTokens } from '@/shared/design/tokens';
 import { ProfileActivityAllTab } from './tabs/ProfileActivityAllTab';
 import { ProfileActivityTopicsTab } from './tabs/ProfileActivityTopicsTab';
 import { ProfileActivityRepliesTab } from './tabs/ProfileActivityRepliesTab';
@@ -96,14 +98,15 @@ export function ProfileTabView({
   containerRef,
   scrollY,
 }: ProfileTabViewProps) {
-  const { isDark, isAmoled } = useTheme();
+  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { header } = useHeader();
   const { width: screenWidth } = useWindowDimensions();
-
-  // Calculate safe width accounting for horizontal safe area insets
-  const safeWidth = screenWidth - insets.left - insets.right;
-
+  const mode = isDark ? 'dark' : 'light';
+  const tokens = useMemo(() => getTokens(mode), [mode]);
+  const [headerHeight, setHeaderHeight] = React.useState<number>(0);
+  const pageBackground = mode === 'dark' ? '#000000' : '#f8fafc';
+  
   // Calculate app header height to prevent tab bar from going under it
   const BASE_BAR_HEIGHT = Platform.OS === 'ios' ? 40 : 44;
   const HEADER_PADDING = Platform.OS === 'ios' ? 4 : 2;
@@ -115,84 +118,89 @@ export function ProfileTabView({
   const containerHeaderHeight = header.extendToStatusBar
     ? measuredHeaderHeight
     : measuredHeaderHeight + insets.top;
+  
+  const tabBarTopPadding = Math.max(containerHeaderHeight - 16, 0);
+  const backgroundGradient = useMemo(
+    (): [string, string] =>
+      mode === 'dark'
+        ? ['#000000', '#05070b']
+        : ['#f8fafc', tokens.colors.surfaceMuted],
+    [mode, tokens.colors.surfaceMuted]
+  );
+  // Scroll handler for tracking scroll position for fluid nav
+  // This tracks the container's scroll position (header collapse)
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      if (scrollY) {
+        scrollY.value = event.contentOffset.y;
+      }
+    },
+  }, [scrollY]);
 
   const visibleTabs = useMemo(
     () => getVisibleTabs(isOwnProfile, isAuthenticated, votingEnabled),
     [isOwnProfile, isAuthenticated, votingEnabled]
   );
 
-  const tabNames = useMemo(() => visibleTabs.map(tab => tab.key), [visibleTabs]);
+  // Scroll tracking for fluid nav
+  // react-native-collapsible-tab-view uses a container scroll view that collapses the header
+  // The scrollHandler is passed to scrollViewProps.onScroll to track the container's scroll position
+  // This is the scroll that matters for the tab bar animations (header collapse = scrollY increases)
 
-  // Attach scroll listener to container ref for fluid nav
-  useEffect(() => {
-    if (!containerRef?.current || !scrollY) return;
-
-    // react-native-collapsible-tab-view exposes scroll handlers differently
-    // We'll track scroll via the container's internal scroll view if accessible
-    // For now, we'll use a workaround by attaching to the animated scroll view if available
-    const container = containerRef.current;
-    
-    // Try to access the internal scroll view and attach listener
-    // Note: This is a workaround - the library may not expose this directly
-    // Alternative: Pass scroll handlers to individual tab screens
-    if (container && 'scrollViewRef' in container && container.scrollViewRef?.current) {
-      const scrollView = container.scrollViewRef.current;
-      const listener = (event: any) => {
-        if (scrollY && event?.nativeEvent?.contentOffset) {
-          scrollY.value = event.nativeEvent.contentOffset.y;
-        }
-      };
-      const scrollViewId = scrollView.addListener?.('scroll', listener);
-      return () => {
-        if (scrollViewId) {
-          scrollView.removeListener?.('scroll', scrollViewId);
-        }
-      };
-    }
-  }, [containerRef, scrollY]);
+  const handleHeaderLayout = useCallback(
+    (event: any) => {
+      const nextHeight = event?.nativeEvent?.layout?.height ?? 0;
+      if (!nextHeight) return;
+      if (Math.abs(nextHeight - headerHeight) > 2) {
+        setHeaderHeight(nextHeight);
+      }
+    },
+    [headerHeight]
+  );
 
   const renderHeader = useCallback(() => {
     if (!user) return null;
 
     return (
-      <View
-        className={cn(
-          isAmoled
-            ? 'bg-fomio-bg-dark'
-            : isDark
-              ? 'bg-fomio-card-dark'
-              : 'bg-fomio-card'
-        )}
-        style={{ width: '100%', overflow: 'hidden' }}
-      >
-        <ProfileHeader user={user} isPublic={!isOwnProfile} />
-        <ProfileBio bio={user.bio_raw} />
-        <ProfileStats user={user} />
-        <ProfileActions
-          mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
-          username={user.username}
-          onReport={onReport}
-          onBlock={onBlock}
-        />
+      <View style={{ width: '100%', paddingHorizontal: 12, marginTop: -8 }}>
+        <FluidSection
+          mode={mode}
+          style={{
+            padding: 0,
+            overflow: 'visible',
+            backgroundColor: pageBackground,
+          }}
+          onLayout={handleHeaderLayout}
+        >
+          <ProfileHeader
+            user={user}
+            isPublic={!isOwnProfile}
+          />
+          <ProfileBio bio={user.bio_raw} />
+          <ProfileStats user={user} />
+          <ProfileActions
+            mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
+            username={user.username}
+            onReport={onReport}
+            onBlock={onBlock}
+          />
+        </FluidSection>
       </View>
     );
-  }, [user, isOwnProfile, isDark, isAmoled, onReport, onBlock]);
+  }, [user, isOwnProfile, mode, onReport, onBlock, handleHeaderLayout]);
 
   const renderTabBar = useCallback(
     (props: any) => {
       return (
         <View
-          className={cn(
-            isAmoled
-              ? 'bg-fomio-bg-dark'
-              : isDark
-                ? 'bg-fomio-card-dark'
-                : 'bg-fomio-bg'
-          )}
           style={{
-            paddingTop: containerHeaderHeight,
+            paddingTop: tabBarTopPadding,
             width: '100%',
-            overflow: 'hidden',
+            paddingHorizontal: 12,
+            backgroundColor: mode === 'dark' ? '#000000' : tokens.colors.surfaceMuted,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderColor: tokens.colors.border,
           }}
         >
           <ProfileTabBar
@@ -204,45 +212,41 @@ export function ProfileTabView({
         </View>
       );
     },
-    [visibleTabs, containerHeaderHeight, isAmoled, isDark]
+    [visibleTabs, mode, tokens.colors.surfaceMuted, tokens.colors.border, tabBarTopPadding]
   );
 
   if (!user) {
     return null;
   }
 
-  const username = user?.username;
+  const username = user.username;
   
-  // Early return if no user or username
-  if (!user || !username) {
+  if (!username) {
     return null;
   }
 
   return (
     <View
-      className={cn(
-        'flex-1',
-        isAmoled
-          ? 'bg-fomio-bg-dark'
-          : isDark
-            ? 'bg-fomio-card-dark'
-            : 'bg-fomio-bg'
-      )}
-      style={{ 
-        width: safeWidth,
-        maxWidth: safeWidth,
-        overflow: 'hidden',
+      style={{
+        flex: 1,
+        width: screenWidth,
+        paddingBottom: 12,
+        backgroundColor: pageBackground,
       }}
     >
+      <LinearGradient
+        colors={backgroundGradient}
+        style={{ ...StyleSheet.absoluteFillObject }}
+      />
       <Tabs.Container
         ref={containerRef}
         renderHeader={renderHeader}
-        headerHeight={400}
+        headerHeight={headerHeight || 360}
         renderTabBar={renderTabBar}
         initialTabName={visibleTabs[0]?.key}
         lazy
         snapThreshold={0.2}
-        width={safeWidth}
+        width={screenWidth}
       >
         {visibleTabs.map((tab) => {
           const renderTabContent = () => {
@@ -326,10 +330,13 @@ export function ProfileTabView({
 
           return (
             <Tabs.Tab name={tab.key} key={tab.key}>
-              <Tabs.ScrollView 
+              <Tabs.ScrollView
                 nestedScrollEnabled
-                contentContainerStyle={{ width: '100%' }}
-                style={{ width: '100%' }}
+                contentContainerStyle={{
+                  width: '100%',
+                  backgroundColor: pageBackground,
+                }}
+                style={{ width: '100%', backgroundColor: pageBackground }}
               >
                 <View style={{ width: '100%' }}>
                   {renderTabContent()}
@@ -342,4 +349,3 @@ export function ProfileTabView({
     </View>
   );
 }
-

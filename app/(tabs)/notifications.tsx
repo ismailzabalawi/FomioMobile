@@ -536,14 +536,19 @@ export default function NotificationsScreen(): React.ReactElement {
 
   // Fluid nav: Scroll-to-top handler
   const handleScrollToTop = useCallback(() => {
+    console.log('[Notifications] Scroll-to-top handler called');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     sectionListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: true });
   }, []);
 
   // Share scroll position with fluid nav and keep scroll-to-top handler accessible
   useEffect(() => {
+    console.log('[Notifications] Registering scroll-to-top handler');
     setUpHandler(() => handleScrollToTop);
-    return () => setUpHandler(null);
+    return () => {
+      console.log('[Notifications] Clearing scroll-to-top handler');
+      setUpHandler(null);
+    };
   }, [handleScrollToTop, setUpHandler]);
 
   // Animated scroll handler for fluid nav
@@ -552,6 +557,11 @@ export default function NotificationsScreen(): React.ReactElement {
       scrollY.value = event.contentOffset.y;
     },
   });
+
+  // Reset shared scroll on mount so nav starts composed here
+  useEffect(() => {
+    scrollY.value = 0;
+  }, [scrollY]);
 
   // Render filter chip
   const renderFilterChip = useCallback((

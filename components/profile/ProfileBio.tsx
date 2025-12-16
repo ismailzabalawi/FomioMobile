@@ -4,10 +4,11 @@
 // - Expands inline without screen reflow
 // - Handles empty bio state
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { MarkdownContent } from '../feed/MarkdownContent';
+import { getTokens } from '@/shared/design/tokens';
 
 export interface ProfileBioProps {
   bio: string | undefined;
@@ -15,6 +16,8 @@ export interface ProfileBioProps {
 
 export function ProfileBio({ bio }: ProfileBioProps) {
   const { isDark } = useTheme();
+  const mode = isDark ? 'dark' : 'light';
+  const tokens = useMemo(() => getTokens(mode), [mode]);
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (!bio || bio.trim().length === 0) {
@@ -25,7 +28,7 @@ export function ProfileBio({ bio }: ProfileBioProps) {
   const shouldShowExpand = bio.length > 150; // Approximate 3 lines
 
   return (
-    <View className="px-4 pb-4" style={{ width: '100%', overflow: 'hidden' }}>
+    <View className="px-4 pb-4" style={{ width: '100%' }}>
       <View
         style={{
           maxHeight: isExpanded || !shouldShowExpand ? undefined : 60,
@@ -45,7 +48,7 @@ export function ProfileBio({ bio }: ProfileBioProps) {
         >
           <Text
             className="text-sm font-medium"
-            style={{ color: isDark ? '#26A69A' : '#009688' }}
+            style={{ color: tokens.colors.accent }}
           >
             {isExpanded ? 'Show less' : 'Show more'}
           </Text>

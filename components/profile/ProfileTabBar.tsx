@@ -12,7 +12,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   useAnimatedReaction,
-  withTiming,
+  withSpring,
   interpolate,
   SharedValue,
   runOnJS,
@@ -30,7 +30,8 @@ import {
   ThumbsUp 
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
-import { cn } from '@/lib/utils/cn';
+import { getTokens } from '@/shared/design/tokens';
+import { FluidSlotBar } from '@/shared/ui/FluidSlotBar';
 
 export interface TabItem {
   key: string;
@@ -46,6 +47,9 @@ export interface ProfileTabBarProps {
   indexSharedValue?: SharedValue<number>;
   onTabPress?: (tabName: string) => void;
   tabNames?: readonly string[];
+  showEditAction?: boolean;
+  onEditPress?: () => void;
+  editLabel?: string;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -70,9 +74,15 @@ export function ProfileTabBar({
   indexSharedValue,
   onTabPress,
   tabNames,
+  showEditAction = false,
+  onEditPress,
+  editLabel = 'Edit',
 }: ProfileTabBarProps) {
-  const { isDark, isAmoled } = useTheme();
+  const { isDark } = useTheme();
   const { width } = useWindowDimensions();
+  const mode = isDark ? 'dark' : 'light';
+  const tokens = useMemo(() => getTokens(mode), [mode]);
+  const [barWidth, setBarWidth] = React.useState(width);
   
   // Track current index - either from SharedValue or prop
   const [currentIndex, setCurrentIndex] = React.useState(() => {
@@ -103,11 +113,16 @@ export function ProfileTabBar({
       : tabs,
     [tabNames, tabs]
   );
-  
-  const tabWidth = useMemo(() => 
-    effectiveTabs.length > 0 ? width / effectiveTabs.length : width,
-    [effectiveTabs.length, width]
-  );
+
+  const containerPadding = 8;
+  const slotGap = 8;
+  const tabWidth = useMemo(() => {
+    if (effectiveTabs.length === 0) return barWidth;
+    const paddedWidth = Math.max(0, barWidth - containerPadding * 2);
+    const totalGap = slotGap * Math.max(effectiveTabs.length - 1, 0);
+    const availableWidth = Math.max(0, paddedWidth - totalGap);
+    return availableWidth / effectiveTabs.length;
+  }, [effectiveTabs.length, barWidth]);
   
   // Initialize shared value with a stable initial value (0)
   // Always update it via useEffect to avoid reading during render
@@ -122,11 +137,9 @@ export function ProfileTabBar({
       isInitialMount.current = false;
     } else {
       // Animate subsequent changes
-      indicatorPosition.value = withTiming(activeIndex, {
-        duration: 250,
-      });
+      indicatorPosition.value = withSpring(activeIndex, tokens.motion.liquidSpring);
     }
-  }, [activeIndex, indicatorPosition]);
+  }, [activeIndex, indicatorPosition, tokens.motion.liquidSpring]);
 
   const handleTabPress = useCallback(
     (tabIndex: number) => {
@@ -148,104 +161,163 @@ export function ProfileTabBar({
 
   // Pre-compute interpolation ranges to avoid computing during render
   const maxIndex = useMemo(() => Math.max(0, effectiveTabs.length - 1), [effectiveTabs.length]);
-  const maxTranslateX = useMemo(() => maxIndex * tabWidth, [maxIndex, tabWidth]);
+  const indicatorWidth = useMemo(() => {
+    const target = tabWidth * 0.7;
+    const maxWidth = Math.max(16, tabWidth - 6);
+    const minWidth = Math.min(32, maxWidth);
+    return Math.max(minWidth, Math.min(target, maxWidth));
+  }, [tabWidth]);
+  const tabStep = tabWidth + slotGap;
+
+  const handleEditPress = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    onEditPress?.();
+  }, [onEditPress]);
 
   const indicatorStyle = useAnimatedStyle(() => {
     // Access maxIndex and maxTranslateX from closure - they're stable due to useMemo
     const translateX = interpolate(
       indicatorPosition.value,
       [0, maxIndex],
-      [0, maxTranslateX]
+      [0, tabStep * maxIndex]
     );
     return {
-      transform: [{ translateX }],
+      transform: [
+        {
+          translateX:
+            containerPadding +
+            translateX +
+            Math.max(0, (tabWidth - indicatorWidth) / 2),
+        },
+      ],
     };
   });
 
+  const handleLayout = useCallback((event: any) => {
+    const nextWidth = event?.nativeEvent?.layout?.width;
+    if (nextWidth && Math.abs(nextWidth - barWidth) > 1) {
+      setBarWidth(nextWidth);
+    }
+  }, [barWidth]);
+
   return (
-    <View
-      className={cn(
-        'flex-row border-b',
-        isAmoled ? 'bg-fomio-bg-dark border-fomio-border-soft-dark' : isDark
-          ? 'bg-fomio-card-dark border-fomio-border-soft-dark'
-          : 'bg-fomio-bg border-fomio-border-soft'
-      )}
-      style={{
-        width: '100%',
-        overflow: 'hidden',
-      }}
-    >
-      {effectiveTabs.map((tab, index) => {
-        const isActive = index === activeIndex;
-        const IconComponent = tab.icon || ICON_MAP[tab.key] || List;
-        
-        return (
-          <AnimatedPressable
-            key={tab.key}
-            onPress={() => handleTabPress(index)}
-            className="flex-1 items-center justify-center"
-            style={{ minHeight: 56, paddingVertical: 8 }}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessible
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isActive }}
-            accessibilityLabel={tab.title}
-          >
-            <View className="items-center justify-center" pointerEvents="none">
-              <IconComponent
-                size={22}
-                color={
-                  isActive
-                    ? isAmoled
-                      ? '#26A69A'
-                      : isDark
-                        ? '#26A69A'
-                        : '#009688'
-                    : isAmoled
-                      ? '#A1A1AA'
-                      : isDark
-                        ? '#A1A1AA'
-                        : '#6B6B72'
-                }
-                weight={isActive ? 'fill' : 'regular'}
-              />
-              {/* Show label only when active */}
-              {isActive && (
-                <Text
-                  className={cn(
-                    'text-xs font-semibold mt-1',
-                    isAmoled
-                      ? 'text-fomio-primary-dark'
-                      : isDark
-                        ? 'text-fomio-primary-dark'
-                        : 'text-fomio-primary'
-                  )}
-                  numberOfLines={1}
-                >
-                  {tab.title}
-                </Text>
-              )}
-            </View>
-          </AnimatedPressable>
-        );
-      })}
-      <Animated.View
-        className={cn(
-          'absolute bottom-0 h-0.5',
-          isAmoled
-            ? 'bg-fomio-primary-dark'
-            : isDark
-              ? 'bg-fomio-primary-dark'
-              : 'bg-fomio-primary'
-        )}
-        style={[
+    <View style={{ width: '100%' }} onLayout={handleLayout}>
+      <FluidSlotBar
+        mode={mode}
+        height={58}
+        radius={tokens.radii.lg}
+        slots={[
           {
-            width: tabWidth,
-            left: 0,
+            key: 'tabs',
+            flex: 1,
+            render: () => (
+              <View
+                className="flex-row"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  paddingHorizontal: containerPadding,
+                  alignItems: 'center',
+                }}
+              >
+                {effectiveTabs.map((tab, index) => {
+                  const isActive = index === activeIndex;
+                  const IconComponent = tab.icon || ICON_MAP[tab.key] || List;
+                  
+                  return (
+                    <AnimatedPressable
+                      key={tab.key}
+                      onPress={() => handleTabPress(index)}
+                      className="items-center justify-center"
+                      style={{
+                        minHeight: 52,
+                        paddingVertical: 6,
+                        width: tabWidth,
+                        marginRight: index === effectiveTabs.length - 1 ? 0 : slotGap,
+                      }}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      accessible
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: isActive }}
+                      accessibilityLabel={tab.title}
+                    >
+                      <View className="items-center justify-center" pointerEvents="none">
+                        <IconComponent
+                          size={22}
+                          color={isActive ? tokens.colors.accent : tokens.colors.muted}
+                          weight={isActive ? 'fill' : 'regular'}
+                        />
+                        {/* Show label only when active */}
+                        {isActive && (
+                          <Text
+                            className="text-xs font-semibold mt-1"
+                            style={{ color: tokens.colors.accent }}
+                            numberOfLines={1}
+                          >
+                            {tab.title}
+                          </Text>
+                        )}
+                      </View>
+                    </AnimatedPressable>
+                  );
+                })}
+                <Animated.View
+                  className="absolute bottom-1.5"
+                  style={[
+                    {
+                      width: indicatorWidth,
+                      height: 3,
+                      left: 0,
+                      borderRadius: tokens.radii.pill,
+                      backgroundColor: tokens.colors.accent,
+                    },
+                    indicatorStyle,
+                  ]}
+                  pointerEvents="none"
+                />
+              </View>
+            ),
           },
-          indicatorStyle,
+          {
+            key: 'edit',
+            width: showEditAction ? 120 : 0,
+            visible: showEditAction,
+            render: () => (
+              <AnimatedPressable
+                onPress={handleEditPress}
+                className="items-center justify-center"
+                style={{
+                  paddingHorizontal: 8,
+                  height: 64,
+                  minWidth: 120,
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={editLabel}
+              >
+                <View
+                  style={{
+                    backgroundColor: tokens.colors.accent,
+                    borderColor: tokens.colors.accent,
+                    borderWidth: 1,
+                    borderRadius: tokens.radii.pill,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text
+                    className="text-sm font-semibold"
+                    style={{ color: '#ffffff' }}
+                  >
+                    {editLabel}
+                  </Text>
+                </View>
+              </AnimatedPressable>
+            ),
+          },
         ]}
-        pointerEvents="none"
       />
     </View>
   );

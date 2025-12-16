@@ -138,14 +138,48 @@ export default function HomeScreen(): React.ReactElement {
   }, [retry]);
 
   const handleScrollToTop = useCallback(() => {
+    console.log('[Feed] ===== Scroll-to-top handler CALLED =====');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-  }, []);
+    
+    if (flatListRef.current) {
+      console.log('[Feed] flatListRef.current exists:', !!flatListRef.current);
+      // For Animated.FlatList, scrollToOffset is more reliable than scrollToIndex
+      // scrollToIndex can fail if items aren't rendered or layout isn't ready
+      try {
+        console.log('[Feed] Using scrollToOffset(0)');
+        flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+        console.log('[Feed] scrollToOffset called successfully');
+      } catch (error) {
+        console.error('[Feed] scrollToOffset failed:', error);
+        // Fallback: Try scrollToIndex if scrollToOffset fails
+        if (items.length > 0) {
+          try {
+            console.log('[Feed] Fallback: Trying scrollToIndex(0)');
+            flatListRef.current.scrollToIndex({ index: 0, animated: true, viewPosition: 0 });
+          } catch (indexError) {
+            console.error('[Feed] Both scroll methods failed:', indexError);
+          }
+        }
+      }
+    } else {
+      console.warn('[Feed] flatListRef.current is null');
+    }
+  }, [items.length]);
   
   // Share scroll position with fluid nav and keep scroll-to-top handler accessible
   useEffect(() => {
-    setUpHandler(() => handleScrollToTop);
-    return () => setUpHandler(null);
+    console.log('[Feed] ===== Registering scroll-to-top handler =====');
+    console.log('[Feed] handleScrollToTop function exists:', !!handleScrollToTop);
+    const handler = () => {
+      console.log('[Feed] Handler wrapper called, executing handleScrollToTop');
+      handleScrollToTop();
+    };
+    setUpHandler(handler);
+    console.log('[Feed] Handler registered successfully');
+    return () => {
+      console.log('[Feed] ===== Clearing scroll-to-top handler =====');
+      setUpHandler(null);
+    };
   }, [handleScrollToTop, setUpHandler]);
 
   const animatedScrollHandler = useAnimatedScrollHandler({
@@ -153,6 +187,11 @@ export default function HomeScreen(): React.ReactElement {
       scrollY.value = event.contentOffset.y;
     },
   });
+
+  // Reset shared scroll on mount to keep nav state consistent across tabs
+  useEffect(() => {
+    scrollY.value = 0;
+  }, [scrollY]);
 
   const renderError = () => {
     if (!hasError) return null;

@@ -12,6 +12,23 @@ import { SkeletonEnhanced } from '@/components/shared/loading.enhanced';
 export function EditProfileSkeleton() {
   return (
     <View style={styles.container}>
+      {/* Hero / cover section */}
+      <View style={styles.heroHeader}>
+        <View style={{ flex: 1, gap: 8 }}>
+          <SkeletonEnhanced width={140} height={18} borderRadius={6} />
+          <SkeletonEnhanced width={200} height={14} borderRadius={6} />
+        </View>
+        <SkeletonEnhanced width={90} height={34} borderRadius={999} />
+      </View>
+
+      {/* Cover image */}
+      <View style={styles.coverSection}>
+        <SkeletonEnhanced width="100%" height="100%" />
+        <View style={styles.coverButtonPlaceholder}>
+          <SkeletonEnhanced width={120} height={36} borderRadius={999} />
+        </View>
+      </View>
+
       {/* Avatar Section */}
       <View style={styles.avatarSection}>
         <View style={styles.avatarContainer}>
@@ -134,6 +151,27 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
   },
+  heroHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  coverSection: {
+    height: 160,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  coverButtonPlaceholder: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+  },
   avatarSection: {
     padding: 24,
     borderRadius: 12,
@@ -158,4 +196,3 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 });
-

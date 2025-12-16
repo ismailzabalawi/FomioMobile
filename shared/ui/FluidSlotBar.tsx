@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { getTokens } from '../design/tokens';
 
@@ -16,17 +16,27 @@ type Props = {
   slots: SlotConfig[];
   height?: number;
   radius?: number;
+  style?: StyleProp<ViewStyle>;
 };
 
-export function FluidSlotBar({ mode = 'dark', slots, height = 60, radius = 24 }: Props) {
+export function FluidSlotBar({ mode = 'dark', slots, height = 60, radius = 24, style }: Props) {
   const tokens = useMemo(() => getTokens(mode), [mode]);
+  const backgroundColor =
+    mode === 'dark' ? '#000000' : tokens.colors.surfaceFrost;
 
   return (
     <View
       style={[
         styles.container,
-        { height, borderRadius: radius, backgroundColor: tokens.colors.surfaceFrost },
+        {
+          height,
+          borderRadius: radius,
+          backgroundColor,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: tokens.colors.border,
+        },
         tokens.shadows.soft,
+        style,
       ]}
     >
       {slots.map((slot) => {

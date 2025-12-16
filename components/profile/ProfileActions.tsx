@@ -4,12 +4,14 @@
 // - Row of buttons under stats
 // - Uses NativeWind button styles
 
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
-import { PencilSimple, Envelope, Share, Flag, Prohibit } from 'phosphor-react-native';
+import React, { useCallback, useMemo } from 'react';
+import { View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
 import { useAuth } from '@/shared/auth-context';
-import { router } from 'expo-router';
+import { getTokens } from '@/shared/design/tokens';
+import { FluidChip } from '@/shared/ui/FluidChip';
+import { FluidSection } from '@/shared/ui/FluidSection';
 
 export interface ProfileActionsProps {
   mode: 'myProfile' | 'publicProfile';
@@ -20,173 +22,98 @@ export interface ProfileActionsProps {
 
 export function ProfileActions({
   mode,
-  username,
+  username: _username,
   onReport,
   onBlock,
 }: ProfileActionsProps) {
-  const { isDark, isAmoled } = useTheme();
+  const { isDark } = useTheme();
   const { isAuthenticated } = useAuth();
+  const themeMode = isDark ? 'dark' : 'light';
+  const tokens = useMemo(() => getTokens(themeMode), [themeMode]);
 
-  const handleEditProfile = () => {
-    router.push('/(profile)/edit-profile' as any);
-  };
-
-  const handleSettings = () => {
-    router.push('/(profile)/settings' as any);
-  };
+  const withHaptics = useCallback((action?: () => void) => {
+    return () => {
+      Haptics.selectionAsync().catch(() => {});
+      action?.();
+    };
+  }, []);
 
   if (mode === 'myProfile') {
-    return (
-      <View className="px-4 py-3 flex-row gap-3" style={{ width: '100%', overflow: 'hidden' }}>
-        <TouchableOpacity
-          onPress={handleEditProfile}
-          className="flex-1 py-3 px-4 rounded-xl border items-center justify-center"
-          style={{
-            backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-            borderColor: isDark ? '#374151' : '#e5e7eb',
-          }}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Edit Profile"
-        >
-          <PencilSimple
-            size={20}
-            color={isDark ? '#26A69A' : '#009688'}
-            weight="regular"
-          />
-          <Text
-            className="text-sm font-semibold mt-1"
-            style={{ color: isDark ? '#26A69A' : '#009688' }}
-          >
-            Edit Profile
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return null;
   }
 
   // PublicProfile mode
   return (
-    <View className="px-4 py-3 flex-row gap-2 flex-wrap" style={{ width: '100%', overflow: 'hidden' }}>
-      {/* Message - Coming soon - only show if authenticated */}
-      {isAuthenticated && (
-      <TouchableOpacity
-        disabled
-        className="flex-1 min-w-[100px] py-2.5 px-3 rounded-xl border items-center justify-center"
+    <View className="px-4 py-2" style={{ width: '100%' }}>
+      <FluidSection
+        mode={themeMode}
         style={{
-          backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-          borderColor: isDark ? '#374151' : '#e5e7eb',
-          opacity: 0.5,
+          paddingVertical: 12,
+          paddingHorizontal: 12,
+          gap: 12,
+          alignItems: 'center',
         }}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel="Message (Coming soon)"
       >
-        <Envelope
-          size={18}
-          color={isDark ? '#9ca3af' : '#6b7280'}
-          weight="regular"
-        />
-        <Text
-          className="text-xs font-medium mt-1"
-          style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
-        >
-          Message
-        </Text>
-        <Text
-          className="text-xs mt-0.5"
-          style={{ color: isDark ? '#6b7280' : '#9ca3af' }}
-        >
-          Coming soon
-        </Text>
-      </TouchableOpacity>
-      )}
+        <View className="flex-row flex-wrap gap-8" style={{ justifyContent: 'center' }}>
+          {/* Message - Coming soon - only show if authenticated */}
+          {isAuthenticated && (
+            <View pointerEvents="none">
+              <FluidChip
+                label="Message"
+                onPress={undefined}
+                mode={themeMode}
+                style={{
+                  minWidth: 120,
+                  backgroundColor: tokens.colors.surfaceMuted,
+                  borderColor: tokens.colors.border,
+                }}
+              />
+            </View>
+          )}
 
-      {/* Share - Coming soon */}
-      <TouchableOpacity
-        disabled
-        className="flex-1 min-w-[100px] py-2.5 px-3 rounded-xl border items-center justify-center"
-        style={{
-          backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-          borderColor: isDark ? '#374151' : '#e5e7eb',
-          opacity: 0.5,
-        }}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel="Share (Coming soon)"
-      >
-        <Share
-          size={18}
-          color={isDark ? '#9ca3af' : '#6b7280'}
-          weight="regular"
-        />
-        <Text
-          className="text-xs font-medium mt-1"
-          style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
-        >
-          Share
-        </Text>
-        <Text
-          className="text-xs mt-0.5"
-          style={{ color: isDark ? '#6b7280' : '#9ca3af' }}
-        >
-          Coming soon
-        </Text>
-      </TouchableOpacity>
+          {/* Share - Coming soon */}
+          <View pointerEvents="none">
+            <FluidChip
+              label="Share"
+              onPress={undefined}
+              mode={themeMode}
+              style={{
+                minWidth: 120,
+                backgroundColor: tokens.colors.surfaceMuted,
+                borderColor: tokens.colors.border,
+              }}
+            />
+          </View>
 
-      {/* Report - only show if authenticated */}
-      {isAuthenticated && onReport && (
-      <TouchableOpacity
-        onPress={onReport}
-        className="flex-1 min-w-[100px] py-2.5 px-3 rounded-xl border items-center justify-center"
-        style={{
-          backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-          borderColor: isDark ? '#374151' : '#e5e7eb',
-        }}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel="Report user"
-      >
-        <Flag
-          size={18}
-          color={isDark ? '#ef4444' : '#dc2626'}
-          weight="regular"
-        />
-        <Text
-          className="text-xs font-medium mt-1"
-          style={{ color: isDark ? '#ef4444' : '#dc2626' }}
-        >
-          Report
-        </Text>
-      </TouchableOpacity>
-      )}
+          {/* Report - only show if authenticated */}
+          {isAuthenticated && onReport && (
+            <FluidChip
+              label="Report"
+              onPress={withHaptics(onReport)}
+              mode={themeMode}
+              style={{
+                minWidth: 120,
+                backgroundColor: tokens.colors.accent,
+                borderColor: tokens.colors.accent,
+              }}
+            />
+          )}
 
-      {/* Block - only show if authenticated */}
-      {isAuthenticated && onBlock && (
-      <TouchableOpacity
-        onPress={onBlock}
-        className="flex-1 min-w-[100px] py-2.5 px-3 rounded-xl border items-center justify-center"
-        style={{
-          backgroundColor: isAmoled ? '#000000' : isDark ? '#1f2937' : '#ffffff',
-          borderColor: isDark ? '#374151' : '#e5e7eb',
-        }}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel="Block user"
-      >
-        <Prohibit
-          size={18}
-          color={isDark ? '#ef4444' : '#dc2626'}
-          weight="regular"
-        />
-        <Text
-          className="text-xs font-medium mt-1"
-          style={{ color: isDark ? '#ef4444' : '#dc2626' }}
-        >
-          Block
-        </Text>
-      </TouchableOpacity>
-      )}
+          {/* Block - only show if authenticated */}
+          {isAuthenticated && onBlock && (
+            <FluidChip
+              label="Block"
+              onPress={withHaptics(onBlock)}
+              mode={themeMode}
+              style={{
+                minWidth: 120,
+                backgroundColor: tokens.colors.accent,
+                borderColor: tokens.colors.accent,
+              }}
+            />
+          )}
+        </View>
+      </FluidSection>
     </View>
   );
 }

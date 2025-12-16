@@ -18,7 +18,13 @@ export function FluidNavProvider({ children }: { children: React.ReactNode }): R
   }, []);
 
   const triggerUp = useCallback(() => {
-    upHandlerRef.current?.();
+    console.log('[FluidNav] triggerUp called, handler exists:', !!upHandlerRef.current);
+    if (upHandlerRef.current) {
+      console.log('[FluidNav] Executing scroll-to-top handler');
+      upHandlerRef.current();
+    } else {
+      console.warn('[FluidNav] No handler registered! Current handler ref:', upHandlerRef.current);
+    }
   }, []);
 
   const value = useMemo(

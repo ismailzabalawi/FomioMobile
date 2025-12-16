@@ -9,9 +9,9 @@
 import React, { useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getThemeColors } from '@/shared/theme-constants';
-import type { ThemeMode } from '@/components/theme';
+import * as Haptics from 'expo-haptics';
+import { getTokens } from '@/shared/design/tokens';
+import { FluidSection } from '@/shared/ui/FluidSection';
 import { useFoldableLayout } from '@/shared/hooks/useFoldableLayout';
 
 export interface ProfileMessageCardProps {
@@ -23,8 +23,7 @@ export interface ProfileMessageCardProps {
     onPress: () => void;
     accessibilityHint?: string;
   };
-  themeMode?: ThemeMode;
-  isDark?: boolean;
+  mode?: 'light' | 'dark';
 }
 
 export function ProfileMessageCard({
@@ -32,13 +31,11 @@ export function ProfileMessageCard({
   title = '',
   body = '',
   primaryAction,
-  themeMode = 'dark',
-  isDark = true,
+  mode = 'dark',
 }: ProfileMessageCardProps) {
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const { paddingLeft, paddingRight } = useFoldableLayout();
-  const colors = getThemeColors(themeMode, isDark);
+  const tokens = useMemo(() => getTokens(mode), [mode]);
 
   // Calculate responsive card width and padding
   // - Max width of 520px for optimal readability
@@ -58,13 +55,14 @@ export function ProfileMessageCard({
 
   // Defensive: Guard action handler to prevent crashes
   const handleActionPress = useCallback(() => {
-    if (primaryAction?.onPress) {
-      try {
-        primaryAction.onPress();
-      } catch (error) {
-        // Silently handle errors to prevent crashes
-        console.warn('ProfileMessageCard: Action handler error', error);
-      }
+    if (!primaryAction?.onPress) return;
+
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      primaryAction.onPress();
+    } catch (error) {
+      // Silently handle errors to prevent crashes
+      console.warn('ProfileMessageCard: Action handler error', error);
     }
   }, [primaryAction]);
 
@@ -81,7 +79,7 @@ export function ProfileMessageCard({
       return (
         <View
           className="w-20 h-20 rounded-full items-center justify-center mb-4"
-          style={{ backgroundColor: colors.muted }}
+          style={{ backgroundColor: tokens.colors.surfaceMuted }}
         >
           {icon}
         </View>
@@ -105,50 +103,54 @@ export function ProfileMessageCard({
       }}
     >
       <View 
-        className="items-center"
-        style={{ maxWidth: layout.maxCardWidth, width: '100%' }}
+        className="items-center w-full"
+        style={{ maxWidth: layout.maxCardWidth }}
       >
-        <View
-          className="p-6 rounded-xl mb-4 w-full"
-          style={{ backgroundColor: colors.card }}
+        <FluidSection
+          mode={mode}
+          style={{
+            width: '100%',
+            padding: 24,
+            alignItems: 'center',
+          }}
         >
-          <View className="items-center">
-            {renderIcon()}
-            {title ? (
-              <Text
-                className="text-lg font-semibold mb-2 text-center"
-                style={{ color: colors.foreground }}
-              >
-                {title}
+          {renderIcon()}
+          {title ? (
+            <Text
+              className="text-lg font-semibold text-center"
+              style={{ color: tokens.colors.text }}
+            >
+              {title}
+            </Text>
+          ) : null}
+          {body ? (
+            <Text
+              className="text-sm text-center mb-2"
+              style={{ color: tokens.colors.muted }}
+            >
+              {body}
+            </Text>
+          ) : null}
+          {primaryAction ? (
+            <TouchableOpacity
+              onPress={handleActionPress}
+              className="px-8 py-3 rounded-xl"
+              style={{
+                backgroundColor: tokens.colors.accent,
+                borderRadius: tokens.radii.md,
+              }}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={primaryAction.label ?? 'Action button'}
+              accessibilityHint={primaryAction.accessibilityHint}
+            >
+              <Text className="text-white font-semibold text-base">
+                {primaryAction.label ?? 'Action'}
               </Text>
-            ) : null}
-            {body ? (
-              <Text
-                className="text-sm text-center mb-6"
-                style={{ color: colors.mutedForeground }}
-              >
-                {body}
-              </Text>
-            ) : null}
-            {primaryAction ? (
-              <TouchableOpacity
-                onPress={handleActionPress}
-                className="px-8 py-3 rounded-xl"
-                style={{ backgroundColor: colors.accent }}
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel={primaryAction.label ?? 'Action button'}
-                accessibilityHint={primaryAction.accessibilityHint}
-              >
-                <Text className="text-white font-semibold text-base">
-                  {primaryAction.label ?? 'Action'}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
+            </TouchableOpacity>
+          ) : null}
+        </FluidSection>
       </View>
     </View>
   );
 }
-

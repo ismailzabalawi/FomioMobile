@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { Tabs, router } from 'expo-router';
 import { House, MagnifyingGlass, Plus, Bell, User, ArrowUp, CheckCircle, PencilSimple } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
-import { View, StyleSheet, Pressable, Text, Platform } from 'react-native';
+import { View, StyleSheet, Pressable, Text, Platform, Alert } from 'react-native';
 import { useNotifications } from '../../shared/useNotifications';
 import { useNotificationPreferences } from '../../shared/useNotificationPreferences';
 import { filterNotificationsByPreferences } from '../../lib/utils/notifications';
@@ -11,10 +11,52 @@ import { useAuth } from '@/shared/auth-context';
 import * as Haptics from 'expo-haptics';
 import { getThemeColors } from '@/shared/theme-constants';
 import { BlurView } from 'expo-blur';
-import Animated, { useSharedValue, useDerivedValue, useAnimatedStyle, withSpring, useAnimatedProps, interpolate, Extrapolate } from 'react-native-reanimated';
+import Animated, { useSharedValue, useDerivedValue, useAnimatedStyle, withSpring, useAnimatedProps, interpolate, Extrapolate, useAnimatedReaction, runOnJS } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { FluidNavProvider, useFluidNav } from '@/shared/navigation/fluidNavContext';
 import { getTokens } from '@/shared/design/tokens';
+import {
+  computeNeckRadius,
+  computeCurvatureSpread,
+  getMetaballPath,
+  computeBridgeOpacity,
+} from '@/shared/design/fluidDynamics';
+import { TabIcon, FluidTabItem, useTabBarColors } from '@/components/nav/TabBarComponents';
+import {
+  INDICATOR_WIDTH,
+  DROP_RADIUS,
+  BAR_CAP_RADIUS,
+  DROP_SIZE,
+  INITIAL_GAP,
+  STRETCH_LEFT,
+  STRETCH_RIGHT,
+  CONTAINER_HEIGHT,
+  DETACH_START,
+  DETACH_END,
+  BUD_START_BASE,
+  BUD_END_BASE,
+  REAPPEAR_WINDOW,
+  REAPPEAR_RESET_DELTA,
+  REAPPEAR_FACTOR,
+  MERGE_BRIDGE_MIN,
+  MERGE_BRIDGE_MAX,
+  BUD_BRIDGE_MIN,
+  BUD_BRIDGE_MAX,
+  ICON_SIZE,
+  COMPOSE_ICON_SIZE,
+  TAB_ITEM_ICON_SIZE,
+  BADGE_TOP,
+  BADGE_RIGHT,
+  BADGE_MIN_WIDTH,
+  BADGE_HEIGHT,
+  BADGE_BORDER_RADIUS,
+  BADGE_PADDING_HORIZONTAL,
+  BADGE_FONT_SIZE,
+  BADGE_FONT_WEIGHT,
+  BADGE_LINE_HEIGHT,
+  TAB_HIT_SLOP,
+  TAB_BAR_HORIZONTAL_PADDING_BASE,
+} from '@/shared/navigation/tabBarConstants';
 
 // ============================================================================
 // SCREEN TYPES FOR CONTEXT-AWARE NAVIGATION
@@ -24,353 +66,29 @@ type RightActionType = 'scroll-to-top' | 'mark-all-read' | 'edit-profile' | 'non
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-// ============================================================================
-// FLUID DYNAMICS ENGINE (Worklet-safe)
-// Implements physics-based liquid bridge using:
-// - Young-Laplace: Δp = γκ (pressure jump via curvature)
-// - Rayleigh-Plateau instability: λ > 2πr causes necking & pinch-off
-// - Capillary coalescence: Bridge growth via surface tension
-// ============================================================================
+// Fluid dynamics functions imported from shared/design/fluidDynamics.ts
+
+// Tab bar components imported from components/nav/TabBarComponents.tsx
 
 /**
- * Computes dynamic neck radius based on Rayleigh-Plateau instability
- * r_min ~ (μ²/ργ)^(1/3) * (t_p - t)^(2/3) (self-similar scaling)
- * Simplified: As distance increases, neck radius decreases non-linearly
- */
-function computeNeckRadius(
-  baseRadius: number,
-  distance: number,
-  maxStretch: number
-): number {
-  'worklet';
-  // Normalized stretch ratio (0 = touching, 1 = max stretch)
-  const stretchRatio = Math.min(distance / maxStretch, 1);
-  
-  // Non-linear necking: r_neck = r_base * (1 - stretchRatio)^(2/3)
-  // This mimics the self-similar pinch-off behavior
-  const neckFactor = Math.pow(1 - stretchRatio, 0.667);
-  
-  // Minimum neck radius before complete pinch-off (prevents visual artifacts)
-  const minNeck = baseRadius * 0.08;
-  return Math.max(baseRadius * neckFactor, minNeck);
-}
-
-/**
- * Computes curvature-based spread for Bezier control points
- * Based on Young-Laplace: κ = Δp/γ where higher curvature = tighter neck
- * Surface tension tries to minimize surface area, creating the "hourglass" shape
- */
-function computeCurvatureSpread(
-  distance: number,
-  maxStretch: number,
-  neckRadius: number,
-  baseRadius: number
-): number {
-  'worklet';
-  // As bridge stretches, curvature increases (inversely proportional to neck radius)
-  // High curvature = inward pull = smaller spread
-  const curvature = baseRadius / Math.max(neckRadius, 0.1);
-  
-  // Spread factor: starts wide (0.5), narrows with stretch and curvature
-  // This creates the characteristic hourglass meniscus shape
-  const baseSpread = 0.5;
-  const stretchPenalty = interpolate(
-    distance,
-    [0, maxStretch * 0.5, maxStretch],
-    [0, 0.2, 0.4],
-    Extrapolate.CLAMP
-  );
-  
-  // Surface tension effect: higher curvature pulls inward
-  const curvatureEffect = Math.min(curvature * 0.05, 0.25);
-  
-  return Math.max(baseSpread - stretchPenalty - curvatureEffect, 0.05);
-}
-
-/**
- * Metaball-style liquid bridge with physics-based necking
- * Simulates capillary coalescence (merging) and Rayleigh-Plateau pinch-off (detaching)
+ * CustomTabBar - Fluid navigation tab bar with physics-based animations
  * 
- * @param x1, y1, r1 - First circle (anchor point)
- * @param x2, y2, r2 - Second circle (moving point)
- * @param stretchLimit - Max distance before bridge ruptures (pinch-off)
- * @returns SVG path string for the liquid bridge
+ * Implements a three-part floating tab bar with:
+ * - Compose button (left): Merges into bar on scroll down, reappears on scroll up
+ * - Main tab bar (center): Expands/contracts based on compose and action button visibility
+ * - Right action button: Buds from bar on scroll (scroll-to-top, mark-all-read, or edit-profile)
+ * 
+ * Uses fluid dynamics physics for smooth liquid bridge animations between elements.
+ * Context-aware right action adapts based on current screen (feed/search/notifications/profile).
+ * 
+ * @param state - Navigation state from Expo Router
+ * @param descriptors - Route descriptors
+ * @param navigation - Navigation object
+ * @param unreadCount - Number of unread notifications for badge
+ * @param markAllAsRead - Callback to mark all notifications as read
+ * @param hasUnreadNotifications - Whether there are unread notifications
+ * @param isAuthenticated - Whether user is authenticated
  */
-function getMetaballPath(
-  x1: number,
-  y1: number,
-  r1: number,
-  x2: number,
-  y2: number,
-  r2: number,
-  stretchLimit: number
-): string {
-  'worklet';
-  
-  // Calculate Euclidean distance between centers
-  const distance = Math.hypot(x2 - x1, y2 - y1);
-  
-  // Rayleigh-Plateau instability: Bridge ruptures when stretched too far
-  // λ > 2πr perturbations grow exponentially, causing pinch-off
-  if (distance === 0 || distance > stretchLimit) {
-    return '';
-  }
-  
-  // Compute dynamic neck radii based on non-linear scaling
-  const effectiveR1 = computeNeckRadius(r1, distance, stretchLimit);
-  const effectiveR2 = computeNeckRadius(r2, distance, stretchLimit);
-  
-  // Direction angle from circle 1 to circle 2
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-  const perpAnglePos = angle + Math.PI / 2;
-  const perpAngleNeg = angle - Math.PI / 2;
-  
-  // Tangent points on first circle (with dynamic radius for necking)
-  const p1x = x1 + effectiveR1 * Math.cos(perpAnglePos);
-  const p1y = y1 + effectiveR1 * Math.sin(perpAnglePos);
-  const p2x = x1 + effectiveR1 * Math.cos(perpAngleNeg);
-  const p2y = y1 + effectiveR1 * Math.sin(perpAngleNeg);
-  
-  // Tangent points on second circle
-  const p3x = x2 + effectiveR2 * Math.cos(perpAnglePos);
-  const p3y = y2 + effectiveR2 * Math.sin(perpAnglePos);
-  const p4x = x2 + effectiveR2 * Math.cos(perpAngleNeg);
-  const p4y = y2 + effectiveR2 * Math.sin(perpAngleNeg);
-  
-  // Compute curvature-based spread for the meniscus
-  const avgRadius = (r1 + r2) / 2;
-  const spread = computeCurvatureSpread(distance, stretchLimit, (effectiveR1 + effectiveR2) / 2, avgRadius);
-  
-  // Midpoint for control point calculation (center of liquid bridge)
-  const mx = x1 + (x2 - x1) * 0.5;
-  const my = y1 + (y2 - y1) * 0.5;
-  
-  // Neck midpoint: The narrowest part of the bridge
-  // Compute neck radius at midpoint for the hourglass effect
-  const midNeckRadius = computeNeckRadius(avgRadius, distance, stretchLimit) * 0.6;
-  
-  // Control points create the inward curve (surface tension minimizing area)
-  // Perpendicular offset creates the characteristic liquid bridge shape
-  const perpDx = (y2 - y1);
-  const perpDy = (x1 - x2);
-  const perpLen = Math.hypot(perpDx, perpDy);
-  const normPerpDx = perpLen > 0 ? perpDx / perpLen : 0;
-  const normPerpDy = perpLen > 0 ? perpDy / perpLen : 0;
-  
-  // Neck inset based on surface tension (Young-Laplace curvature effect)
-  const neckInset = (avgRadius - midNeckRadius) * (1 + spread);
-  
-  // Control points for cubic Bezier curves (creating smooth meniscus)
-  const ctrl1x = mx + normPerpDx * neckInset;
-  const ctrl1y = my + normPerpDy * neckInset;
-  const ctrl2x = mx - normPerpDx * neckInset;
-  const ctrl2y = my - normPerpDy * neckInset;
-  
-  // Additional control points for smoother cubic curves
-  const t = 0.33; // Position along the bridge for intermediate controls
-  const mid1x = x1 + (x2 - x1) * t;
-  const mid1y = y1 + (y2 - y1) * t;
-  const mid2x = x1 + (x2 - x1) * (1 - t);
-  const mid2y = y1 + (y2 - y1) * (1 - t);
-  
-  // Build the liquid bridge path using cubic Bezier curves
-  // This creates a smooth, physically-plausible meniscus shape
-  return `
-    M ${p1x} ${p1y}
-    C ${mid1x + normPerpDx * neckInset * 0.7} ${mid1y + normPerpDy * neckInset * 0.7}
-      ${ctrl1x} ${ctrl1y}
-      ${mx + normPerpDx * midNeckRadius} ${my + normPerpDy * midNeckRadius}
-    C ${ctrl1x} ${ctrl1y}
-      ${mid2x + normPerpDx * neckInset * 0.7} ${mid2y + normPerpDy * neckInset * 0.7}
-      ${p3x} ${p3y}
-    L ${p4x} ${p4y}
-    C ${mid2x - normPerpDx * neckInset * 0.7} ${mid2y - normPerpDy * neckInset * 0.7}
-      ${ctrl2x} ${ctrl2y}
-      ${mx - normPerpDx * midNeckRadius} ${my - normPerpDy * midNeckRadius}
-    C ${ctrl2x} ${ctrl2y}
-      ${mid1x - normPerpDx * neckInset * 0.7} ${mid1y - normPerpDy * neckInset * 0.7}
-      ${p2x} ${p2y}
-    Z
-  `;
-}
-
-/**
- * Computes bridge opacity based on Rayleigh-Plateau necking phase
- * Opacity decreases as the bridge approaches critical pinch-off
- */
-function computeBridgeOpacity(
-  distance: number,
-  stretchLimit: number,
-  phase: 'merge' | 'bud'
-): number {
-  'worklet';
-  
-  if (phase === 'merge') {
-    // Merging: Opacity is full when close, fades as bridge stretches
-    // Represents the bridge becoming thinner and more transparent
-    return interpolate(
-      distance,
-      [0, stretchLimit * 0.6, stretchLimit * 0.85, stretchLimit],
-      [1, 0.85, 0.4, 0],
-      Extrapolate.CLAMP
-    );
-  } else {
-    // Budding: Bridge appears as drop separates, then fades at pinch-off
-    return interpolate(
-      distance,
-      [0, stretchLimit * 0.2, stretchLimit * 0.6, stretchLimit],
-      [0, 0.6, 0.9, 0],
-      Extrapolate.CLAMP
-    );
-  }
-}
-
-// Hook to centralize tab bar color logic using theme tokens
-function useTabBarColors(isDark: boolean, isAmoled: boolean) {
-  return useMemo(() => {
-    const colors = getThemeColors(isDark ? 'dark' : 'light', isAmoled);
-    
-    return {
-      bg: isAmoled ? colors.background : colors.card,
-      border: colors.border,
-      active: colors.accent,
-      inactive: colors.mutedForeground,
-      shadow: isAmoled 
-        ? 'rgba(96, 165, 250, 0.1)' // Subtle blue glow for AMOLED
-        : isDark 
-        ? 'rgba(0, 0, 0, 0.3)' 
-        : 'rgba(0, 0, 0, 0.08)',
-      fab: colors.accent,
-      fabGradient: colors.ring,
-      badgeBg: colors.destructive,
-      badgeText: colors.destructiveForeground,
-    };
-  }, [isDark, isAmoled]);
-}
-
-// Memoized tab button with haptics and press feedback
-function TabIcon({ isFocused, children }: { isFocused: boolean; children: React.ReactNode }) {
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(isFocused ? 1.12 : 1, { damping: 16, stiffness: 210 }) }],
-    opacity: withSpring(isFocused ? 1 : 0.65, { damping: 18, stiffness: 180 }),
-  }), [isFocused]);
-
-  return <Animated.View style={animatedStyle}>{children}</Animated.View>;
-}
-
-// FluidTabItem - Tab item with optional fluid ripple animation (for search tab)
-function FluidTabItem({
-  routeName,
-  routeKey,
-  isFocused,
-  activeColor,
-  inactiveColor,
-  accessibilityLabel,
-  onPress,
-  renderIcon,
-  showBadge,
-  badgeCount,
-  isDark,
-}: {
-  routeName: string;
-  routeKey: string;
-  isFocused: boolean;
-  activeColor: string;
-  inactiveColor: string;
-  accessibilityLabel?: string;
-  onPress: () => void;
-  renderIcon?: (props: { focused: boolean; color: string; size: number }) => React.ReactNode;
-  showBadge?: boolean;
-  badgeCount?: number;
-  isDark: boolean;
-}) {
-  const isSearchTab = routeName === 'search';
-  const tokens = useMemo(() => getTokens(isDark ? 'dark' : 'light'), [isDark]);
-  
-  // Shared values for search tab ripple animation
-  const searchPressProgress = useSharedValue(0);
-  const searchRippleScale = useSharedValue(0);
-
-  const handlePressIn = () => {
-    if (isSearchTab) {
-      searchPressProgress.value = withSpring(1, tokens.motion.liquidSpring);
-      searchRippleScale.value = withSpring(1.5, tokens.motion.snapSpring);
-    }
-  };
-
-  const handlePressOut = () => {
-    if (isSearchTab) {
-      searchPressProgress.value = withSpring(0, tokens.motion.liquidSpring);
-      searchRippleScale.value = withSpring(0, tokens.motion.liquidSpring);
-    }
-  };
-
-  // Animated ripple style for search tab
-  const searchRippleStyle = useAnimatedStyle(() => {
-    if (!isSearchTab) return { opacity: 0 };
-    
-    const opacity = interpolate(
-      searchPressProgress.value,
-      [0, 0.3, 0.7, 1],
-      [0, 0.25, 0.15, 0],
-      Extrapolate.CLAMP
-    );
-    
-    return {
-      opacity,
-      transform: [{ scale: searchRippleScale.value }],
-    };
-  }, [isSearchTab]);
-
-  const color = isFocused ? activeColor : inactiveColor;
-
-  return (
-    <Pressable
-      key={routeKey}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={isFocused ? { selected: true } : {}}
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={styles.tabPressable}
-      hitSlop={12}
-    >
-      <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
-        {/* Fluid ripple effect for search tab */}
-        {isSearchTab && (
-          <Animated.View
-            style={[
-              {
-                position: 'absolute',
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: activeColor,
-              },
-              searchRippleStyle,
-            ]}
-          />
-        )}
-        <TabIcon isFocused={isFocused}>
-          {renderIcon?.({
-            focused: isFocused,
-            color,
-            size: 26,
-          })}
-        </TabIcon>
-      </View>
-      {showBadge && badgeCount !== undefined && badgeCount > 0 && (
-        <View style={styles.badgeContainer}>
-          <Text style={styles.badgeText}>
-            {badgeCount > 99 ? '99+' : badgeCount}
-          </Text>
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
 function CustomTabBar({
   state,
   descriptors,
@@ -380,53 +98,25 @@ function CustomTabBar({
   hasUnreadNotifications,
   isAuthenticated,
 }: any) {
-  // ============================================================================
-  // PHYSICAL LAYOUT CONSTANTS
-  // These define the geometry of our fluid navigation system
-  // ============================================================================
-  const INDICATOR_WIDTH = 34;
-  const DROP_RADIUS = 28;        // Radius of floating button "drops"
-  const BAR_CAP_RADIUS = 22;     // Radius of main bar end caps
-  const DROP_SIZE = 56;          // Full diameter of floating buttons
-  const INITIAL_GAP = 8;         // Physical gap between elements at rest
-  const STRETCH_LEFT = 80;       // Max stretch before left bridge pinch-off
-  const STRETCH_RIGHT = 80;      // Max stretch before right bridge pinch-off
-  const PADDING = 16;
-  const CONTAINER_HEIGHT = 86;
-  
-  // Scroll thresholds for distinct phases (fluid dynamics)
-  // Phase 1: Compose detaches from bar (reverse merge)
-  const DETACH_START = 0;
-  const DETACH_END = 100;
-  // Phase 2: Scroll-to-top buds from bar
-  const BUD_START = 120;
-  const BUD_END = 220;
-  // Compose reappear window when scrolling back up (allows showing compose mid-list)
-  const REAPPEAR_WINDOW = 160;
-  const REAPPEAR_RESET_DELTA = 8;
-  const REAPPEAR_FACTOR = 0.9;
+  // Constants imported from tabBarConstants.ts
   const insets = useSafeAreaInsets();
+  const horizontalPadding = Math.max(insets.left, insets.right, TAB_BAR_HORIZONTAL_PADDING_BASE);
   const { isDark, isAmoled } = useTheme();
   const { scrollY, triggerUp } = useFluidNav();
   const colors = useTabBarColors(isDark, isAmoled);
-  // Platform-specific background: Android needs higher opacity since blur is weaker
-  const surfaceBg = useMemo(() => {
-    if (isDark) {
-      // Dark mode: white frosted for iOS, slightly more opaque for Android
-      return Platform.OS === 'android' ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.35)';
-    } else {
-      // Light mode: dark tinted for iOS, slightly more opaque for Android  
-      return Platform.OS === 'android' ? 'rgba(0,0,0,0.20)' : 'rgba(255,255,255,0.55)';
-    }
-  }, [isDark]);
-  const gooFill = surfaceBg;
+  // Get tokens for blur, shadows, and surface backgrounds
+  const tokens = useMemo(() => getTokens(isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light'), [isDark, isAmoled]);
+  // Surface background from tokens (platform-specific)
+  const surfaceBg = tokens.surfaceBg;
+  const gooFill = 'transparent';
 
   const containerWidth = useSharedValue(0);
   const indicatorIndex = useSharedValue(0);
-  const homeRoute = useMemo(
-    () => state.routes.find((r: any) => r.name === 'index'),
-    [state.routes]
-  );
+  const isProfileEditAction = useSharedValue(0);
+  const budStart = useSharedValue(BUD_START_BASE);
+  const budEnd = useSharedValue(BUD_END_BASE);
+  const [composePointerEvents, setComposePointerEvents] = useState<'auto' | 'none'>('auto');
+  const [upPointerEvents, setUpPointerEvents] = useState<'auto' | 'none'>('none');
   // Track downward anchor to let compose reappear when scrolling up without reaching top
   const composeReappearOrigin = useSharedValue(0);
   const composeReappearBoost = useDerivedValue(() => {
@@ -437,18 +127,6 @@ function CustomTabBar({
       return 0;
     }
     const climb = composeReappearOrigin.value - y;
-    return interpolate(climb, [0, REAPPEAR_WINDOW], [0, 1], Extrapolate.CLAMP);
-  });
-  // Track downward anchor for right drop so it can snap back fluidly on up-scroll
-  const upReappearOrigin = useSharedValue(0);
-  const upReappearBoost = useDerivedValue(() => {
-    const y = scrollY.value;
-    const delta = y - upReappearOrigin.value;
-    if (delta > REAPPEAR_RESET_DELTA) {
-      upReappearOrigin.value = y;
-      return 0;
-    }
-    const climb = upReappearOrigin.value - y;
     return interpolate(climb, [0, REAPPEAR_WINDOW], [0, 1], Extrapolate.CLAMP);
   });
 
@@ -510,6 +188,19 @@ function CustomTabBar({
     }
   }, [screenType, isViewingOwnProfile]);
 
+  // Adjust bud thresholds per action (edit profile should appear sooner)
+  useEffect(() => {
+    if (rightActionType === 'edit-profile') {
+      budStart.value = 0;
+      budEnd.value = 90;
+      isProfileEditAction.value = 1;
+    } else {
+      budStart.value = BUD_START_BASE;
+      budEnd.value = BUD_END_BASE;
+      isProfileEditAction.value = 0;
+    }
+  }, [rightActionType, budStart, budEnd, isProfileEditAction]);
+
   // ============================================================================
   // RIGHT ACTION HANDLERS
   // Context-aware handlers for the right floating button
@@ -518,6 +209,7 @@ function CustomTabBar({
   // Scroll to top handler (feed/search)
   const handleScrollToTop = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    console.log('[TabBar] Scroll-to-top button pressed, calling triggerUp()');
     triggerUp(); // Calls the handler registered by the currently active screen
   }, [triggerUp]);
   
@@ -525,7 +217,21 @@ function CustomTabBar({
   const handleMarkAllRead = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     if (hasUnreadNotifications && markAllAsRead) {
-      markAllAsRead();
+      Alert.alert('Mark All as Read', 'Mark all notifications as read?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Mark Read',
+          onPress: async () => {
+            console.log('[TabBar] Mark all read confirmed, calling API');
+            try {
+              await markAllAsRead();
+              console.log('[TabBar] Mark all read completed successfully');
+            } catch (error) {
+              console.error('[TabBar] Mark all read failed:', error);
+            }
+          },
+        },
+      ]);
     }
   }, [hasUnreadNotifications, markAllAsRead]);
   
@@ -619,15 +325,20 @@ function CustomTabBar({
     // Allow compose to reappear when scrolling back up without needing to reach top
     const mergeProgress = Math.max(0, Math.min(1, rawMergeProgress - composeReappearBoost.value * REAPPEAR_FACTOR));
     // Phase 2: Scroll-to-top buds FROM bar as user scrolls further
-    const rawBudProgress = interpolate(scrollY.value, [BUD_START, BUD_END], [0, 1], Extrapolate.CLAMP);
-    // Allow right drop to reappear fluidly on up-scroll
-    const budProgress = Math.max(0, Math.min(1, rawBudProgress - upReappearBoost.value * REAPPEAR_FACTOR));
+    const isProfileEdit = isProfileEditAction.value === 1;
+    const rawBudProgress = interpolate(scrollY.value, [budStart.value, budEnd.value], [0, 1], Extrapolate.CLAMP);
+    // For profile edit button: budStart = 0, so button should appear immediately at full size
+    // Since budStart = 0 means the button should be visible from the start, show it at full size
+    // This ensures the edit button is always visible and properly sized when authenticated
+    const budProgress = isProfileEdit && rawBudProgress === 0
+      ? 1.0 // Show button at full size for profile (since budStart = 0, it should be visible immediately)
+      : rawBudProgress;
     
     // ========================================
     // COMPOSE BUTTON (Left Floating Drop)
     // Visible at rest, merges into bar as user scrolls
     // ========================================
-    const composeLeft = PADDING;
+    const composeLeft = horizontalPadding;
     const composeX = composeLeft + DROP_SIZE / 2;
     const composeVisible = mergeProgress < 1;
     
@@ -639,7 +350,7 @@ function CustomTabBar({
     // Expands LEFT as compose disappears, contracts RIGHT as up button appears
     // ========================================
     // Main bar starts after compose space (which shrinks to 0)
-    const mainBarLeft = PADDING + composeSpace;
+    const mainBarLeft = horizontalPadding + composeSpace;
     
     // Right gap for scroll-to-top button (appears on scroll)
     const rightGap = interpolate(budProgress, [0, 1], [0, INITIAL_GAP + STRETCH_RIGHT * 0.5], Extrapolate.CLAMP);
@@ -647,7 +358,7 @@ function CustomTabBar({
     
     // Main bar expands left as compose merges, contracts right as up button buds
     const upButtonSpace = upButtonVisible ? DROP_SIZE + rightGap : 0;
-    const mainBarWidth = Math.max(width - PADDING * 2 - composeSpace - upButtonSpace, 100);
+    const mainBarWidth = Math.max(width - horizontalPadding * 2 - composeSpace - upButtonSpace, 100);
     const mainBarRight = mainBarLeft + mainBarWidth;
     
     // ========================================
@@ -694,7 +405,37 @@ function CustomTabBar({
       rightBridgeEnd,
       rightBridgeDistance,
     };
-  }, [insets.bottom]);
+  }, [insets.bottom, horizontalPadding]);
+
+  // Keep pointer-events in sync with visibility so hidden drops don't steal taps
+  useAnimatedReaction(
+    () => {
+      const l = layout.value;
+      return l.composeVisible && l.mergeProgress < 0.95;
+    },
+    (visible) => {
+      runOnJS(setComposePointerEvents)(visible ? 'auto' : 'none');
+    },
+    []
+  );
+
+  useAnimatedReaction(
+    () => {
+      const l = layout.value;
+      // For profile edit button, ensure pointer events are enabled even if budProgress is exactly 1.0
+      // The check should be >= 0.05 to catch the case where budProgress = 1.0
+      return l.upButtonVisible && l.budProgress >= 0.05;
+    },
+    (enabled) => {
+      runOnJS(setUpPointerEvents)(enabled ? 'auto' : 'none');
+    },
+    []
+  );
+
+  // Reset shared scroll state when switching tabs to avoid stale layout
+  useEffect(() => {
+    scrollY.value = 0;
+  }, [state.index, scrollY]);
 
   // ============================================================================
   // LEFT BRIDGE: Compose Button ↔ Main Bar (Merge Physics)
@@ -703,14 +444,13 @@ function CustomTabBar({
   // ============================================================================
   const leftBridgeProps = useAnimatedProps(() => {
     const l = layout.value;
-    const mergeCutoff = isDark ? 0.9 : 0.7;
-    const themeFade = isDark ? 1 : 0.6;
     
     // Early exit: No bridge if compose fully merged or no width
     if (
       !l.width ||
       !l.composeVisible ||
-      l.mergeProgress >= mergeCutoff ||
+      l.mergeProgress <= MERGE_BRIDGE_MIN ||
+      l.mergeProgress >= MERGE_BRIDGE_MAX ||
       l.leftBridgeDistance > STRETCH_LEFT ||
       l.leftBridgeDistance <= 0
     ) {
@@ -731,7 +471,11 @@ function CustomTabBar({
     const bridgePath = getMetaballPath(x1, y1, r1, x2, y2, r2, STRETCH_LEFT);
     
     // Compute opacity: full at rest, fades as compose merges into bar
-    const bridgeOpacity = computeBridgeOpacity(l.leftBridgeDistance, STRETCH_LEFT, 'merge') * Math.max(0, 1 - l.mergeProgress) * themeFade;
+    const mergeWindow = Math.min(
+      1,
+      Math.max(0, (l.mergeProgress - MERGE_BRIDGE_MIN) / (MERGE_BRIDGE_MAX - MERGE_BRIDGE_MIN))
+    );
+    const bridgeOpacity = computeBridgeOpacity(l.leftBridgeDistance, STRETCH_LEFT, 'merge') * (1 - mergeWindow);
     
     return { 
       d: bridgePath, 
@@ -747,14 +491,13 @@ function CustomTabBar({
   // ============================================================================
   const rightBridgeProps = useAnimatedProps(() => {
     const l = layout.value;
-    const budCutoff = isDark ? 0.9 : 0.7;
-    const themeFade = isDark ? 1 : 0.6;
     
     // Early exit: No bridge if button not visible or fully detached
     if (
       !l.width ||
       !l.upButtonVisible ||
-      l.budProgress >= budCutoff ||
+      l.budProgress <= BUD_BRIDGE_MIN ||
+      l.budProgress >= BUD_BRIDGE_MAX ||
       l.rightBridgeDistance > STRETCH_RIGHT
     ) {
       return { d: '', fill: gooFill, fillOpacity: 0 };
@@ -774,7 +517,11 @@ function CustomTabBar({
     const bridgePath = getMetaballPath(x1, y1, r1, x2, y2, r2, STRETCH_RIGHT);
     
     // Compute opacity for budding phase
-    const bridgeOpacity = computeBridgeOpacity(l.rightBridgeDistance, STRETCH_RIGHT, 'bud') * Math.max(0, 1 - l.budProgress) * themeFade;
+    const budWindow = Math.min(
+      1,
+      Math.max(0, (BUD_BRIDGE_MAX - l.budProgress) / (BUD_BRIDGE_MAX - BUD_BRIDGE_MIN))
+    );
+    const bridgeOpacity = computeBridgeOpacity(l.rightBridgeDistance, STRETCH_RIGHT, 'bud') * budWindow;
     
     return { 
       d: bridgePath, 
@@ -801,9 +548,7 @@ function CustomTabBar({
       opacity: withSpring(opacity, { damping: 14, stiffness: 220 }),
       transform: [{ 
         scale: withSpring(scale, { damping: 14, stiffness: 220 }) 
-      }],
-      // Hide completely when fully merged
-      pointerEvents: l.composeVisible ? 'auto' : 'none',
+      }]
     };
   });
 
@@ -857,7 +602,7 @@ function CustomTabBar({
           left: 0,
           right: 0,
           bottom: 10 + insets.bottom * 0.35,
-          paddingHorizontal: Math.max(insets.left, insets.right, 8),
+          paddingHorizontal: horizontalPadding,
           height: CONTAINER_HEIGHT + insets.bottom * 0.35,
         },
       ]}
@@ -891,12 +636,10 @@ function CustomTabBar({
           },
           composeDropStyle,
         ]}
+        pointerEvents={composePointerEvents}
       >
         <BlurView
-          intensity={Platform.OS === 'android' 
-            ? (isAmoled ? 60 : isDark ? 75 : 80)  // Higher on Android
-            : (isAmoled ? 36 : isDark ? 48 : 64)  // Original on iOS
-          }
+          intensity={tokens.blur.tabBar}
           tint={isAmoled || isDark ? 'dark' : 'light'}
           style={styles.dropBlur}
         >
@@ -908,9 +651,9 @@ function CustomTabBar({
               navigation.navigate('compose');
             }}
             style={styles.fullHitbox}
-            hitSlop={12}
+            hitSlop={TAB_HIT_SLOP}
           >
-            <Plus color={colors.active} size={28} weight="fill" />
+            <Plus color={colors.active} size={TAB_ITEM_ICON_SIZE} weight="fill" />
           </Pressable>
         </BlurView>
       </Animated.View>
@@ -930,10 +673,7 @@ function CustomTabBar({
         ]}
       >
         <BlurView
-          intensity={Platform.OS === 'android' 
-            ? (isAmoled ? 60 : isDark ? 75 : 80)  // Higher on Android
-            : (isAmoled ? 36 : isDark ? 48 : 64)  // Original on iOS
-          }
+          intensity={tokens.blur.tabBar}
           tint={isAmoled || isDark ? 'dark' : 'light'}
           style={styles.mainBarBlur}
         >
@@ -986,6 +726,8 @@ function CustomTabBar({
                   renderIcon={renderIcon}
                   showBadge={route.name === 'notifications'}
                   badgeCount={unreadCount}
+                  badgeBg={colors.badgeBg}
+                  badgeText={colors.badgeText}
                   isDark={isDark}
                 />
               );
@@ -1012,12 +754,10 @@ function CustomTabBar({
             },
             upDropStyle,
           ]}
+          pointerEvents={upPointerEvents}
         >
           <BlurView
-            intensity={Platform.OS === 'android' 
-              ? (isAmoled ? 60 : isDark ? 75 : 80)  // Higher on Android
-              : (isAmoled ? 36 : isDark ? 48 : 64)  // Original on iOS
-            }
+            intensity={tokens.blur.tabBar}
             tint={isAmoled || isDark ? 'dark' : 'light'}
             style={styles.dropBlur}
           >
@@ -1030,7 +770,7 @@ function CustomTabBar({
                 styles.fullHitbox,
                 isRightActionDisabled && { opacity: 0.5 }
               ]}
-              hitSlop={12}
+              hitSlop={TAB_HIT_SLOP}
             >
               {getRightActionIcon(colors.active, colors.inactive)}
             </Pressable>
@@ -1060,9 +800,7 @@ export default function TabLayout(): React.ReactElement {
   // Check if there are any unread notifications (for "Mark all read" button state)
   const hasUnreadNotifications = unreadCount > 0;
 
-  // Icon size constant - no more size + 2
-  const ICON_SIZE = 28;
-  const COMPOSE_ICON_SIZE = 28;
+  // Icon sizes imported from tabBarConstants.ts
 
   // Memoize screen options to prevent unnecessary re-renders
   const screenOptions = useMemo(() => {
@@ -1185,9 +923,9 @@ const styles = StyleSheet.create({
   // ============================================================================
   composeDrop: {
     position: 'absolute',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: DROP_SIZE,
+    height: DROP_SIZE,
+    borderRadius: DROP_RADIUS,
     overflow: 'hidden',
     top: 12,
     borderWidth: 0.5,
@@ -1201,7 +939,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
-    borderRadius: 28,
+    borderRadius: DROP_RADIUS,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1212,8 +950,8 @@ const styles = StyleSheet.create({
   // ============================================================================
   mainBar: {
     position: 'absolute',
-    height: 56,
-    borderRadius: 28,
+    height: DROP_SIZE,
+    borderRadius: DROP_RADIUS,
     overflow: 'hidden',
     top: 12,
     shadowOffset: { width: 0, height: 8 },
@@ -1224,7 +962,7 @@ const styles = StyleSheet.create({
   },
   mainBarBlur: {
     flex: 1,
-    borderRadius: 28,
+    borderRadius: DROP_RADIUS,
     overflow: 'hidden',
   },
   tabRow: {
@@ -1235,7 +973,7 @@ const styles = StyleSheet.create({
   indicator: {
     position: 'absolute',
     bottom: 10,
-    width: 34,
+    width: INDICATOR_WIDTH,
     height: 4,
     borderRadius: 2,
     opacity: 0.8,
@@ -1252,9 +990,9 @@ const styles = StyleSheet.create({
   // ============================================================================
   upDrop: {
     position: 'absolute',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: DROP_SIZE,
+    height: DROP_SIZE,
+    borderRadius: DROP_RADIUS,
     overflow: 'hidden',
     top: 12,
     borderWidth: 0.5,
@@ -1277,20 +1015,18 @@ const styles = StyleSheet.create({
   },
   badgeContainer: {
     position: 'absolute',
-    top: 4,
-    right: 12,
-    backgroundColor: '#EF4444',
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
+    top: BADGE_TOP,
+    right: BADGE_RIGHT,
+    minWidth: BADGE_MIN_WIDTH,
+    height: BADGE_HEIGHT,
+    borderRadius: BADGE_BORDER_RADIUS,
+    paddingHorizontal: BADGE_PADDING_HORIZONTAL,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '700',
-    lineHeight: 14,
+    fontSize: BADGE_FONT_SIZE,
+    fontWeight: BADGE_FONT_WEIGHT,
+    lineHeight: BADGE_LINE_HEIGHT,
   },
 });

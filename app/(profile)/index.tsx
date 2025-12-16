@@ -18,11 +18,12 @@ import { useDiscourseUser } from '@/shared/useDiscourseUser';
 import { useAuth } from '@/shared/auth-context';
 import { ProfileTabView, ProfileMessageCard } from '@/components/profile';
 import { ProfileSkeleton } from '@/components/profile/ProfileSkeleton';
-import { getThemeColors } from '@/shared/theme-constants';
+import { getTokens } from '@/shared/design/tokens';
 import { useFluidNav } from '@/shared/navigation/fluidNavContext';
 
 export default function ProfileScreen(): React.ReactElement {
-  const { themeMode, isDark } = useTheme();
+  const { isDark } = useTheme();
+  const mode = isDark ? 'dark' : 'light';
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { user, loading: userLoading, error: userError, refreshUser } =
     useDiscourseUser();
@@ -31,8 +32,9 @@ export default function ProfileScreen(): React.ReactElement {
 
   const { setHeader, resetHeader, setActions } = useHeader();
 
-  // Memoize theme colors - dark mode always uses AMOLED
-  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
+  // Memoize design tokens - dark mode always uses AMOLED
+  const tokens = useMemo(() => getTokens(mode), [mode]);
+  const backgroundColor = mode === 'dark' ? '#000000' : '#f8fafc';
 
   // Helper to safely trigger haptics (guarded to prevent errors on simulators/unsupported devices)
   const triggerHaptics = useCallback(async () => {
@@ -75,9 +77,9 @@ export default function ProfileScreen(): React.ReactElement {
       accessibilityLabel="Open settings"
       accessibilityHint="Navigate to profile settings page"
     >
-      <Gear size={24} color={colors.foreground} weight="regular" />
+      <Gear size={24} color={tokens.colors.text} weight="regular" />
     </TouchableOpacity>
-  ), [handleSettings, colors.foreground]);
+  ), [handleSettings, tokens.colors.text]);
 
   // Configure header - use useFocusEffect to ensure header is set when screen is focused
   useFocusEffect(
@@ -99,27 +101,63 @@ export default function ProfileScreen(): React.ReactElement {
 
   // Fluid nav: Scroll-to-top handler
   const handleScrollToTop = useCallback(() => {
+    console.log('[Profile] Scroll-to-top handler called');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     if (containerRef.current) {
-      // Scroll to top of the collapsible tab view
-      containerRef.current.scrollTo({ y: 0, animated: true });
+      console.log('[Profile] containerRef.current exists:', !!containerRef.current);
+      console.log('[Profile] Available methods:', Object.keys(containerRef.current));
+      try {
+        // react-native-collapsible-tab-view's setIndex method scrolls to top
+        // when called with the current tab index
+        const currentIndex = containerRef.current.getCurrentIndex?.();
+        console.log('[Profile] Current index:', currentIndex);
+        if (currentIndex !== undefined && currentIndex !== null) {
+          console.log('[Profile] Using setIndex with current index:', currentIndex);
+          const result = containerRef.current.setIndex?.(currentIndex);
+          console.log('[Profile] setIndex result:', result);
+        } else {
+          // Fallback: Try to get focused tab and jump to it
+          const focusedTab = containerRef.current.getFocusedTab?.();
+          console.log('[Profile] Focused tab:', focusedTab);
+          if (focusedTab) {
+            console.log('[Profile] Using jumpToTab with focused tab:', focusedTab);
+            containerRef.current.jumpToTab?.(focusedTab);
+          } else {
+            console.warn('[Profile] Could not determine current tab, trying setIndex(0)');
+            containerRef.current.setIndex?.(0);
+          }
+        }
+      } catch (error) {
+        console.error('[Profile] Error scrolling to top:', error);
+      }
+    } else {
+      console.warn('[Profile] containerRef.current is null');
     }
   }, []);
 
   // Share scroll position with fluid nav and keep scroll-to-top handler accessible
   useEffect(() => {
+    console.log('[Profile] Registering scroll-to-top handler');
     setUpHandler(() => handleScrollToTop);
-    return () => setUpHandler(null);
+    return () => {
+      console.log('[Profile] Clearing scroll-to-top handler');
+      setUpHandler(null);
+    };
   }, [handleScrollToTop, setUpHandler]);
 
   // Unified safe area edges for all states to prevent background jumps
   const safeAreaEdges = ['top', 'bottom', 'left', 'right'] as const;
 
+  // Reset shared scroll on mount so nav bar starts composed on profile
+  useEffect(() => {
+    scrollY.value = 0;
+  }, [scrollY]);
+
   // Show loading state
   if (authLoading || (isAuthenticated && userLoading && !user)) {
     return (
-      <SafeAreaView 
-        style={[styles.container, { backgroundColor: colors.background }]} 
+      <SafeAreaView
+        style={[styles.container, { backgroundColor }]}
         edges={safeAreaEdges}
       >
         <ProfileSkeleton />
@@ -130,8 +168,8 @@ export default function ProfileScreen(): React.ReactElement {
   // Show error state
   if (userError && isAuthenticated) {
     return (
-      <SafeAreaView 
-        style={[styles.container, { backgroundColor: colors.background }]} 
+      <SafeAreaView
+        style={[styles.container, { backgroundColor }]}
         edges={safeAreaEdges}
       >
         <ProfileMessageCard
@@ -143,8 +181,7 @@ export default function ProfileScreen(): React.ReactElement {
             onPress: refreshUser,
             accessibilityHint: 'Retry loading your profile data',
           }}
-          themeMode={themeMode}
-          isDark={isDark}
+          mode={mode}
         />
       </SafeAreaView>
     );
@@ -153,12 +190,12 @@ export default function ProfileScreen(): React.ReactElement {
   // Show auth prompt if not authenticated
   if (!isAuthenticated) {
     return (
-      <SafeAreaView 
-        style={[styles.container, { backgroundColor: colors.background }]} 
+      <SafeAreaView
+        style={[styles.container, { backgroundColor }]}
         edges={safeAreaEdges}
       >
         <ProfileMessageCard
-          icon={<SignIn size={40} color={colors.mutedForeground} weight="regular" />}
+          icon={<SignIn size={40} color={tokens.colors.muted} weight="regular" />}
           title="Sign in to view your profile"
           body="Access your activity, drafts, bookmarks, and more."
           primaryAction={{
@@ -166,8 +203,7 @@ export default function ProfileScreen(): React.ReactElement {
             onPress: handleSignIn,
             accessibilityHint: 'Navigate to sign in page',
           }}
-          themeMode={themeMode}
-          isDark={isDark}
+          mode={mode}
         />
       </SafeAreaView>
     );
@@ -175,20 +211,20 @@ export default function ProfileScreen(): React.ReactElement {
 
   if (!user) {
     return (
-      <SafeAreaView 
-        style={[styles.container, { backgroundColor: colors.background }]} 
+      <SafeAreaView
+        style={[styles.container, { backgroundColor }]}
         edges={safeAreaEdges}
       >
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={colors.accent} />
+          <ActivityIndicator size="large" color={tokens.colors.accent} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView 
-      style={[styles.container, { backgroundColor: colors.background }]} 
+    <SafeAreaView
+      style={[styles.container, { backgroundColor }]}
       edges={safeAreaEdges}
     >
       <ProfileTabView
@@ -206,6 +242,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    overflow: 'hidden',
   },
 });

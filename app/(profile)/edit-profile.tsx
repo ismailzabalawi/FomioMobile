@@ -13,7 +13,6 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
-import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useScreenBackBehavior } from '@/shared/hooks/useScreenBackBehavior';
 import { useSafeNavigation } from '@/shared/hooks/useSafeNavigation';
 import { useHeader } from '@/components/ui/header';
@@ -27,18 +26,17 @@ import { useAuth } from '@/shared/auth-context';
 import { Avatar } from '../../components/ui/avatar';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
-import { Camera, X, Check } from 'phosphor-react-native';
+import { Camera, X, Check, NotePencil } from 'phosphor-react-native';
 import { EditProfileSkeleton } from '@/components/profile/EditProfileSkeleton';
 import { discourseApi } from '../../shared/discourseApi';
-import { router } from 'expo-router';
 import { useToast, validationRules, formValidationManager } from '@/shared/form-validation';
-import { getThemeColors } from '@/shared/theme-constants';
+import { getTokens } from '@/shared/design/tokens';
 
 export default function EditProfileScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { safeBack } = useSafeNavigation();
   const { user: authUser } = useAuth();
-  const { user, settings, loading, updating, error, updateProfile, uploadAvatar, refreshUser } = useDiscourseUser(authUser?.username);
+  const { user, settings, loading, updating, error, updateProfile, uploadAvatar, uploadProfileHeader, refreshUser } = useDiscourseUser(authUser?.username);
   const { showSuccess, showError, showInfo } = useToast();
   const { setHeader, resetHeader, setActions } = useHeader();
   
@@ -47,8 +45,16 @@ export default function EditProfileScreen(): React.ReactElement {
   const [location, setLocation] = useState(user?.location || '');
   const [website, setWebsite] = useState(user?.website || '');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [originalValues, setOriginalValues] = useState({
+    displayName: '',
+    bio: '',
+    location: '',
+    website: '',
+  });
 
   // Refs for form field navigation
   const displayNameRef = React.useRef<any>(null);
@@ -65,9 +71,12 @@ export default function EditProfileScreen(): React.ReactElement {
     bio: [
       validationRules.maxLength(500, 'Bio cannot exceed 500 characters'),
     ],
+    location: [
+      validationRules.maxLength(120, 'Location cannot exceed 120 characters'),
+    ],
     website: [
       validationRules.pattern(
-        /^https?:\/\/.+\..+/,
+        /^(https?:\/\/[^\s.]+\.[^\s]{2,}(\/.*)?|)$/i,
         'Please enter a valid URL (e.g., https://example.com)'
       ),
     ],
@@ -117,16 +126,23 @@ export default function EditProfileScreen(): React.ReactElement {
     setBlurredFields(prev => new Set(prev).add(fieldName));
   }, []);
 
+  const handleHeroEditPress = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    displayNameRef.current?.focus();
+  }, []);
+
   // Compute current avatar URL from user data or local state
   const currentAvatarUrl = avatarUrl || (user?.avatar_template ? discourseApi.getAvatarUrl(user.avatar_template, 120) : null);
-  
+  const currentCoverUrl = coverUrl || (user as any)?.profile_background || null;
+  const mode = isDark ? 'dark' : 'light';
+  const tokens = React.useMemo(() => getTokens(mode), [mode]);
   const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
-    card: isAmoled ? '#000000' : (isDark ? '#1f2937' : '#f8fafc'),
-    text: isDark ? '#f4f4f5' : '#1e293b',
-    secondary: isDark ? '#a1a1aa' : '#64748b',
-    border: isDark ? '#334155' : '#e2e8f0',
-    accent: isDark ? '#26A69A' : '#009688',
+    background: isAmoled ? '#000000' : (isDark ? '#0b1018' : '#ffffff'),
+    card: isAmoled ? '#0c0f17' : (isDark ? '#111827' : '#f8fafc'),
+    text: tokens.colors.text,
+    secondary: tokens.colors.muted,
+    border: tokens.colors.border,
+    accent: tokens.colors.accent,
     error: isDark ? '#ef4444' : '#dc2626',
   };
 
@@ -138,6 +154,13 @@ export default function EditProfileScreen(): React.ReactElement {
       setLocation(user.location || '');
       setWebsite(user.website || '');
       setAvatarUrl(user.avatar_template ? discourseApi.getAvatarUrl(user.avatar_template, 120) : null);
+      setCoverUrl((user as any)?.profile_background || null);
+      setOriginalValues({
+        displayName: user.name || '',
+        bio: user.bio_raw || '',
+        location: user.location || '',
+        website: user.website || '',
+      });
       setHasChanges(false);
     }
   }, [user]);
@@ -152,6 +175,16 @@ export default function EditProfileScreen(): React.ReactElement {
       return () => clearTimeout(timer);
     }
   }, [user, loading]);
+
+  // Track dirty state based on diffs vs original values
+  React.useEffect(() => {
+    const nextHasChanges =
+      displayName !== originalValues.displayName ||
+      bio !== originalValues.bio ||
+      location !== originalValues.location ||
+      website !== originalValues.website;
+    setHasChanges(nextHasChanges);
+  }, [displayName, bio, location, website, originalValues]);
 
   const handleAvatarUpload = useCallback(async () => {
     try {
@@ -184,6 +217,7 @@ export default function EditProfileScreen(): React.ReactElement {
         const imageFile = {
           uri: asset.uri,
           type: asset.mimeType || 'image/jpeg',
+          name: asset.fileName || 'avatar.jpg',
           fileSize: asset.fileSize,
         } as { uri: string; type?: string; name?: string; fileSize?: number };
         const success = await uploadAvatar(imageFile);
@@ -191,7 +225,6 @@ export default function EditProfileScreen(): React.ReactElement {
         if (success) {
           showSuccess('Avatar updated', 'Your profile picture has been updated successfully.');
           await refreshUser();
-          setHasChanges(true);
         } else {
           // Get error message from useDiscourseUser hook
           const errorMessage = error || 'Failed to upload avatar. Please try again.';
@@ -223,6 +256,64 @@ export default function EditProfileScreen(): React.ReactElement {
       setUploadingAvatar(false);
     }
   }, [uploadAvatar, refreshUser, user, showSuccess, showError]);
+
+  const handleCoverUpload = useCallback(async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          showError(
+            'Permission Required',
+            'We need access to your photos to update your cover image.'
+          );
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [3, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setUploadingCover(true);
+        setCoverUrl(asset.uri);
+
+        const imageFile = {
+          uri: asset.uri,
+          type: asset.mimeType || 'image/jpeg',
+          name: asset.fileName || 'profile-header.jpg',
+          fileSize: asset.fileSize,
+        } as { uri: string; type?: string; name?: string; fileSize?: number };
+
+        const success = await uploadProfileHeader(imageFile);
+
+        if (success) {
+          showSuccess('Cover updated', 'Your profile header has been updated.');
+          await refreshUser();
+        } else {
+          const errorMessage = error || 'Failed to update cover. Please try again.';
+          showError('Upload failed', errorMessage, {
+            label: 'Retry',
+            onPress: handleCoverUpload,
+          });
+          setCoverUrl((user as any)?.profile_background || null);
+        }
+      }
+    } catch (err) {
+      console.error('Cover upload error:', err);
+      showError('Upload failed', 'An error occurred while uploading the cover.', {
+        label: 'Retry',
+        onPress: handleCoverUpload,
+      });
+      setCoverUrl((user as any)?.profile_background || null);
+    } finally {
+      setUploadingCover(false);
+    }
+  }, [uploadProfileHeader, refreshUser, user, showSuccess, showError, error]);
 
   const handleSave = useCallback(async () => {
     // Mark all fields as touched/blurred to show validation errors
@@ -311,6 +402,12 @@ export default function EditProfileScreen(): React.ReactElement {
           timestamp: new Date().toISOString(),
         });
         showSuccess('Profile updated', 'Your changes have been saved.');
+        setOriginalValues({
+          displayName,
+          bio,
+          location,
+          website,
+        });
         setHasChanges(false);
         safeBack();
       } else {
@@ -351,9 +448,6 @@ export default function EditProfileScreen(): React.ReactElement {
     }
   }, [hasChanges, safeBack]);
 
-  // Get theme colors for header buttons
-  const themeColors = React.useMemo(() => getThemeColors(isDark ? 'dark' : 'light', isAmoled), [isDark, isAmoled]);
-
   // Header action buttons - MUST be memoized to prevent infinite loops
   const cancelButton = React.useMemo(() => (
     <TouchableOpacity
@@ -367,9 +461,9 @@ export default function EditProfileScreen(): React.ReactElement {
       accessibilityRole="button"
       accessibilityLabel="Cancel editing"
     >
-      <X size={24} color={themeColors.foreground} weight="regular" />
+      <X size={24} color={colors.text} weight="regular" />
     </TouchableOpacity>
-  ), [handleCancel, themeColors.foreground]);
+  ), [handleCancel, colors.text]);
 
   const saveButton = React.useMemo(() => (
     <TouchableOpacity
@@ -387,12 +481,12 @@ export default function EditProfileScreen(): React.ReactElement {
       accessibilityState={{ disabled: !hasChanges || !isValid || updating }}
     >
       {updating ? (
-        <ActivityIndicator size="small" color={themeColors.accent} />
+        <ActivityIndicator size="small" color={colors.accent} />
       ) : (
-        <Check size={24} color={themeColors.accent} weight="bold" />
+        <Check size={24} color={colors.accent} weight="bold" />
       )}
     </TouchableOpacity>
-  ), [handleSave, hasChanges, isValid, updating, themeColors.accent, themeColors.foreground]);
+  ), [handleSave, hasChanges, isValid, updating, colors.accent, colors.text]);
 
   // Configure header with actions
   useFocusEffect(
@@ -494,6 +588,75 @@ export default function EditProfileScreen(): React.ReactElement {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+          {/* Hero Edit Banner */}
+          <View
+            style={[
+              styles.heroHeader,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={[styles.heroTitle, { color: colors.text }]}>
+                Edit your profile
+              </Text>
+              <Text style={[styles.heroSubtitle, { color: colors.secondary }]}>
+                Update your picture and details
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleHeroEditPress}
+              style={[
+                styles.heroPill,
+                { backgroundColor: colors.accent },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Jump to display name field"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <NotePencil size={16} color="#ffffff" weight="bold" />
+              <Text style={[styles.heroPillText, { color: '#ffffff' }]}>Editing</Text>
+            </TouchableOpacity>
+          </View>
+          {/* Cover Section */}
+          <View style={[styles.coverSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.coverImageWrapper}>
+              {currentCoverUrl ? (
+                <Image
+                  source={{ uri: currentCoverUrl }}
+                  style={styles.coverImage}
+                  contentFit="cover"
+                  transition={200}
+                  accessible
+                  accessibilityLabel="Profile cover image"
+                />
+              ) : (
+                <View style={[styles.coverPlaceholder, { backgroundColor: '#0e1622' }]}>
+                  <NotePencil size={28} color={colors.secondary} weight="bold" />
+                  <Text style={[styles.coverPlaceholderText, { color: colors.secondary }]}>
+                    Add a header image
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity 
+                style={[styles.coverButton, { backgroundColor: colors.accent }]}
+                onPress={handleCoverUpload}
+                disabled={uploadingCover}
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel="Change profile header"
+              >
+                {uploadingCover ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Change cover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Avatar Section */}
           <View style={[styles.avatarSection, { backgroundColor: colors.card }]}>
             <View style={styles.avatarContainer}>
@@ -643,6 +806,21 @@ export default function EditProfileScreen(): React.ReactElement {
                 accessibilityLabel="Location"
                 accessibilityHint="Enter your location"
               />
+              {(() => {
+                const fieldValidation = getFieldValidation('location');
+                if (fieldValidation.hasBeenBlurred && !fieldValidation.isValid && fieldValidation.errors.length > 0) {
+                  return (
+                    <Text 
+                      style={[styles.fieldError, { color: colors.error }]}
+                      accessibilityRole="alert"
+                      accessibilityLiveRegion="assertive"
+                    >
+                      {fieldValidation.errors[0].message}
+                    </Text>
+                  );
+                }
+                return null;
+              })()}
             </View>
 
             {/* Website */}
@@ -679,7 +857,7 @@ export default function EditProfileScreen(): React.ReactElement {
                       accessibilityLiveRegion="assertive"
                     >
                       {fieldValidation.errors[0].message}
-                </Text>
+                    </Text>
                   );
                 }
                 return null;
@@ -721,6 +899,68 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingBottom: 32,
+  },
+  heroHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  heroTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  heroSubtitle: {
+    fontSize: 14,
+  },
+  heroPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  heroPillText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  coverSection: {
+    padding: 0,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  coverImageWrapper: {
+    width: '100%',
+    height: 160,
+    position: 'relative',
+  },
+  coverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  coverPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  coverPlaceholderText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  coverButton: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   avatarSection: {
     padding: 24,
