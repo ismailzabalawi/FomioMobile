@@ -1,27 +1,52 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import Constants from 'expo-constants';
 import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { getTokens } from '@/shared/design/tokens';
+
+const config = Constants.expoConfig?.extra || {};
+const BASE_URL = config.DISCOURSE_BASE_URL;
 
 export default function SignInScreen() {
   const { isDark } = useTheme();
+  const tokens = getTokens(isDark ? 'darkAmoled' : 'light');
+  const baseUrlMissing = !BASE_URL;
   const colors = {
-    background: isDark ? '#18181b' : '#fff',
-    primary: isDark ? '#26A69A' : '#009688',
-    text: isDark ? '#f4f4f5' : '#1e293b',
-    secondary: isDark ? '#a1a1aa' : '#64748b',
-    border: isDark ? '#334155' : '#009688',
-    divider: isDark ? '#334155' : '#e2e8f0',
-    error: isDark ? '#ef4444' : '#dc2626',
-  };
+    background: tokens.colors.background,
+    primary: tokens.colors.accent,
+    onPrimary: tokens.colors.onAccent,
+    text: tokens.colors.text,
+    secondary: tokens.colors.muted,
+    divider: tokens.colors.border,
+    error: tokens.colors.danger,
+    errorBg: tokens.colors.dangerSoft,
+  } as const;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
   const isProcessingRef = React.useRef(false);
+  const mountedRef = React.useRef(true);
+  const retryTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const handleConnect = async (isRetry = false) => {
+    if (baseUrlMissing) {
+      setError('Missing DISCOURSE_BASE_URL config. Please configure meta.techrebels.info and try again.');
+      return;
+    }
+
     // Prevent multiple simultaneous auth attempts
     if (isProcessingRef.current) {
       return;
@@ -79,10 +104,12 @@ export default function SignInScreen() {
       } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('timeout') || errorMessage.toLowerCase().includes('connection')) {
         displayError = 'Network error: Please check your internet connection and try again.';
         // Allow retry for network errors
-        if (retryCount < 2) {
+        if (retryCount < 2 && mountedRef.current) {
           setRetryCount(retryCount + 1);
-          setTimeout(() => {
-            handleConnect(true);
+          retryTimeoutRef.current = setTimeout(() => {
+            if (mountedRef.current) {
+              handleConnect(true);
+            }
           }, 2000 * (retryCount + 1)); // Exponential backoff
           return;
         }
@@ -117,7 +144,7 @@ export default function SignInScreen() {
       <View style={styles.content}>
         <View style={styles.form}>
           {error ? (
-            <View style={[styles.errorContainer, { backgroundColor: `${colors.error}10`, borderColor: colors.error }]}>
+            <View style={[styles.errorContainer, { backgroundColor: colors.errorBg, borderColor: colors.error }]}>
               <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
               {retryCount > 0 && (
                 <Text style={[styles.retryText, { color: colors.secondary }]}>
@@ -132,12 +159,21 @@ export default function SignInScreen() {
             <Text style={[styles.infoText, { color: colors.secondary }]}>
               Sign in using Discourse User API Key authentication. You'll be redirected to approve access.
             </Text>
+            {baseUrlMissing && (
+              <Text style={[styles.infoText, { color: colors.error, marginTop: 12 }]}>
+                Missing DISCOURSE_BASE_URL config (expected meta.techrebels.info). Please update app config before signing in.
+              </Text>
+            )}
           </View>
 
           <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.disabledButton, { backgroundColor: colors.primary }]}
+            style={[
+              styles.primaryButton,
+              (loading || baseUrlMissing) && styles.disabledButton,
+              { backgroundColor: colors.primary },
+            ]}
             onPress={() => handleConnect()}
-            disabled={loading}
+            disabled={loading || baseUrlMissing}
             accessible
             accessibilityRole="button"
             accessibilityLabel="Connect to Forum"
@@ -145,10 +181,10 @@ export default function SignInScreen() {
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             {loading ? (
-              <ActivityIndicator size="small" color={colors.background} />
+              <ActivityIndicator size="small" color={colors.onPrimary} />
             ) : (
-              <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-                Connect to Forum
+              <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                {baseUrlMissing ? 'Configuration required' : 'Connect to Forum'}
               </Text>
             )}
           </TouchableOpacity>

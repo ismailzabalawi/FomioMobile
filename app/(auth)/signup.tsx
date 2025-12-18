@@ -6,24 +6,28 @@ import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { getTokens } from '@/shared/design/tokens';
 
 const config = Constants.expoConfig?.extra || {};
-const BASE_URL = config.DISCOURSE_BASE_URL || 'https://meta.techrebels.info';
+const BASE_URL = config.DISCOURSE_BASE_URL;
 
 export default function SignUpScreen() {
   const { isDark } = useTheme();
+  const tokens = getTokens(isDark ? 'darkAmoled' : 'light');
+  const baseUrlMissing = !BASE_URL;
   const colors = {
-    background: isDark ? '#18181b' : '#fff',
-    primary: isDark ? '#26A69A' : '#009688',
-    text: isDark ? '#f4f4f5' : '#1e293b',
-    secondary: isDark ? '#a1a1aa' : '#64748b',
-    border: isDark ? '#334155' : '#009688',
-    divider: isDark ? '#334155' : '#e2e8f0',
-    error: isDark ? '#ef4444' : '#dc2626',
-  };
+    background: tokens.colors.background,
+    primary: tokens.colors.accent,
+    onPrimary: tokens.colors.onAccent,
+    text: tokens.colors.text,
+    secondary: tokens.colors.muted,
+    divider: tokens.colors.border,
+    error: tokens.colors.danger,
+  } as const;
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
+    if (baseUrlMissing) return;
     setLoading(true);
     try {
       const signupUrl = `${BASE_URL}/signup`;
@@ -63,20 +67,29 @@ export default function SignUpScreen() {
             <Text style={[styles.infoText, { color: colors.secondary }]}>
               Create your account on the Discourse forum. After signing up, return here and press "Sign In" to connect.
             </Text>
+            {baseUrlMissing && (
+              <Text style={[styles.infoText, { color: colors.error ?? colors.secondary, marginTop: 12 }]}>
+                Missing DISCOURSE_BASE_URL config. Please configure meta.techrebels.info before signing up.
+              </Text>
+            )}
           </View>
 
           <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.disabledButton, { backgroundColor: colors.primary }]}
+            style={[
+              styles.primaryButton,
+              (loading || baseUrlMissing) && styles.disabledButton,
+              { backgroundColor: colors.primary },
+            ]}
             onPress={handleSignUp}
-            disabled={loading}
+            disabled={loading || baseUrlMissing}
             accessible
             accessibilityRole="button"
             accessibilityLabel="Open Sign Up Page"
             accessibilityHint="Open Discourse signup page in browser"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={[styles.primaryButtonText, { color: colors.background }]}>
-              {loading ? 'Opening...' : 'Open Sign Up Page'}
+            <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+              {baseUrlMissing ? 'Configuration required' : loading ? 'Opening...' : 'Open Sign Up Page'}
             </Text>
           </TouchableOpacity>
 

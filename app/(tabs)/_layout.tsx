@@ -351,18 +351,23 @@ function CustomTabBar({
     
     // ========================================
     // MAIN TAB BAR (Center Reservoir)
-    // Expands LEFT as compose disappears, contracts RIGHT as up button appears
+    // Centered between compose and right action button with equal gaps
     // ========================================
-    // Main bar starts after compose space (which shrinks to 0)
-    const mainBarLeft = horizontalPadding + composeSpace;
-    
-    // Right gap for scroll-to-top button (appears on scroll)
-    const rightGap = interpolate(budProgress, [0, 1], [0, INITIAL_GAP + STRETCH_RIGHT * 0.5], Extrapolate.CLAMP);
+    // Right gap for scroll-to-top button (appears on scroll) - match left side spacing
+    const rightGap = interpolate(budProgress, [0, 1], [0, INITIAL_GAP], Extrapolate.CLAMP);
     const upButtonVisible = budProgress > 0;
     
-    // Main bar expands left as compose merges, contracts right as up button buds
+    // Space needed for right button
     const upButtonSpace = upButtonVisible ? DROP_SIZE + rightGap : 0;
-    const mainBarWidth = Math.max(width - horizontalPadding * 2 - composeSpace - upButtonSpace, 100);
+    
+    // Boundaries between compose (left) and right action
+    const leftBoundary = horizontalPadding + composeSpace;
+    const rightBoundary = width - horizontalPadding - upButtonSpace;
+    const availableSpace = Math.max(rightBoundary - leftBoundary, 0);
+    
+    // Center the main bar within the available space
+    const mainBarWidth = Math.max(availableSpace, 100);
+    const mainBarLeft = leftBoundary + (availableSpace - mainBarWidth) / 2;
     const mainBarRight = mainBarLeft + mainBarWidth;
     
     // ========================================
@@ -635,7 +640,8 @@ function CustomTabBar({
           styles.composeDrop,
           { 
             backgroundColor: surfaceBg,
-            borderColor: colors.border,
+            borderColor: isAmoled ? colors.border : isDark ? 'transparent' : colors.border,
+            borderWidth: isAmoled ? 0.5 : isDark ? 0 : 0.5,
             shadowColor: colors.shadow,
           },
           composeDropStyle,
@@ -756,7 +762,8 @@ function CustomTabBar({
             styles.upDrop,
             { 
               backgroundColor: surfaceBg,
-              borderColor: colors.border,
+            borderColor: isAmoled ? colors.border : isDark ? 'transparent' : colors.border,
+            borderWidth: isAmoled ? 0.5 : isDark ? 0 : 0.5,
               shadowColor: colors.shadow,
             },
             upDropStyle,

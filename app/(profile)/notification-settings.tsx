@@ -32,6 +32,7 @@ interface SettingItemProps {
   rightElement?: React.ReactNode;
   showChevron?: boolean;
   comingSoon?: boolean;
+  statusLabel?: string;
 }
 
 function SettingItem({
@@ -42,6 +43,7 @@ function SettingItem({
   rightElement,
   showChevron = true,
   comingSoon = false,
+  statusLabel,
 }: SettingItemProps) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
@@ -101,6 +103,11 @@ function SettingItem({
         </View>
       </View>
       <View style={styles.settingRight}>
+        {statusLabel && (
+          <View style={[styles.statusPill, { backgroundColor: colors.border }]}>
+            <Text style={[styles.statusPillText, { color: colors.text }]}>{statusLabel}</Text>
+          </View>
+        )}
         {rightElement}
         {showChevron && onPress && !comingSoon && (
           <Text style={[styles.chevron, { color: colors.secondary }]}>›</Text>
@@ -144,7 +151,7 @@ const LIKE_FREQUENCY_OPTIONS: Array<{ value: 'always' | 'daily' | 'weekly' | 'ne
 
 export default function NotificationSettingsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
-  const { preferences, setPreference, isLoading } = useNotificationPreferences();
+  const { preferences, setPreference, isLoading, isSyncing } = useNotificationPreferences();
   const [likeFrequencyModalVisible, setLikeFrequencyModalVisible] = useState(false);
 
   // Configure header
@@ -194,13 +201,20 @@ export default function NotificationSettingsScreen(): React.ReactElement {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {isSyncing && (
+          <View style={[styles.syncBanner, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+            <Text style={{ color: colors.secondary }}>Syncing preferences…</Text>
+          </View>
+        )}
+
         {/* Notification Categories */}
-        <SettingSection title="Notification Categories">
+        <SettingSection title="Notification Categories" description="Category toggles are coming soon; we currently respect your Discourse like notification frequency.">
           <SettingItem
             title="Replies & Quotes"
             subtitle="When someone responds to your Byte"
             icon={<ChatCircle size={24} color={colors.secondary} weight="fill" />}
             comingSoon={true}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.replies}
@@ -218,6 +232,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             subtitle="When someone mentions your username"
             icon={<At size={24} color={colors.secondary} weight="fill" />}
             comingSoon={true}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.mentions}
@@ -235,6 +250,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             subtitle="Likes on your Bytes"
             icon={<Heart size={24} color={colors.secondary} weight="fill" />}
             comingSoon={true}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.likes}
@@ -252,6 +268,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             subtitle="Direct messages sent to you"
             icon={<Envelope size={24} color={colors.secondary} weight="fill" />}
             comingSoon={true}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.privateMessages}
@@ -269,6 +286,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             subtitle="Badges you've earned"
             icon={<Star size={24} color={colors.secondary} weight="fill" />}
             comingSoon={true}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.badges}
@@ -286,6 +304,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             subtitle="Reminders, admin messages, and updates"
             icon={<Bell size={24} color={colors.secondary} weight="regular" />}
             comingSoon={true}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.system}
@@ -303,6 +322,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             subtitle="Activity on Bytes you follow"
             icon={<Users size={24} color={colors.secondary} weight="regular" />}
             comingSoon={true}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.following}
@@ -317,12 +337,13 @@ export default function NotificationSettingsScreen(): React.ReactElement {
         </SettingSection>
 
         {/* Like Notifications */}
-        <SettingSection title="Like Notifications">
+        <SettingSection title="Like Notifications" description="Choose how often you’re notified about likes.">
           <SettingItem
             title="Like notifications"
             subtitle={getLikeFrequencyLabel()}
             icon={<Heart size={24} color={colors.primary} weight="regular" />}
             onPress={() => setLikeFrequencyModalVisible(true)}
+            statusLabel="Live"
             rightElement={
               <Text style={[styles.frequencyValue, { color: colors.secondary }]}>
                 {getLikeFrequencyLabel()}
@@ -340,6 +361,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             title="Enable Push"
             subtitle="Receive push notifications"
             icon={<Bell size={24} color={colors.secondary} weight="regular" />}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.pushEnabled}
@@ -356,6 +378,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             title="Sound"
             subtitle="Play sound for push notifications"
             icon={<Bell size={24} color={colors.secondary} weight="regular" />}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.pushSound}
@@ -372,6 +395,7 @@ export default function NotificationSettingsScreen(): React.ReactElement {
             title="Alert"
             subtitle="Show alert for push notifications"
             icon={<Bell size={24} color={colors.secondary} weight="regular" />}
+            statusLabel="Coming soon"
             rightElement={
               <Switch
                 value={preferences.pushAlert}
@@ -516,10 +540,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+  statusPill: {
+    backgroundColor: '#e5e7eb',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  statusPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
   frequencyValue: {
     fontSize: 14,
     fontWeight: '500',
     marginRight: 8,
+  },
+  syncBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.04)',
   },
   modalOverlay: {
     flex: 1,
@@ -563,4 +606,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

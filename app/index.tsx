@@ -1,31 +1,27 @@
 import React from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
-import { useAuth } from '@/shared/auth-context';
+import { getTokens } from '@/shared/design/tokens';
 
 interface WelcomeScreenProps {}
 
 export default function WelcomeScreen({}: WelcomeScreenProps): React.ReactElement {
   const { isDark } = useTheme();
-  const { isAuthenticated, isLoading } = useAuth();
-  
+  const tokens = getTokens(isDark ? 'darkAmoled' : 'light');
   const colors = {
-    background: isDark ? '#18181b' : '#ffffff',
-    primary: isDark ? '#26A69A' : '#009688',
-    text: isDark ? '#f4f4f5' : '#1e293b',
-    secondary: isDark ? '#a1a1aa' : '#64748b',
-    buttonText: isDark ? '#ffffff' : '#ffffff',
-    border: isDark ? '#334155' : '#009688',
-  };
+    background: tokens.colors.background,
+    primary: tokens.colors.accent,
+    text: tokens.colors.text,
+    secondary: tokens.colors.muted,
+    onPrimary: tokens.colors.onAccent,
+    border: tokens.colors.border,
+  } as const;
 
   const handleGetStarted = (): void => {
-    router.push('/(auth)/onboarding');
-  };
-
-  const handleContinueToApp = (): void => {
-    router.replace('/(tabs)');
+    // Keep routing centralized in the auth/onboarding gate.
+    router.push('/(auth)');
   };
 
   const handleSignIn = (): void => {
@@ -35,17 +31,6 @@ export default function WelcomeScreen({}: WelcomeScreenProps): React.ReactElemen
   const handleExplore = (): void => {
     router.push('/(tabs)');
   };
-
-  // Show loading state while checking auth
-  if (isLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}> 
@@ -71,81 +56,43 @@ export default function WelcomeScreen({}: WelcomeScreenProps): React.ReactElemen
           </View>
 
           <View style={styles.buttonContainer}>
-            {isAuthenticated ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                  onPress={handleContinueToApp}
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel="Continue to App"
-                  accessibilityHint="Go to the main app"
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Text style={[styles.primaryButtonText, { color: colors.buttonText }]}>
-                    Continue to App
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={styles.ghostButton}
-                  onPress={handleExplore}
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel="Explore Without Account"
-                  accessibilityHint="Browse Fomio without signing in"
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Text style={[styles.ghostButtonText, { color: colors.secondary }]}>
-                    Explore Without Account
-                  </Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                  onPress={handleGetStarted}
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel="Get Started"
-                  accessibilityHint="Begin onboarding for Fomio"
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Text style={[styles.primaryButtonText, { color: colors.buttonText }]}>
-                    Get Started
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.secondaryButton, { borderColor: colors.primary }]}
-                  onPress={handleSignIn}
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel="Sign In"
-                  accessibilityHint="Sign in to your Fomio account"
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
-                    Sign In
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={styles.ghostButton}
-                  onPress={handleExplore}
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel="Explore Without Account"
-                  accessibilityHint="Browse Fomio without signing in"
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Text style={[styles.ghostButtonText, { color: colors.secondary }]}>
-                    Explore Without Account
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <TouchableOpacity
+              style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+              onPress={handleGetStarted}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Get Started"
+              accessibilityHint="Begin onboarding for Fomio"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>Get Started</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.secondaryButton, { borderColor: colors.primary }]}
+              onPress={handleSignIn}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Sign In"
+              accessibilityHint="Sign in to your Fomio account"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Sign In</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.ghostButton}
+              onPress={handleExplore}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Explore Without Account"
+              accessibilityHint="Browse Fomio without signing in"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={[styles.ghostButtonText, { color: colors.secondary }]}>
+                Explore Without Account
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -231,10 +178,5 @@ const styles = StyleSheet.create({
   ghostButtonText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

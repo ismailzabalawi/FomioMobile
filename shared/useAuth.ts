@@ -1,13 +1,12 @@
 import { useEffect } from 'react';
-import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { router } from 'expo-router';
 import { create } from 'zustand';
 import Constants from 'expo-constants';
 import { discourseApi, AppUser } from './discourseApi';
 import { logger } from './logger';
 import { emitAuthEvent, onAuthEvent } from './auth-events';
 import { UserApiKeyManager } from './userApiKeyManager';
+import { resetOnboarding } from './onboardingStorage';
 
 const config = Constants.expoConfig?.extra || {};
 
@@ -437,11 +436,13 @@ export const useAuth = () => {
       
       console.log('✅ Sign out successful');
       reset();
+      try {
+        await resetOnboarding();
+      } catch (resetError: any) {
+        logger.warn('useAuth: Failed to reset onboarding state:', resetError?.message || resetError);
+      }
       
       emitAuthEvent('auth:signed-out');
-      router.replace('/(tabs)' as any);
-      
-      Alert.alert('Signed out', 'You have been signed out successfully');
     } catch (error) {
       console.error('❌ Sign out error:', error);
       logger.error('Sign out failed', error);
@@ -457,10 +458,12 @@ export const useAuth = () => {
         // Ignore API key errors
       }
       reset();
+      try {
+        await resetOnboarding();
+      } catch {
+        // Ignore onboarding reset errors on failure path
+      }
       emitAuthEvent('auth:signed-out');
-      router.replace('/(tabs)' as any);
-      
-      Alert.alert('Signed out', 'You have been signed out successfully');
     }
   };
 
@@ -596,4 +599,3 @@ export const useAuth = () => {
     setAuthenticatedUser,
   };
 };
-

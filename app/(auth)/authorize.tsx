@@ -7,19 +7,22 @@ import { signIn } from '../../lib/auth';
 import { useAuth } from '@/shared/auth-context';
 import { logger } from '../../shared/logger';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { getTokens } from '@/shared/design/tokens';
 
 export default function AuthorizeScreen() {
   const { isDark } = useTheme();
   const { isAuthenticated, isLoading } = useAuth();
-  
+  const tokens = getTokens(isDark ? 'darkAmoled' : 'light');
   const colors = {
-    background: isDark ? '#18181b' : '#fff',
-    primary: isDark ? '#26A69A' : '#009688',
-    text: isDark ? '#f4f4f5' : '#1e293b',
-    secondary: isDark ? '#a1a1aa' : '#64748b',
-    border: isDark ? '#334155' : '#009688',
-    error: isDark ? '#ef4444' : '#dc2626',
-  };
+    background: tokens.colors.background,
+    primary: tokens.colors.accent,
+    onPrimary: tokens.colors.onAccent,
+    text: tokens.colors.text,
+    secondary: tokens.colors.muted,
+    border: tokens.colors.border,
+    error: tokens.colors.danger,
+    errorBg: tokens.colors.dangerSoft,
+  } as const;
 
   const [error, setError] = useState<string | null>(null);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
@@ -122,7 +125,7 @@ export default function AuthorizeScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
 
       {error && (
-        <View style={[styles.errorContainer, { backgroundColor: `${colors.error}10`, borderColor: colors.error }]}>
+        <View style={[styles.errorContainer, { backgroundColor: colors.errorBg, borderColor: colors.error }]}>
           <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
           <TouchableOpacity
             onPress={handleRetry}
@@ -161,9 +164,9 @@ export default function AuthorizeScreen() {
             accessibilityHint="Opens your browser to authorize Fomio to access your account"
           >
             {isAuthorizing ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <ActivityIndicator size="small" color={colors.onPrimary} />
             ) : (
-              <Text style={styles.authorizeButtonText}>
+              <Text style={[styles.authorizeButtonText, { color: colors.onPrimary }]}>
                 Authorize Fomio
               </Text>
             )}
@@ -250,7 +253,6 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   authorizeButtonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },

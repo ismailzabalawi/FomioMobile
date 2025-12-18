@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import { useRouter } from 'expo-router';
 import { 
   Bell, 
   BellSlash, 
@@ -26,18 +27,19 @@ import {
 import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { useNotifications, Notification } from '../../shared/useNotifications';
-import { onAuthEvent } from '../../shared/auth-events';
 
 function NotificationItem({ 
   notification, 
   onPress, 
   onMarkRead, 
-  onDelete 
+  onDelete,
+  formatTime
 }: { 
   notification: Notification; 
   onPress: () => void; 
   onMarkRead: () => void; 
-  onDelete: () => void; 
+  onDelete: () => void;
+  formatTime: (dateString: string) => string;
 }) {
   const { isDark, isAmoled } = useTheme();
   const colors = {
@@ -115,7 +117,7 @@ function NotificationItem({
             {notification.message}
           </Text>
           <Text style={[styles.timestamp, { color: colors.secondary }]}>
-            {new Date(notification.createdAt).toLocaleDateString()}
+            {formatTime(notification.createdAt)}
           </Text>
         </View>
         
@@ -149,17 +151,23 @@ function NotificationItem({
 
 export default function NotificationsScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
+  const router = useRouter();
   const { 
     notifications, 
     isLoading: loading, 
     hasError: hasError, 
     errorMessage, 
     loadNotifications: fetchNotifications, 
-    markAsRead 
+    markAsRead,
+    markAllAsRead,
+    unreadCount,
+    removeNotification,
+    clearNotifications,
   } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [permission, setPermission] = useState<string | null>(null);
+  const [showingPermissionPrompt, setShowingPermissionPrompt] = useState(true);
   
   const colors = {
     background: isAmoled ? '#000000' : (isDark ? '#18181b' : '#ffffff'),
@@ -169,19 +177,8 @@ export default function NotificationsScreen(): React.ReactElement {
     border: isDark ? '#374151' : '#e5e7eb',
     primary: isDark ? '#26A69A' : '#009688',
     error: isDark ? '#ef4444' : '#dc2626',
+    unreadBackground: isAmoled ? '#0a0a0a' : (isDark ? '#1f2937' : '#f8fafc'),
   };
-
-  // Subscribe to auth events for auto-refresh
-  useEffect(() => {
-    const unsubscribe = onAuthEvent((e) => {
-      if (e === 'auth:signed-in' || e === 'auth:refreshed') {
-        fetchNotifications();
-      }
-    });
-    return () => {
-      unsubscribe();
-    };
-  }, [fetchNotifications]);
 
   // Check push permissions
   useEffect(() => {
@@ -190,11 +187,6 @@ export default function NotificationsScreen(): React.ReactElement {
       setPermission(settings.status);
     })();
   }, []);
-
-  // Load notifications on mount
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
 
   // Configure header
   useScreenHeader({
@@ -218,11 +210,26 @@ export default function NotificationsScreen(): React.ReactElement {
   }
 
   const handleNotificationPress = (notification: Notification) => {
-    console.log('Notification pressed:', notification.id);
-    if (notification.data?.postId) {
-      console.log('Navigate to post:', notification.data.postId);
-    } else if (notification.data?.userId) {
-      console.log('Navigate to user:', notification.data.userId);
+    if (!notification.isRead) {
+      markAsRead(notification.id);
+    }
+
+    const postId = notification.data?.postId || notification.topicId;
+    const username = notification.data?.display_username || notification.data?.original_username;
+
+    try {
+      if (postId) {
+        router.push({ pathname: '/feed/[byteId]', params: { byteId: String(postId) } });
+        return;
+      }
+      if (username) {
+        router.push({ pathname: '/profile/[username]', params: { username: String(username) } });
+        return;
+      }
+      Alert.alert('No destination', 'This notification does not have a destination yet.');
+    } catch (err) {
+      console.error('Notification navigation failed', err);
+      Alert.alert('Navigation failed', 'Could not open this notification.');
     }
   };
 
@@ -240,7 +247,7 @@ export default function NotificationsScreen(): React.ReactElement {
           text: 'Delete', 
           style: 'destructive', 
           onPress: () => {
-            console.log('Delete notification:', notificationId);
+            removeNotification(notificationId);
           }
         },
       ]
@@ -256,7 +263,7 @@ export default function NotificationsScreen(): React.ReactElement {
         { 
           text: 'Mark Read', 
           onPress: () => {
-            notifications.forEach(notification => markAsRead(notification.id));
+            markAllAsRead();
           }
         },
       ]
@@ -273,7 +280,7 @@ export default function NotificationsScreen(): React.ReactElement {
           text: 'Clear All', 
           style: 'destructive', 
           onPress: () => {
-            // TODO: Implement clear all functionality
+            clearNotifications();
           }
         },
       ]
@@ -286,7 +293,20 @@ export default function NotificationsScreen(): React.ReactElement {
     return true;
   });
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const formatRelativeTime = useMemo(() => {
+    const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+    return (dateString: string) => {
+      const now = Date.now();
+      const then = new Date(dateString).getTime();
+      const diffMs = then - now;
+      const minutes = Math.round(diffMs / (1000 * 60));
+      if (Math.abs(minutes) < 60) return formatter.format(minutes, 'minute');
+      const hours = Math.round(minutes / 60);
+      if (Math.abs(hours) < 24) return formatter.format(hours, 'hour');
+      const days = Math.round(hours / 24);
+      return formatter.format(days, 'day');
+    };
+  }, []);
 
   const renderFilterButton = (filterType: 'all' | 'unread' | 'read', label: string, count?: number) => (
     <TouchableOpacity
@@ -330,29 +350,6 @@ export default function NotificationsScreen(): React.ReactElement {
     </View>
   );
 
-  // Show push permission prompt if not granted
-  if (permission !== null && permission !== 'granted') {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.permissionContainer}>
-          <Bell size={64} color={colors.primary} weight="duotone" />
-          <Text style={[styles.permissionTitle, { color: colors.text }]}>
-            Enable notifications
-          </Text>
-          <Text style={[styles.permissionSubtitle, { color: colors.secondary }]}>
-            Turn on push notifications to get mentions, replies, and likes in real time.
-          </Text>
-          <TouchableOpacity
-            onPress={requestPermission}
-            style={[styles.permissionButton, { backgroundColor: colors.primary }]}
-          >
-            <Text style={styles.permissionButtonText}>Allow Notifications</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (loading && notifications.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -388,6 +385,33 @@ export default function NotificationsScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {permission !== null && permission !== 'granted' && showingPermissionPrompt && (
+        <View style={[styles.permissionBanner, { backgroundColor: colors.unreadBackground, borderColor: colors.border }]}>
+          <View style={styles.permissionBannerText}>
+            <Text style={[styles.permissionTitle, { color: colors.text }]}>
+              Enable notifications
+            </Text>
+            <Text style={[styles.permissionSubtitle, { color: colors.secondary }]}>
+              Turn on push notifications to get mentions, replies, and likes in real time.
+            </Text>
+          </View>
+          <View style={styles.permissionBannerActions}>
+            <TouchableOpacity
+              onPress={() => setShowingPermissionPrompt(false)}
+              style={[styles.permissionDismiss, { borderColor: colors.border }]}
+            >
+              <Text style={[styles.permissionButtonText, { color: colors.secondary }]}>Later</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={requestPermission}
+              style={[styles.permissionButton, { backgroundColor: colors.primary }]}
+            >
+              <Text style={styles.permissionButtonText}>Allow</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Header Actions */}
       {(unreadCount > 0 || notifications.length > 0) && (
         <View style={styles.headerActions}>
@@ -433,6 +457,7 @@ export default function NotificationsScreen(): React.ReactElement {
             onPress={() => handleNotificationPress(item)}
             onMarkRead={() => handleMarkRead(item.id)}
             onDelete={() => handleDelete(item.id)}
+            formatTime={formatRelativeTime}
           />
         )}
         contentContainerStyle={styles.notificationsList}
@@ -455,6 +480,31 @@ export default function NotificationsScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  permissionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  permissionBannerText: {
+    flex: 1,
+  },
+  permissionBannerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  permissionDismiss: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
   },
   permissionContainer: {
     flex: 1,

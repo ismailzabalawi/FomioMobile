@@ -1717,8 +1717,10 @@ class DiscourseApiService {
   }
 
   async markNotificationAsRead(notificationId: number): Promise<DiscourseApiResponse<void>> {
-    return this.makeRequest<void>(`/notifications/${notificationId}/read.json`, {
-      method: 'POST',
+    // Discourse marks a single notification via PUT /notifications/mark-read.json with id
+    return this.makeRequest<void>('/notifications/mark-read.json', {
+      method: 'PUT',
+      body: JSON.stringify({ id: notificationId }),
     });
   }
 

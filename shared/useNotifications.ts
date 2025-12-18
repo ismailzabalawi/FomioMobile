@@ -47,6 +47,8 @@ export interface UseNotificationsReturn {
   loadNotifications: () => Promise<void>;
   markAsRead: (notificationId: number) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  removeNotification: (notificationId: number) => Promise<void>;
+  clearNotifications: () => Promise<void>;
   unreadCount: number;
 }
 
@@ -269,6 +271,29 @@ export function useNotifications(): UseNotificationsReturn {
     [notifications]
   );
 
+  // Optimistic local removal (API support pending)
+  const removeNotification = useCallback(
+    async (notificationId: number) => {
+      await queryClient.cancelQueries({ queryKey: notificationsQueryKey });
+      const previousNotifications = queryClient.getQueryData<Notification[]>(notificationsQueryKey) || [];
+
+      queryClient.setQueryData<Notification[]>(notificationsQueryKey, (old) =>
+        old?.filter((n) => n.id !== notificationId) ?? []
+      );
+
+      // No server call yet; return previous state for potential rollback
+      return { previousNotifications };
+    },
+    [queryClient, notificationsQueryKey]
+  );
+
+  const clearNotifications = useCallback(async () => {
+    await queryClient.cancelQueries({ queryKey: notificationsQueryKey });
+    const previousNotifications = queryClient.getQueryData<Notification[]>(notificationsQueryKey) || [];
+    queryClient.setQueryData<Notification[]>(notificationsQueryKey, () => []);
+    return { previousNotifications };
+  }, [queryClient, notificationsQueryKey]);
+
   // Compute states for backward compatibility
   const isLoading = isQueryLoading && notifications.length === 0;
   const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
@@ -281,6 +306,8 @@ export function useNotifications(): UseNotificationsReturn {
     loadNotifications,
     markAsRead,
     markAllAsRead,
+    removeNotification,
+    clearNotifications,
     unreadCount,
   };
 }
