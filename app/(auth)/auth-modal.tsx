@@ -5,16 +5,21 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { X } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
+import { WebView } from 'react-native-webview';
+import Constants from 'expo-constants';
 
 import { useTheme } from '@/components/theme';
 import { getTokens } from '@/shared/design/tokens';
 import { logger } from '@/shared/logger';
-import { signIn } from '@/lib/auth';
+import { buildAuthUrlForWebView, signIn } from '@/lib/auth';
+import { parseURLParameters } from '@/lib/auth-utils';
 
 /**
  * Auth Modal - UI wrapper for sign-in flow
@@ -28,10 +33,14 @@ export default function AuthModalScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const tokens = getTokens(isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light');
   const params = useLocalSearchParams<{ returnTo?: string }>();
+  const config = Constants.expoConfig?.extra || {};
+  const baseUrl = config.DISCOURSE_BASE_URL;
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authStarted, setAuthStarted] = useState(false);
+  const [webviewUrl, setWebviewUrl] = useState<string | null>(null);
+  const [authProcessActive] = useState(false);
 
   const colors = useMemo(() => ({
     background: tokens.colors.background,
@@ -57,19 +66,28 @@ export default function AuthModalScreen(): React.ReactElement {
         setError(null);
         
         logger.info('AuthModal: Starting sign-in flow...');
-        
-        // Use unified signIn() from lib/auth.ts
-        // This handles: RSA key generation, browser session, payload decryption, storage, and OTP warming
+
+        if (!baseUrl) {
+          throw new Error('Missing DISCOURSE_BASE_URL config. Please update app config.');
+        }
+
+        if (Platform.OS === 'android') {
+          const url = await buildAuthUrlForWebView();
+          if (!mounted) return;
+          setWebviewUrl(url);
+          setIsLoading(false);
+          return;
+        }
+
+        // iOS: Use unified signIn() from lib/auth.ts
         const success = await signIn();
-        
+
         if (!mounted) return;
-        
+
         if (success) {
           logger.info('AuthModal: Sign-in successful');
-          // signIn() emits 'auth:signed-in' event, which will trigger useAuth hook
-          // to refresh user data. Navigate for immediate feedback.
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          
+
           const returnTo = params.returnTo;
           if (returnTo) {
             logger.info('AuthModal: Navigating to returnTo', { returnTo });
@@ -112,7 +130,7 @@ export default function AuthModalScreen(): React.ReactElement {
     return () => {
       mounted = false;
     };
-  }, [authStarted, params.returnTo]);
+  }, [authStarted, baseUrl, params.returnTo]);
 
   // Handle close button
   const handleClose = useCallback(() => {
@@ -126,6 +144,61 @@ export default function AuthModalScreen(): React.ReactElement {
     setIsLoading(true);
     setAuthStarted(false);
   }, []);
+
+  const handleWebViewNavigation = useCallback(
+    (request: { url?: string }) => {
+      const url = request?.url || '';
+      if (!url) return true;
+
+      // Handle custom scheme redirect (Discourse auth callback)
+      if (url.startsWith('fomio://')) {
+        const urlParams = parseURLParameters(url);
+        const payload = urlParams.payload;
+        if (payload) {
+          const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
+          router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
+        } else {
+          setError('Authorization completed, but no payload was returned. Please try again.');
+        }
+        return false;
+      }
+
+      // Some WebViews surface the callback as a normal URL; detect payload in query
+      if (url.includes('payload=')) {
+        const urlParams = parseURLParameters(url);
+        const payload = urlParams.payload;
+        if (payload) {
+          const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
+          router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
+          return false;
+        }
+      }
+
+      if (baseUrl && url.startsWith(baseUrl)) {
+        return true;
+      }
+
+      Linking.openURL(url).catch(() => {});
+      return false;
+    },
+    [baseUrl, params.returnTo]
+  );
+
+  useEffect(() => {
+    const listener = Linking.addEventListener('url', ({ url }) => {
+      if (!url) return;
+      const urlParams = parseURLParameters(url);
+      const payload = urlParams.payload;
+      if (payload) {
+        const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
+        router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
+      }
+    });
+
+    return () => {
+      listener.remove();
+    };
+  }, [params.returnTo]);
 
   // Show error state
   if (error) {
@@ -170,7 +243,55 @@ export default function AuthModalScreen(): React.ReactElement {
     );
   }
 
-  // Show loading state
+  if (Platform.OS === 'android' && webviewUrl) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={handleClose}
+            style={styles.closeButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          >
+            <X size={24} color={colors.text} weight="bold" />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Sign In</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={[styles.loadingText, { color: colors.muted }]}>
+              Loading sign in…
+            </Text>
+          </View>
+        )}
+
+        {authProcessActive && (
+          <View style={styles.authenticatingOverlay}>
+            <ActivityIndicator size="large" color={colors.accent} />
+          </View>
+        )}
+
+        <WebView
+          source={{ uri: webviewUrl }}
+          style={styles.webview}
+          originWhitelist={['*']}
+          startInLoadingState
+          onLoadStart={() => setIsLoading(true)}
+          onLoadEnd={() => setIsLoading(false)}
+          onShouldStartLoadWithRequest={handleWebViewNavigation}
+          onNavigationStateChange={handleWebViewNavigation}
+          sharedCookiesEnabled
+          thirdPartyCookiesEnabled
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // Show loading state (iOS)
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
@@ -232,6 +353,15 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
   },
+  webview: {
+    flex: 1,
+  },
+  authenticatingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
   errorContainer: {
     flex: 1,
     alignItems: 'center',
@@ -276,4 +406,3 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
-

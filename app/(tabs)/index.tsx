@@ -274,30 +274,6 @@ export default function HomeScreen(): React.ReactElement {
     );
   };
 
-  // Show auth prompt if not authenticated
-  if (!isAuthenticated && !isAuthLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: colors.text, marginBottom: 16 }]}>
-            Connect to Forum
-          </Text>
-          <Text style={[styles.loadingText, { color: colors.secondary, fontSize: 14 }]}>
-            Sign in to see your feed
-          </Text>
-          <TouchableOpacity
-            style={[styles.connectButton, { backgroundColor: colors.primary, marginTop: 20 }]}
-            onPress={() => router.push('/(auth)/signin')}
-          >
-            <Text style={[styles.connectButtonText, { color: '#ffffff' }]}>
-              Sign In
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (isFeedLoading && items.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>

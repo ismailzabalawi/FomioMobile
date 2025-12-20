@@ -310,7 +310,7 @@ function CustomTabBar({
       case 'mark-all-read':
         return 'Mark all notifications as read';
       case 'edit-profile':
-        return 'Edit profile';
+        return 'Customize profile';
       default:
         return '';
     }

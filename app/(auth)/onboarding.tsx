@@ -60,13 +60,25 @@ export default function OnboardingScreen() {
       setCurrentStep(nextStep);
       return;
     }
+  };
 
+  const handleFinishToSignIn = async (): Promise<void> => {
     try {
       await setOnboardingCompleted();
       router.replace('/(auth)/signin');
     } catch (err) {
       console.log('⚠️ Failed to mark onboarding complete:', err);
       Alert.alert('Unable to finish onboarding', 'Please try again. If this keeps happening, restart the app.');
+    }
+  };
+
+  const handleFinishToGuest = async (): Promise<void> => {
+    try {
+      await setOnboardingCompleted();
+      router.replace('/(tabs)');
+    } catch (err) {
+      console.log('⚠️ Failed to mark onboarding complete for guest:', err);
+      Alert.alert('Unable to continue', 'Please try again. If this keeps happening, restart the app.');
     }
   };
 
@@ -144,19 +156,50 @@ export default function OnboardingScreen() {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.nextButton, { backgroundColor: colors.primary }]}
-          onPress={handleNext}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={currentStep === onboardingSteps.length - 1 ? 'Get Started' : 'Next'}
-          accessibilityHint={currentStep === onboardingSteps.length - 1 ? 'Finish onboarding and go to sign in' : 'Go to next onboarding step'}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={[styles.nextButtonText, { color: colors.buttonText }]}>
-            {currentStep === onboardingSteps.length - 1 ? 'Get Started' : 'Next'}
-          </Text>
-        </TouchableOpacity>
+        {currentStep === onboardingSteps.length - 1 ? (
+          <>
+            <TouchableOpacity
+              style={[styles.nextButton, { backgroundColor: colors.primary }]}
+              onPress={handleFinishToSignIn}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Create account"
+              accessibilityHint="Finish onboarding and go to sign in"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={[styles.nextButtonText, { color: colors.buttonText }]}>
+                Create Account
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.secondaryButton, { borderColor: colors.primary }]}
+              onPress={handleFinishToGuest}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Continue as guest"
+              accessibilityHint="Finish onboarding and continue without signing in"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                Continue as Guest
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity
+            style={[styles.nextButton, { backgroundColor: colors.primary }]}
+            onPress={handleNext}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Next"
+            accessibilityHint="Go to next onboarding step"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={[styles.nextButtonText, { color: colors.buttonText }]}>
+              Next
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -222,6 +265,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   nextButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    marginTop: 12,
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  secondaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
   },

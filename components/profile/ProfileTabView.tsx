@@ -28,7 +28,6 @@ import { DiscourseUser } from '@/shared/discourseApi';
 import { useHeader } from '@/components/ui/header';
 import { ProfileHeader, ProfileBio, ProfileStats, ProfileActions } from './';
 import { ProfileTabBar, TabItem } from './ProfileTabBar';
-import { FluidSection } from '@/shared/ui/FluidSection';
 import { getTokens } from '@/shared/design/tokens';
 import { ProfileActivityAllTab } from './tabs/ProfileActivityAllTab';
 import { ProfileActivityTopicsTab } from './tabs/ProfileActivityTopicsTab';
@@ -163,32 +162,29 @@ export function ProfileTabView({
     if (!user) return null;
 
     return (
-      <View style={{ width: '100%', paddingHorizontal: 12, marginTop: -8 }}>
-        <FluidSection
-          mode={mode}
-          style={{
-            padding: 0,
-            overflow: 'visible',
-            backgroundColor: pageBackground,
-          }}
-          onLayout={handleHeaderLayout}
-        >
-          <ProfileHeader
-            user={user}
-            isPublic={!isOwnProfile}
-          />
-          <ProfileBio bio={user.bio_raw} />
-          <ProfileStats user={user} />
-          <ProfileActions
-            mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
-            username={user.username}
-            onReport={onReport}
-            onBlock={onBlock}
-          />
-        </FluidSection>
+      <View 
+        style={{ 
+          width: '100%', 
+          marginTop: -8, 
+          backgroundColor: pageBackground 
+        }}
+        onLayout={handleHeaderLayout}
+      >
+        <ProfileHeader
+          user={user}
+          isPublic={!isOwnProfile}
+        />
+        <ProfileBio bio={user.bio_raw} isOwnProfile={isOwnProfile} />
+        <ProfileStats user={user} />
+        <ProfileActions
+          mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
+          username={user.username}
+          onReport={onReport}
+          onBlock={onBlock}
+        />
       </View>
     );
-  }, [user, isOwnProfile, mode, onReport, onBlock, handleHeaderLayout]);
+  }, [user, isOwnProfile, mode, onReport, onBlock, handleHeaderLayout, pageBackground]);
 
   const renderTabBar = useCallback(
     (props: any) => {

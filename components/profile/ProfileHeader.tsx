@@ -160,7 +160,7 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
         </View>
 
         {/* Name, username, bio */}
-        <View style={{ marginTop: 12, alignItems: 'center', gap: 2 }}>
+        <View style={{ marginTop: 16, alignItems: 'center', gap: 2 }}>
           <Text
             className="text-2xl font-semibold"
             style={{ color: tokens.colors.text }}

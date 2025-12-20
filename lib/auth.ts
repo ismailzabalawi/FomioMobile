@@ -96,6 +96,51 @@ async function decryptPayload(encryptedPayload: string, privateKey: string): Pro
 }
 
 /**
+ * Build auth URL for WebView-based flow (Android shell)
+ * Ensures RSA keys + nonce are ready and private key is stored for callback decryption.
+ */
+export async function buildAuthUrlForWebView(): Promise<string> {
+  // Generate RSA keypair
+  const { publicKey, privateKey } = await getRsaKeypair();
+
+  // Persist private key so callback can decrypt payload
+  await UserApiKeyManager.storePrivateKey(privateKey);
+
+  // Generate or get client ID
+  const clientId = await UserApiKeyManager.getOrGenerateClientId();
+
+  // Create redirect URI
+  const redirectUri = getRedirectUri();
+
+  // Build authorization URL
+  const scopes = 'read,write,notifications,session_info,one_time_password';
+  let nonce = await UserApiKeyManager.getNonce();
+  if (!nonce) {
+    nonce = await UserApiKeyManager.generateNonce();
+    await UserApiKeyManager.storeNonce(nonce);
+  }
+
+  const params = new URLSearchParams({
+    application_name: 'Fomio',
+    client_id: clientId,
+    scopes,
+    public_key: publicKey,
+    auth_redirect: redirectUri,
+    nonce,
+  });
+
+  const authUrl = `${SITE}/user-api-key/new?${params.toString()}`;
+
+  logger.info('Built WebView auth URL', {
+    url: authUrl.replace(publicKey, '[PUBLIC_KEY]'),
+    redirectUri,
+    platform: Platform.OS,
+  });
+
+  return authUrl;
+}
+
+/**
  * Sign in using Discourse delegated authentication
  * Follows Discourse User API Keys specification
  */

@@ -215,7 +215,10 @@ export default function ProfileScreen(): React.ReactElement {
         style={[styles.container, { backgroundColor }]}
         edges={safeAreaEdges}
       >
-        <View className="flex-1 items-center justify-center">
+        <View 
+          className="flex-1 items-center justify-center"
+          style={{ backgroundColor }}
+        >
           <ActivityIndicator size="large" color={tokens.colors.accent} />
         </View>
       </SafeAreaView>

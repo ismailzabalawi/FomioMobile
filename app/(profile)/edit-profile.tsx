@@ -492,7 +492,7 @@ export default function EditProfileScreen(): React.ReactElement {
   useFocusEffect(
     React.useCallback(() => {
       setHeader({
-    title: "Edit Profile",
+    title: "Customize Profile",
     canGoBack: true,
     withSafeTop: false,
     tone: "bg",
@@ -515,8 +515,8 @@ export default function EditProfileScreen(): React.ReactElement {
     return (
       <ScreenContainer variant="bg">
         <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          style={[styles.scrollView, { backgroundColor: colors.background }]}
+          contentContainerStyle={[styles.scrollContent, { backgroundColor: colors.background }]}
           showsVerticalScrollIndicator={false}
         >
           <EditProfileSkeleton />
@@ -541,7 +541,7 @@ export default function EditProfileScreen(): React.ReactElement {
     });
     return (
       <ScreenContainer variant="bg">
-        <View style={styles.centered}>
+        <View style={[styles.centered, { backgroundColor: colors.background }]}>
           <Text style={[styles.errorText, { color: colors.error }]}>Failed to load profile</Text>
           {error ? (
             <Text style={[styles.errorText, { color: colors.secondary, marginTop: 8, fontSize: 14 }]}>
@@ -578,13 +578,13 @@ export default function EditProfileScreen(): React.ReactElement {
         }
       >
         <KeyboardAvoidingView
-          style={styles.keyboardAvoidingView}
+          style={[styles.keyboardAvoidingView, { backgroundColor: colors.background }]}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <ScrollView 
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
+            style={[styles.scrollView, { backgroundColor: colors.background }]}
+            contentContainerStyle={[styles.scrollContent, { backgroundColor: colors.background }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >

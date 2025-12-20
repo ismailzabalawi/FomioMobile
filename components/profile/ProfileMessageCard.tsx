@@ -94,17 +94,20 @@ export function ProfileMessageCard({
     return null;
   }
 
+  const pageBackground = mode === 'dark' ? '#000000' : '#f8fafc';
+  
   return (
     <View 
       className="flex-1 items-center justify-center"
       style={{ 
         paddingLeft: paddingLeft + layout.horizontalPad,
         paddingRight: paddingRight + layout.horizontalPad,
+        backgroundColor: pageBackground,
       }}
     >
       <View 
         className="items-center w-full"
-        style={{ maxWidth: layout.maxCardWidth }}
+        style={{ maxWidth: layout.maxCardWidth, backgroundColor: pageBackground }}
       >
         <FluidSection
           mode={mode}

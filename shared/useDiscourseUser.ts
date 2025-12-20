@@ -25,6 +25,7 @@ export interface UseDiscourseUserReturn {
   changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   changeEmail: (newEmail: string) => Promise<boolean>;
   uploadAvatar: (imageFile: { uri: string; type?: string; name?: string; fileSize?: number }) => Promise<boolean>;
+  uploadProfileHeader: (imageFile: { uri: string; type?: string; name?: string; fileSize?: number }) => Promise<boolean>;
   
   // Utility
   isAuthenticated: boolean;

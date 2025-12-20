@@ -7,13 +7,17 @@
 import React from 'react';
 import { View } from 'react-native';
 import { SkeletonEnhanced } from '@/components/shared/loading.enhanced';
+import { useTheme } from '@/components/theme';
 
 export function ProfileSkeleton() {
+  const { isDark } = useTheme();
+  const backgroundColor = isDark ? '#000000' : '#f8fafc';
+  
   return (
-    <View className="px-4 pt-6 pb-4">
+    <View className="px-4 pt-6 pb-4" style={{ backgroundColor, flex: 1 }}>
       {/* Hero cover */}
       <View className="mb-4 rounded-2xl overflow-hidden" style={{ height: 160 }}>
-        <SkeletonEnhanced width="100%" height="100%" />
+        <SkeletonEnhanced width="100%" height={160} />
       </View>
 
       {/* Avatar + name stack */}

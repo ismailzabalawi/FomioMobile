@@ -56,7 +56,7 @@ export function ProfileStats({ user }: ProfileStatsProps) {
   ].filter((stat) => stat.value !== '0' || stat.label === 'Trust'); // Always show trust level
 
   return (
-    <View className="px-4" style={{ width: '100%', marginTop: 12 }}>
+    <View className="px-4" style={{ width: '100%', marginTop: 16 }}>
       <FluidSection
         mode={mode}
         style={{
