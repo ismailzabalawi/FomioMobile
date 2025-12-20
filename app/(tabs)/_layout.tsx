@@ -102,6 +102,10 @@ function CustomTabBar({
   draftCount = 0,
   showDraftBadge = false,
 }: any) {
+  const currentRouteName = state.routes[state.index]?.name;
+  if (currentRouteName === 'compose') {
+    return null;
+  }
   // Constants imported from tabBarConstants.ts
   const insets = useSafeAreaInsets();
   const horizontalPadding = Math.max(insets.left, insets.right, TAB_BAR_HORIZONTAL_PADDING_BASE);

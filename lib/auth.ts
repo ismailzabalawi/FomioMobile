@@ -202,10 +202,13 @@ export async function signIn(): Promise<boolean> {
       // Clear nonce after successful verification (prevents reuse)
       await UserApiKeyManager.clearNonce();
       
-      // Get username from API after storing the key
+      // Get username from API after storing the key temporarily
       // This is needed for the Api-Username header required by Discourse API
       let username: string | undefined;
       try {
+        // Temporarily store key so API call works
+        await SecureStore.setItemAsync("fomio_user_api_key", key);
+        
         const discourseApi = require('../shared/discourseApi').discourseApi;
         const userResponse = await discourseApi.getCurrentUser();
         if (userResponse.success && userResponse.data?.username) {
@@ -217,32 +220,8 @@ export async function signIn(): Promise<boolean> {
         // Don't fail sign in if username fetch fails - we can get it later
       }
 
-      // Store API key and username together in new storage keys
-      await SecureStore.setItemAsync("fomio_user_api_key", key);
-      if (username) {
-        await SecureStore.setItemAsync("fomio_user_api_username", username);
-      }
-      
-      // Also store in legacy locations for backward compatibility during migration
-      await SecureStore.setItemAsync(STORAGE_KEY, key);
-      await SecureStore.setItemAsync(CLIENT_ID_KEY, clientId);
-
-      // Optional: clean legacy keys after successful migration
-      // Uncomment after verifying new keys work:
-      // await SecureStore.deleteItemAsync("disc_user_api_key");
-      // await SecureStore.deleteItemAsync("disc_user_api_username");
-
-      await UserApiKeyManager.storeApiKey({
-        key,
-        clientId,
-        oneTimePassword: one_time_password,
-        createdAt: Date.now(),
-        username, // Store username for Api-Username header
-      });
-
-      if (one_time_password) {
-        await UserApiKeyManager.storeOneTimePassword(one_time_password);
-      }
+      // Store complete auth using unified storage
+      await UserApiKeyManager.storeCompleteAuth(key, username, clientId, one_time_password);
       
       logger.info('API key stored successfully');
       
@@ -296,61 +275,15 @@ export async function signIn(): Promise<boolean> {
  * Get authentication headers for API requests
  * Returns headers with User-Api-Key and Api-Username if available
  * Api-Username is required by Discourse API for write operations
+ * 
+ * Uses UserApiKeyManager.getAuthCredentials() as the single source of truth.
  */
 export async function authHeaders(): Promise<Record<string, string>> {
   try {
-    // Read from new unified storage keys
-    let key = await SecureStore.getItemAsync("fomio_user_api_key");
-    let user = await SecureStore.getItemAsync("fomio_user_api_username");
+    // Use unified storage via UserApiKeyManager
+    const credentials = await UserApiKeyManager.getAuthCredentials();
 
-    // If key looks like JSON (from UserApiKeyManager), extract the actual key
-    if (key && key.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(key);
-        key = parsed.key || key;
-        if (!user && parsed.username) {
-          user = parsed.username;
-        }
-      } catch {
-        // Not JSON, use as-is
-      }
-    }
-
-    if (!key) {
-      // Fallback to legacy storage for backward compatibility
-      const legacyKey = await SecureStore.getItemAsync(STORAGE_KEY);
-      if (legacyKey) {
-        key = legacyKey;
-        
-        // Try to get username from UserApiKeyManager or stored auth
-        if (!user) {
-          const apiKeyData = await UserApiKeyManager.getApiKey();
-          if (apiKeyData?.username) {
-            user = apiKeyData.username;
-          } else {
-            try {
-              const storedAuth = await SecureStore.getItemAsync('auth-token-v1');
-              if (storedAuth) {
-                const parsed = JSON.parse(storedAuth);
-                user = parsed.username || null;
-              }
-            } catch {
-              // Ignore errors reading stored auth
-            }
-          }
-        }
-
-        if (legacyKey) {
-          // Migrate to new keys
-          await SecureStore.setItemAsync("fomio_user_api_key", legacyKey);
-          if (user) {
-            await SecureStore.setItemAsync("fomio_user_api_username", user);
-          }
-        }
-      }
-    }
-
-    if (!key) {
+    if (!credentials?.key) {
       console.warn("⚠️ Missing User-Api-Key");
       console.log("⚠️ User API Key not found, request may fail");
       return {};
@@ -359,13 +292,13 @@ export async function authHeaders(): Promise<Record<string, string>> {
     // Return headers - username is optional for GET requests
     // Api-Username is required for write operations, but GET requests work with just User-Api-Key
     const headers: Record<string, string> = {
-      "User-Api-Key": key,
+      "User-Api-Key": credentials.key,
       "Accept": "application/json",
       "Content-Type": "application/json",
     };
 
-    if (user) {
-      headers["Api-Username"] = user;
+    if (credentials.username) {
+      headers["Api-Username"] = credentials.username;
     } else {
       console.log("⚠️ Api-Username not available yet, some operations may fail");
     }
@@ -382,13 +315,7 @@ export async function authHeaders(): Promise<Record<string, string>> {
  */
 export async function hasUserApiKey(): Promise<boolean> {
   try {
-    const apiKeyData = await UserApiKeyManager.getApiKey();
-    if (apiKeyData?.key) {
-      return true;
-    }
-
-    const key = await SecureStore.getItemAsync(STORAGE_KEY);
-    return !!key;
+    return await UserApiKeyManager.isAuthenticated();
   } catch (error) {
     logger.error('Failed to check API key', error);
     return false;

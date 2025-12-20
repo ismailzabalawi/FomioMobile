@@ -1,19 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
+import * as Haptics from 'expo-haptics';
+
 import { useTheme } from '@/components/theme';
+import { useAuth } from '@/shared/auth-context';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { getTokens } from '@/shared/design/tokens';
 
 const config = Constants.expoConfig?.extra || {};
 const BASE_URL = config.DISCOURSE_BASE_URL;
 
-export default function SignInScreen() {
-  const { isDark } = useTheme();
-  const tokens = getTokens(isDark ? 'darkAmoled' : 'light');
+/**
+ * Sign In Screen - Gateway to authentication
+ * 
+ * This screen provides entry points to:
+ * 1. Sign in via auth modal (WebView-based User API Key flow)
+ * 2. Create account (opens signup screen)
+ * 
+ * If already authenticated, redirects to main app.
+ */
+export default function SignInScreen(): React.ReactElement {
+  const { isDark, isAmoled } = useTheme();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const params = useLocalSearchParams<{ returnTo?: string }>();
+  const tokens = getTokens(isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light');
+  
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const baseUrlMissing = !BASE_URL;
+
   const colors = {
     background: tokens.colors.background,
     primary: tokens.colors.accent,
@@ -24,188 +41,144 @@ export default function SignInScreen() {
     error: tokens.colors.danger,
     errorBg: tokens.colors.dangerSoft,
   } as const;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [retryCount, setRetryCount] = useState(0);
-  const isProcessingRef = React.useRef(false);
-  const mountedRef = React.useRef(true);
-  const retryTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
+  // Check if already authenticated
   useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
+    if (!isAuthLoading) {
+      if (isAuthenticated) {
+        // Already authenticated, redirect to main app or returnTo
+        const returnTo = params.returnTo;
+        if (returnTo) {
+          router.replace(decodeURIComponent(returnTo) as any);
+        } else {
+          router.replace('/(tabs)');
+        }
+      } else {
+        setIsCheckingAuth(false);
       }
-    };
+    }
+  }, [isAuthenticated, isAuthLoading, params.returnTo]);
+
+  // Open auth modal for sign in
+  const handleSignIn = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    
+    // Pass returnTo param to auth modal
+    const returnTo = params.returnTo;
+    if (returnTo) {
+      router.push(`/(auth)/auth-modal?returnTo=${encodeURIComponent(returnTo)}` as any);
+    } else {
+      router.push('/(auth)/auth-modal' as any);
+    }
+  }, [params.returnTo]);
+
+  // Navigate to signup
+  const handleSignUp = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    router.push('/(auth)/signup');
   }, []);
 
-  const handleConnect = async (isRetry = false) => {
-    if (baseUrlMissing) {
-      setError('Missing DISCOURSE_BASE_URL config. Please configure meta.techrebels.info and try again.');
-      return;
-    }
-
-    // Prevent multiple simultaneous auth attempts
-    if (isProcessingRef.current) {
-      return;
-    }
-
-    if (!isRetry) {
-      setRetryCount(0);
-    }
-
-    setLoading(true);
-    setError('');
-    isProcessingRef.current = true;
-
-    try {
-      // Check if we already have a valid API key
-      const authModule = require('../../lib/auth');
-      const hasKey = await authModule.hasUserApiKey();
-      
-      if (hasKey) {
-        // Try to verify the key is still valid by checking session
-        try {
-          const discourseApi = require('../../shared/discourseApi').discourseApi;
-          const userResponse = await discourseApi.getCurrentUser();
-          if (userResponse.success && userResponse.data) {
-            // Key is valid, navigate to main app
-            router.replace('/(tabs)' as any);
-            return;
-          }
-        } catch (error: any) {
-          // Key exists but is invalid, continue to sign in
-          console.log('⚠️ Existing API key invalid, starting new sign in');
-        }
-      }
-      
-      // Start delegated authentication flow
-      const success = await authModule.signIn();
-      
-      if (success) {
-        // Sign in successful, navigate to main app
-        router.replace('/(tabs)' as any);
-      } else {
-        throw new Error('Sign in failed. Please try again.');
-      }
-    } catch (err: any) {
-      const errorMessage = err?.message || 'Failed to connect. Please try again.';
-      let displayError = errorMessage;
-      
-      // Show helpful hints for common errors
-      if (errorMessage.toLowerCase().includes('cancel') || errorMessage.toLowerCase().includes('cancelled')) {
-        displayError = 'Sign in was cancelled. Please try again when ready.';
-      } else if (errorMessage.toLowerCase().includes('redirect') || errorMessage.toLowerCase().includes('url')) {
-        displayError = 'Configuration error: Missing redirect URL in Discourse settings. Please contact support.';
-      } else if (errorMessage.toLowerCase().includes('scope')) {
-        displayError = 'Permission error: Insufficient scopes. Please check your API key permissions.';
-      } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('timeout') || errorMessage.toLowerCase().includes('connection')) {
-        displayError = 'Network error: Please check your internet connection and try again.';
-        // Allow retry for network errors
-        if (retryCount < 2 && mountedRef.current) {
-          setRetryCount(retryCount + 1);
-          retryTimeoutRef.current = setTimeout(() => {
-            if (mountedRef.current) {
-              handleConnect(true);
-            }
-          }, 2000 * (retryCount + 1)); // Exponential backoff
-          return;
-        }
-      } else if (errorMessage.toLowerCase().includes('decrypt') || errorMessage.toLowerCase().includes('payload')) {
-        displayError = 'Authorization error: Failed to process authorization response. Please try again.';
-      }
-      
-      setError(displayError);
-    } finally {
-      setLoading(false);
-      isProcessingRef.current = false;
-    }
-  };
-
-  const handleBack = () => {
+  // Handle back navigation
+  const handleBack = useCallback(() => {
     router.back();
-  };
+  }, []);
 
   // Configure header
   useScreenHeader({
-    title: "Sign In",
+    title: 'Sign In',
     canGoBack: true,
     onBackPress: handleBack,
     withSafeTop: false,
-    tone: "bg",
+    tone: 'bg',
     compact: true,
     titleFontSize: 20,
   }, [isDark]);
+
+  // Show loading while checking auth status
+  if (isAuthLoading || isCheckingAuth) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
         <View style={styles.form}>
-          {error ? (
-            <View style={[styles.errorContainer, { backgroundColor: colors.errorBg, borderColor: colors.error }]}>
-              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-              {retryCount > 0 && (
-                <Text style={[styles.retryText, { color: colors.secondary }]}>
-                  Retrying... ({retryCount}/2)
-                </Text>
-              )}
-            </View>
-          ) : null}
-
+          {/* Header section */}
           <View style={styles.infoContainer}>
-            <Text style={[styles.infoTitle, { color: colors.text }]}>Connect to Forum</Text>
+            <Text style={[styles.infoTitle, { color: colors.text }]}>Welcome Back</Text>
             <Text style={[styles.infoText, { color: colors.secondary }]}>
-              Sign in using Discourse User API Key authentication. You'll be redirected to approve access.
+              Sign in to access your account, post Bytes, and join the conversation.
             </Text>
             {baseUrlMissing && (
-              <Text style={[styles.infoText, { color: colors.error, marginTop: 12 }]}>
-                Missing DISCOURSE_BASE_URL config (expected meta.techrebels.info). Please update app config before signing in.
-              </Text>
+              <View style={[styles.errorBanner, { backgroundColor: colors.errorBg, borderColor: colors.error }]}>
+                <Text style={[styles.errorText, { color: colors.error }]}>
+                  Configuration missing. Please set DISCOURSE_BASE_URL.
+                </Text>
+              </View>
             )}
           </View>
 
+          {/* Sign In Button */}
           <TouchableOpacity
             style={[
               styles.primaryButton,
-              (loading || baseUrlMissing) && styles.disabledButton,
+              baseUrlMissing && styles.disabledButton,
               { backgroundColor: colors.primary },
             ]}
-            onPress={() => handleConnect()}
-            disabled={loading || baseUrlMissing}
+            onPress={handleSignIn}
+            disabled={baseUrlMissing}
             accessible
             accessibilityRole="button"
-            accessibilityLabel="Connect to Forum"
-            accessibilityHint="Connect to Discourse forum using API key authentication"
+            accessibilityLabel="Sign In"
+            accessibilityHint="Opens sign in flow"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.onPrimary} />
-            ) : (
-              <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-                {baseUrlMissing ? 'Configuration required' : 'Connect to Forum'}
-              </Text>
-            )}
+            <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+              {baseUrlMissing ? 'Configuration Required' : 'Sign In'}
+            </Text>
           </TouchableOpacity>
 
+          {/* Divider */}
           <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
             <Text style={[styles.dividerText, { color: colors.secondary }]}>or</Text>
             <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
           </View>
 
+          {/* Create Account Button */}
           <TouchableOpacity
             style={[styles.secondaryButton, { borderColor: colors.primary }]}
-            onPress={() => router.push('/(auth)/signup')}
-            disabled={loading}
+            onPress={handleSignUp}
             accessible
             accessibilityRole="button"
             accessibilityLabel="Create Account"
             accessibilityHint="Go to sign up screen"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Create Account</Text>
+            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+              Create Account
+            </Text>
+          </TouchableOpacity>
+
+          {/* Guest mode hint */}
+          <TouchableOpacity
+            style={styles.guestButton}
+            onPress={() => router.replace('/(tabs)')}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Continue as Guest"
+            accessibilityHint="Browse without signing in"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={[styles.guestButtonText, { color: colors.secondary }]}>
+              Continue as Guest
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -217,6 +190,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   content: {
     flex: 1,
     padding: 20,
@@ -227,58 +205,51 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  errorContainer: {
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 20,
-  },
-  errorText: {
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  retryText: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 8,
-  },
   infoContainer: {
     marginBottom: 32,
     alignItems: 'center',
   },
   infoTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 12,
     textAlign: 'center',
   },
   infoText: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  errorBanner: {
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  errorText: {
     fontSize: 14,
-    lineHeight: 20,
     textAlign: 'center',
   },
   primaryButton: {
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 20,
   },
   primaryButtonText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
   },
   disabledButton: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 24,
   },
   dividerLine: {
     flex: 1,
-    height: 1,
+    height: StyleSheet.hairlineWidth,
   },
   dividerText: {
     marginHorizontal: 16,
@@ -291,7 +262,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   secondaryButtonText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
+  },
+  guestButton: {
+    marginTop: 24,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  guestButtonText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

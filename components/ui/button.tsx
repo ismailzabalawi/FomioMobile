@@ -26,6 +26,7 @@ export interface ButtonProps {
   size?: 'default' | 'sm' | 'lg' | 'icon';
   style?: ViewStyle;
   textStyle?: TextStyle;
+  testID?: string;
 }
 
 export function Button({
@@ -37,6 +38,7 @@ export function Button({
   size = 'default',
   style,
   textStyle,
+  testID,
 }: ButtonProps) {
   const getVariantClasses = () => {
     const variantClasses = {
@@ -105,13 +107,14 @@ export function Button({
 
   return (
     <TouchableOpacity
-      testID="button-touchable"
+      testID={testID ?? 'button-touchable'}
       className={buttonClasses}
       style={style}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.7}
       accessibilityRole="button"
+      accessibilityState={{ disabled: disabled || loading }}
     >
       <View className="flex-row items-center justify-center">
         {loading && (

@@ -263,7 +263,9 @@ class Logger {
           // ignore and fall back
         }
 
-        console.error(logLine || fallbackLine);
+        // Ensure we always have a valid string to log (never null)
+        const finalLogMessage = (logLine || fallbackLine || `[ERROR] ${safeMessage || 'Unknown error'}`);
+        console.error(finalLogMessage);
       } catch (logError) {
         // Ultimate fallback: use the simplest possible logging
         const errorMsg = String(errorInfo?.message || errorInfo || 'Unknown error');

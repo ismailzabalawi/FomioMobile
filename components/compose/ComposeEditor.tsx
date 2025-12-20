@@ -17,6 +17,7 @@ import { CaretRight } from 'phosphor-react-native';
 import { Teret } from '@/shared/useTerets';
 import { getMarkdownStyles } from '@/shared/markdown-styles';
 import { MarkdownContent } from '../feed/MarkdownContent';
+import { getTokens } from '@/shared/design/tokens';
 
 type EditorMode = 'write' | 'preview';
 
@@ -25,6 +26,8 @@ interface ComposeEditorProps {
   body: string;
   onChangeTitle: (text: string) => void;
   onChangeBody: (text: string) => void;
+  titleError?: string;
+  bodyError?: string;
   selectedTeret: Teret | null;
   onTeretPress: () => void;
   onSlashHelp?: () => void;
@@ -38,6 +41,8 @@ export function ComposeEditor({
   body,
   onChangeTitle,
   onChangeBody,
+  titleError,
+  bodyError,
   selectedTeret,
   onTeretPress,
   onSlashHelp,
@@ -45,8 +50,12 @@ export function ComposeEditor({
   mode,
   onModeChange,
 }: ComposeEditorProps) {
-  const { isDark } = useTheme();
+  const { isDark, isAmoled } = useTheme();
   const insets = useSafeAreaInsets();
+  const tokens = useMemo(
+    () => getTokens(isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light'),
+    [isDark, isAmoled]
+  );
   const [bodyHeight, setBodyHeight] = useState(120);
   const [selection, setSelection] = useState<{ start: number; end: number }>({
     start: body.length,
@@ -54,7 +63,7 @@ export function ComposeEditor({
   });
 
   // Editor-first background: translucent, light weight
-  const inputBg = isDark ? 'rgba(5, 5, 5, 0.6)' : 'rgba(255, 255, 255, 0.7)';
+  const inputBg = tokens.colors.surfaceFrost;
 
   // Markdown styles for preview mode (shared with MarkdownContent)
   const markdownStyles = useMemo(() => getMarkdownStyles(isDark), [isDark]);
@@ -389,7 +398,7 @@ export function ComposeEditor({
     >
       {/* Teret Row - Simple, minimal row at the top */}
       <TouchableOpacity
-        className="mb-2 py-2.5 flex-row items-center justify-between"
+        className="mb-2 py-2.5 px-3 flex-row items-center justify-between rounded-fomio-card"
         onPress={onTeretPress}
         activeOpacity={0.7}
         accessible
@@ -399,6 +408,16 @@ export function ComposeEditor({
             ? 'Choose Teret'
             : `Change Teret. Current Teret: ${selectedTeret.name}`
         }
+        style={{
+          backgroundColor: inputBg,
+          borderColor: tokens.colors.border,
+          borderWidth: 1,
+          shadowColor: tokens.colors.shadow,
+          shadowOpacity: 0.14,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 6,
+        }}
       >
         <Text
           className={
@@ -440,6 +459,11 @@ export function ComposeEditor({
             backgroundColor: inputBg,
           }}
         />
+        {titleError ? (
+          <Text className="mt-1 text-caption text-fomio-danger dark:text-fomio-danger-dark">
+            {titleError}
+          </Text>
+        ) : null}
       </View>
 
       {/* Body Input or Preview - Full height */}
@@ -487,6 +511,11 @@ export function ComposeEditor({
           </ScrollView>
         )}
       </View>
+      {bodyError ? (
+        <Text className="mt-1 text-caption text-fomio-danger dark:text-fomio-danger-dark">
+          {bodyError}
+        </Text>
+      ) : null}
     </View>
   );
 }

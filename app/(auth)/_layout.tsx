@@ -30,13 +30,14 @@ function isOnboardingRoute(pathname: string): boolean {
 }
 
 /**
- * Helper to check if pathname is an explicit auth screen (signin/signup/authorize).
+ * Helper to check if pathname is an explicit auth screen (signin/signup/authorize/auth-modal).
  */
 function isExplicitAuthScreen(pathname: string): boolean {
   return (
     pathname.includes('/signin') ||
     pathname.includes('/signup') ||
-    pathname.includes('/authorize')
+    pathname.includes('/authorize') ||
+    pathname.includes('/auth-modal')
   );
 }
 
@@ -158,6 +159,14 @@ export default function AuthLayout(): React.ReactElement {
       <Stack.Screen name="signin" />
       <Stack.Screen name="signup" />
       <Stack.Screen name="authorize" />
+      <Stack.Screen 
+        name="auth-modal" 
+        options={{ 
+          presentation: 'fullScreenModal',
+          headerShown: false,
+          animation: 'slide_from_bottom',
+        }} 
+      />
     </Stack>
   );
 }

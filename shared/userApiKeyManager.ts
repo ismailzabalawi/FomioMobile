@@ -90,6 +90,13 @@ const CLIENT_ID_STORAGE_KEY = 'fomio_user_api_client_id';
 const ONE_TIME_PASSWORD_STORAGE_KEY = 'fomio_user_api_otp';
 const NONCE_STORAGE_KEY = 'fomio_user_api_nonce';
 
+// Unified storage keys for lib/auth.ts compatibility
+const FOMIO_USER_API_KEY = 'fomio_user_api_key';
+const FOMIO_USER_API_USERNAME = 'fomio_user_api_username';
+// Legacy keys for backward compatibility
+const LEGACY_API_KEY = 'disc_user_api_key';
+const LEGACY_CLIENT_ID = 'disc_client_id';
+
 export interface UserApiKeyData {
   key: string;
   clientId: string;
@@ -678,6 +685,123 @@ export class UserApiKeyManager {
   }
 
   /**
+   * Store complete auth credentials atomically to all required storage locations.
+   * This is the single source of truth for storing auth data.
+   * 
+   * @param key - The API key string
+   * @param username - Username for Api-Username header (optional but recommended)
+   * @param clientId - Client ID for the app instance
+   * @param otp - One-time password for cookie warming (optional)
+   */
+  static async storeCompleteAuth(
+    key: string,
+    username?: string,
+    clientId?: string,
+    otp?: string
+  ): Promise<void> {
+    try {
+      const resolvedClientId = clientId || await this.getOrGenerateClientId();
+      
+      // 1. Store raw API key for direct access (used by authHeaders)
+      await SecureStore.setItemAsync(FOMIO_USER_API_KEY, key);
+      
+      // 2. Store username if provided
+      if (username) {
+        await SecureStore.setItemAsync(FOMIO_USER_API_USERNAME, username);
+      }
+      
+      // 3. Store complete JSON data for UserApiKeyManager consumers
+      const apiKeyData: UserApiKeyData = {
+        key,
+        clientId: resolvedClientId,
+        oneTimePassword: otp,
+        createdAt: Date.now(),
+        username,
+      };
+      await SecureStore.setItemAsync(API_KEY_STORAGE_KEY, JSON.stringify(apiKeyData));
+      
+      // 4. Store legacy keys for backward compatibility
+      await SecureStore.setItemAsync(LEGACY_API_KEY, key);
+      await SecureStore.setItemAsync(LEGACY_CLIENT_ID, resolvedClientId);
+      
+      // 5. Store OTP separately if provided
+      if (otp) {
+        await SecureStore.setItemAsync(ONE_TIME_PASSWORD_STORAGE_KEY, otp);
+      }
+      
+      logger.info('UserApiKeyManager: Complete auth credentials stored', {
+        hasUsername: !!username,
+        hasOtp: !!otp,
+      });
+    } catch (error: any) {
+      logger.error('UserApiKeyManager: Failed to store complete auth', error);
+      throw new Error('Failed to store authentication credentials securely');
+    }
+  }
+
+  /**
+   * Get auth credentials for API requests.
+   * This is the single source of truth for reading auth data.
+   * 
+   * @returns Object with key and optional username, or null if not authenticated
+   */
+  static async getAuthCredentials(): Promise<{ key: string; username?: string } | null> {
+    try {
+      // Try raw key first (fastest path)
+      let key = await SecureStore.getItemAsync(FOMIO_USER_API_KEY);
+      let username = await SecureStore.getItemAsync(FOMIO_USER_API_USERNAME);
+      
+      // If key looks like JSON (old format), extract the actual key
+      if (key && key.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(key);
+          key = parsed.key || key;
+          if (!username && parsed.username) {
+            username = parsed.username;
+          }
+        } catch {
+          // Not JSON, use as-is
+        }
+      }
+      
+      // Fallback to JSON data if raw key not found
+      if (!key) {
+        const apiKeyData = await this.getApiKey();
+        if (apiKeyData?.key) {
+          key = apiKeyData.key;
+          username = username || apiKeyData.username || null;
+        }
+      }
+      
+      // Final fallback to legacy storage
+      if (!key) {
+        key = await SecureStore.getItemAsync(LEGACY_API_KEY);
+      }
+      
+      if (!key) {
+        return null;
+      }
+      
+      return { key, username: username || undefined };
+    } catch (error: any) {
+      // Don't log null errors from SecureStore
+      if (error && String(error) !== 'null' && error?.message !== 'null') {
+        logger.error('UserApiKeyManager: Failed to get auth credentials', error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Check if user has valid auth credentials
+   * @returns true if authenticated
+   */
+  static async isAuthenticated(): Promise<boolean> {
+    const credentials = await this.getAuthCredentials();
+    return credentials !== null && !!credentials.key;
+  }
+
+  /**
    * Clear all stored API key data
    */
   static async clearApiKey(): Promise<void> {
@@ -687,6 +811,12 @@ export class UserApiKeyManager {
       await SecureStore.deleteItemAsync(PUBLIC_KEY_STORAGE_KEY);
       await SecureStore.deleteItemAsync(ONE_TIME_PASSWORD_STORAGE_KEY);
       await SecureStore.deleteItemAsync(NONCE_STORAGE_KEY);
+      // Also clear unified storage keys
+      await SecureStore.deleteItemAsync(FOMIO_USER_API_KEY);
+      await SecureStore.deleteItemAsync(FOMIO_USER_API_USERNAME);
+      // Clear legacy keys
+      await SecureStore.deleteItemAsync(LEGACY_API_KEY);
+      await SecureStore.deleteItemAsync(LEGACY_CLIENT_ID);
       // Keep client ID for potential reuse
       logger.info('UserApiKeyManager: API key data cleared');
     } catch (error: any) {

@@ -17,24 +17,29 @@ jest.mock('react-native-safe-area-context', () => {
 });
 
 // Mock Expo Router
-jest.mock('expo-router', () => ({
-  useRouter: () => ({
+jest.mock('expo-router', () => {
+  const router = {
     push: jest.fn(),
     replace: jest.fn(),
     back: jest.fn(),
     canGoBack: jest.fn(() => true),
-  }),
-  useLocalSearchParams: () => ({}),
-  usePathname: () => '/',
-  Link: ({ children, href, ...props }) => children,
-  Redirect: () => null,
-  Stack: {
-    Screen: () => null,
-  },
-  Tabs: {
-    Screen: () => null,
-  },
-}));
+  };
+  return {
+    router,
+    useRouter: () => router,
+    useLocalSearchParams: () => ({}),
+    usePathname: () => '/',
+    useFocusEffect: (cb) => cb(),
+    Link: ({ children, href, ...props }) => children,
+    Redirect: () => null,
+    Stack: {
+      Screen: () => null,
+    },
+    Tabs: {
+      Screen: () => null,
+    },
+  };
+});
 
 // Mock Expo Font
 jest.mock('expo-font', () => ({
@@ -93,6 +98,13 @@ jest.mock(
     default: {
       addListener: jest.fn(),
       removeListeners: jest.fn(),
+      enableQueue: jest.fn(),
+      disableQueue: jest.fn(),
+      shouldUseNativeDriver: () => false,
+    },
+    API: {
+      queue: [],
+      flushQueue: jest.fn(),
     },
   }),
   { virtual: true }
@@ -238,7 +250,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  jest.runOnlyPendingTimers();
+  try {
+    jest.runOnlyPendingTimers();
+  } catch {
+    // Timers may already be real in specific tests
+  }
   jest.useRealTimers();
   jest.clearAllMocks();
 });

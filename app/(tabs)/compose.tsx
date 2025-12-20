@@ -9,6 +9,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Pressable, Keyboard } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Accessibility: Larger hitSlop for better touch targets
 const DEFAULT_HIT_SLOP = Platform.OS === 'ios' ? 16 : 20;
@@ -48,6 +49,7 @@ const NEW_TOPIC_DRAFT_KEY = 'new_topic';
 
 export default function ComposeScreen(): React.ReactElement {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { safeBack } = useSafeNavigation();
   const params = useLocalSearchParams<{ draftKey?: string; draftSequence?: string }>();
   const { 
@@ -297,6 +299,18 @@ export default function ComposeScreen(): React.ReactElement {
   const titleLen = title.trim().length;
   const bodyLen = body.trim().length;
 
+  const titleValidationMessage =
+    errors.title ||
+    (titleLen > 0 && titleLen < minTitle
+      ? `Title must be at least ${minTitle} characters (currently ${titleLen})`
+      : undefined);
+
+  const bodyValidationMessage =
+    errors.content ||
+    (bodyLen > 0 && bodyLen < minPost
+      ? `Content must be at least ${minPost} characters (currently ${bodyLen})`
+      : undefined);
+
   // Track latest draft state to avoid stale closures when saving on blur
   useEffect(() => {
     latestDraftRef.current = {
@@ -409,6 +423,7 @@ export default function ComposeScreen(): React.ReactElement {
       !settingsLoading
     );
   }, [titleLen, bodyLen, minTitle, minPost, selectedTeret, isAuthenticated, isAuthLoading, isCreating, settingsLoading]);
+  const postDisabled = !canPost || isCreating || isUploadingImages;
 
   // Save on screen blur (e.g., user navigates away)
   useFocusEffect(
@@ -832,30 +847,8 @@ export default function ComposeScreen(): React.ReactElement {
           className="flex-1"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow: 1 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 64 }}
         >
-          {/* Authentication Warning */}
-          {!isAuthLoading && !isAuthenticated && (
-            <View className="mx-4 mt-4 p-4 rounded-fomio-card bg-fomio-warning/20 dark:bg-fomio-warning-dark/20 flex-row items-center">
-              <SignIn size={20} color="#F59E0B" weight="regular" />
-              <View className="flex-1 ml-3">
-                <Text className="text-body font-semibold text-fomio-warning dark:text-fomio-warning-dark mb-1">
-                  Sign in to post
-            </Text>
-                <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark">
-                  You need to be logged in to create posts
-            </Text>
-          </View>
-              <Button
-                onPress={() => router.push('/(auth)/signin' as any)}
-                variant="default"
-                size="sm"
-              >
-                Sign In
-              </Button>
-                </View>
-              )}
-
           {/* Help tip - moved from subHeader to screen body */}
           {showHelpTip && (
             <View className="mx-4 mt-2 p-3 rounded-fomio-card bg-fomio-muted/20 dark:bg-fomio-muted-dark/20">
@@ -922,6 +915,8 @@ export default function ComposeScreen(): React.ReactElement {
             body={body}
             onChangeTitle={setTitle}
             onChangeBody={setBody}
+            titleError={titleValidationMessage}
+            bodyError={bodyValidationMessage}
             selectedTeret={selectedTeret}
             onTeretPress={handleTeretPress}
             onSlashHelp={handleSlashHelp}
@@ -944,9 +939,26 @@ export default function ComposeScreen(): React.ReactElement {
             </View>
           )}
 
-          {/* Bottom spacing */}
-          <View className="h-8" />
         </ScrollView>
+        <View
+          className="px-4 pb-4 pt-2 border-t border-fomio-border-soft dark:border-fomio-border-soft-dark bg-fomio-bg dark:bg-fomio-bg-dark"
+          style={{ marginBottom: insets.bottom + 12 }}
+        >
+          <Button
+            testID="post-button"
+            onPress={handlePost}
+            disabled={postDisabled}
+            loading={isCreating}
+            size="lg"
+          >
+            {isCreating ? 'Posting…' : 'Post'}
+          </Button>
+          {!canPost && (
+            <Text className="mt-2 text-caption text-fomio-muted dark:text-fomio-muted-dark text-center">
+              Add a title, body, and choose a Teret to enable posting.
+            </Text>
+          )}
+        </View>
       </KeyboardAvoidingView>
 
       {/* Teret Picker Bottom Sheet */}
