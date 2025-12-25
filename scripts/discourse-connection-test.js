@@ -2,7 +2,7 @@
 
 /**
  * Discourse Connection Test Script
- * Tests your FomioMobile app's connection to Discourse backend
+ * Tests your Fomio app's connection to Discourse backend
  * 
  * Usage: node scripts/discourse-connection-test.js
  */
@@ -244,7 +244,7 @@ function validateEnv(env) {
 
 // Main execution
 async function main() {
-  log('\n' + '🚀 Fomio Mobile - Discourse Connection Test'.padEnd(60), colors.bright);
+  log('\n' + '🚀 Fomio - Discourse Connection Test'.padEnd(60), colors.bright);
   log('Testing connection to your Discourse backend\n', colors.gray);
   
   // Load environment

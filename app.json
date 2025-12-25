@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "FomioMobile",
-    "slug": "FomioMobile",
+    "name": "Fomio",
+    "slug": "fomio",
     "version": "0.1.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
@@ -69,8 +69,8 @@
       }
     },
     "extra": {
-      "DISCOURSE_BASE_URL": "https://meta.techrebels.info",
-      "APPLICATION_NAME": "Fomio Mobile",
+      "DISCOURSE_BASE_URL": "https://meta.fomio.app",
+      "APPLICATION_NAME": "Fomio",
       "APPLICATION_ID": "com.fomio.mobile",
       "router": {},
       "eas": {

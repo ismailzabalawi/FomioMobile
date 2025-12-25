@@ -157,7 +157,7 @@ export default function AuthCallbackScreen() {
 
         if (userResponse.success && userResponse.data) {
           // Map Discourse user to AppUser
-          const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
+          const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.fomio.app';
           const username = userResponse.data.username || 'unknown';
           const appUser = {
             id: userResponse.data.id?.toString() || '0',

@@ -4,6 +4,8 @@ const FALLBACK_HTML = '<p>[Content unavailable]</p>';
 
 /**
  * PostItem interface from ProfilePostList.tsx
+ * Note: This interface is duplicated here for reference, but the actual definition
+ * is in components/profile/ProfilePostList.tsx. This is kept for backward compatibility.
  */
 export interface PostItem {
   id: number;
@@ -12,9 +14,12 @@ export interface PostItem {
   hubName: string;
   teretName?: string;
   author: {
+    id?: number; // Author user ID
+    username?: string; // Author username
     name: string;
     avatar: string;
   };
+  excerpt?: string; // Post excerpt/content preview
   replyCount: number;
   likeCount: number;
   createdAt: string;
@@ -31,11 +36,13 @@ export interface PostItem {
 
 /**
  * Adapter to transform PostItem → Byte
- * Uses title wrapped in HTML as cooked content
+ * Uses excerpt if available, otherwise title wrapped in HTML as cooked content
  */
 export function postItemToByte(item: PostItem): Byte {
-  // Use title wrapped in HTML as cooked content
-  const cooked = item.title ? `<p>${item.title}</p>` : FALLBACK_HTML;
+  // Use excerpt if available, otherwise use title wrapped in HTML
+  const cooked = item.excerpt 
+    ? item.excerpt 
+    : (item.title ? `<p>${item.title}</p>` : FALLBACK_HTML);
   
   // Warn if title is missing (telemetry)
   if (!item.title) {
@@ -61,15 +68,16 @@ export function postItemToByte(item: PostItem): Byte {
     id: item.id,
     title: item.title || 'Untitled', // Required for ByteCard validation
     author: {
-      id: 0, // PostItem doesn't have author.id
+      id: item.author.id || 0, // Use author.id if available
       name: item.author.name || 'Unknown User',
-      username: 'unknown', // PostItem doesn't have username
+      username: item.author.username || 'unknown', // Use author.username if available
       avatar: item.author.avatar || '',
     },
     teret,
-    raw: item.title || FALLBACK_HTML,
-    cooked,
+    raw: item.rawContent || item.title || FALLBACK_HTML,
+    cooked, // Use excerpt if available
     createdAt: item.createdAt,
+    origin: item.excerpt ? 'hydrated' : 'summary', // Mark as hydrated if excerpt available, otherwise summary
     media: media.length > 0 ? media : undefined,
     linkPreview: undefined,
     stats: {

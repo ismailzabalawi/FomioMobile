@@ -4,6 +4,9 @@ import { CheckCircle, CaretRight } from 'phosphor-react-native';
 import { Avatar } from '../ui/avatar';
 import { formatTimeAgo } from '@/lib/utils/time';
 import { goToProfile } from '@/shared/navigation/profile';
+import { useByteCardTokens } from './useByteCardTokens';
+import { createTextStyle } from '@/shared/design-system';
+import { BORDER_RADIUS } from '@/shared/theme-constants';
 import type { Byte } from '@/types/byte';
 
 export interface ByteCardHeaderProps {
@@ -22,6 +25,7 @@ export interface ByteCardHeaderProps {
  */
 export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
   const { author } = byte;
+  const { tokens, colors, spacing } = useByteCardTokens();
 
   const handleAvatarPress = useCallback((e?: any) => {
     // Notify parent that header handled the press (prevents parent Pressable from firing)
@@ -48,15 +52,15 @@ export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
   const isAdmin = author.admin || false;
   const isModerator = author.moderator || false;
 
-  // Determine badge color
+  // Determine badge color using theme tokens
   const badgeColor = isAdmin
-    ? '#FF6B6B' // Red for admin
+    ? colors.destructive // Red for admin
     : isModerator
-    ? '#4ECDC4' // Teal for moderator
-    : '#4A6CF7'; // Blue for verified
+    ? tokens.colors.accent // Use accent for moderator
+    : colors.accent; // Blue/accent for verified
 
   return (
-    <View className="flex-row gap-3 items-center">
+    <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
       <Pressable onPress={author.username ? handleAvatarPress : undefined} hitSlop={8}>
         <Avatar
           source={avatarSource}
@@ -65,27 +69,31 @@ export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
         />
       </Pressable>
 
-      <View className="flex-1" style={{ minWidth: 0 }}>
-        <View className="flex-row items-center gap-2 flex-wrap">
-          <View className="flex-row items-center gap-1" style={{ minWidth: 0 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minWidth: 0 }}>
             <Pressable onPress={author.username ? handleNamePress : undefined} hitSlop={4}>
-              <Text className="text-body font-semibold text-fomio-foreground dark:text-fomio-foreground-dark">
+              <Text style={createTextStyle('body', colors.foreground)}>
                 {author.name || author.username}
               </Text>
             </Pressable>
             {(isVerified || isAdmin || isModerator) && (
               <CheckCircle size={16} weight="fill" color={badgeColor} />
             )}
-            <CaretRight size={14} weight="bold" color="#9CA3AF" />
+            <CaretRight size={14} weight="bold" color={colors.mutedForeground} />
           </View>
 
           {(byte.hub || byte.teret) && (
-            <View className="flex-row flex-wrap items-center gap-2">
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm }}>
               {byte.hub?.name && (
                 <Text
-                  className="px-2 py-0.5 rounded-full text-xs font-medium"
                   style={{
-                    backgroundColor: byte.hub.color || '#6B7280',
+                    paddingHorizontal: spacing.sm,
+                    paddingVertical: spacing.xs / 2,
+                    borderRadius: BORDER_RADIUS.full,
+                    fontSize: 12,
+                    fontWeight: '500',
+                    backgroundColor: byte.hub.color || colors.mutedForeground,
                     color: '#ffffff',
                   }}
                 >
@@ -94,9 +102,13 @@ export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
               )}
               {byte.teret?.name && (
                 <Text
-                  className="px-2 py-0.5 rounded-full text-xs font-medium"
                   style={{
-                    backgroundColor: byte.teret.color || '#4A6CF7',
+                    paddingHorizontal: spacing.sm,
+                    paddingVertical: spacing.xs / 2,
+                    borderRadius: BORDER_RADIUS.full,
+                    fontSize: 12,
+                    fontWeight: '500',
+                    backgroundColor: byte.teret.color || colors.accent,
                     color: '#ffffff',
                   }}
                 >
@@ -107,7 +119,7 @@ export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
           )}
         </View>
 
-        <Text className="text-caption text-fomio-muted dark:text-fomio-muted-dark mt-1">
+        <Text style={[createTextStyle('caption', colors.mutedForeground), { marginTop: spacing.xs }]}>
           {formatTimeAgo(byte.createdAt)}
         </Text>
       </View>

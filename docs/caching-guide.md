@@ -1,8 +1,8 @@
-# Fomio Mobile Caching Guide
+# Fomio Caching Guide
 
 ## Overview
 
-Fomio Mobile uses **TanStack Query (React Query)** as the primary caching and data fetching solution. This guide outlines the rules, patterns, and best practices for working with the caching system.
+Fomio uses **TanStack Query (React Query)** as the primary caching and data fetching solution. This guide outlines the rules, patterns, and best practices for working with the caching system.
 
 ## Core Principles
 

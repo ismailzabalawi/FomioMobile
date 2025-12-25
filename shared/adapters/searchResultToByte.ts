@@ -76,7 +76,7 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
       ? discourseApi.getAvatarUrl(avatarTemplate, 120)
       : (author.avatar || '');
   } else if (result.details?.created_by) {
-    // Alternative structure
+    // Alternative structure - created_by is the original creator
     const createdBy = result.details.created_by;
     authorId = createdBy.id || 0;
     username = createdBy.username || 'unknown';
@@ -85,8 +85,35 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
     avatar = avatarTemplate 
       ? discourseApi.getAvatarUrl(avatarTemplate, 120)
       : '';
+  } else if (result.posters && result.posters.length > 0) {
+    // Try to extract original poster from posters array
+    const originalPoster = result.posters.find((poster: any) => 
+      poster.description?.includes('Original Poster') || 
+      poster.extras?.includes('single') ||
+      poster.description?.includes('Creator')
+    ) || result.posters[0];
+    
+    if (originalPoster?.user) {
+      // Poster has full user object
+      authorId = originalPoster.user.id || originalPoster.user_id || 0;
+      username = originalPoster.user.username || 'unknown';
+      name = originalPoster.user.name || originalPoster.user.username || 'Unknown User';
+      const avatarTemplate = originalPoster.user.avatar_template || '';
+      avatar = avatarTemplate 
+        ? discourseApi.getAvatarUrl(avatarTemplate, 120)
+        : '';
+    } else if (originalPoster?.user_id) {
+      // Poster only has user_id, try to get username from other fields
+      authorId = originalPoster.user_id;
+      username = originalPoster.username || 'unknown';
+      name = originalPoster.name || 'Unknown User';
+      const avatarTemplate = originalPoster.avatar_template || '';
+      avatar = avatarTemplate 
+        ? discourseApi.getAvatarUrl(avatarTemplate, 120)
+        : '';
+    }
   } else if (result.last_poster) {
-    // Fallback to last poster
+    // Last resort: fallback to last poster (not ideal, but better than 'unknown')
     const lastPoster = result.last_poster;
     authorId = lastPoster.id || 0;
     username = lastPoster.username || 'unknown';
@@ -95,6 +122,9 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
     avatar = avatarTemplate 
       ? discourseApi.getAvatarUrl(avatarTemplate, 120)
       : '';
+    if (__DEV__) {
+      console.warn(`⚠️ searchResultToByte: Using last_poster as fallback for result ${result.id || 'unknown'}`);
+    }
   }
   
   // Category data - DiscourseByte has category: { id, name, color } and hubId

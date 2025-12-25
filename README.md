@@ -1,6 +1,6 @@
-# FomioMobile
+# Fomio
 
-A mobile-first, privacy-conscious alternative to Reddit built with React Native and Expo. FomioMobile connects to a Discourse backend to provide a native mobile experience for social forums.
+A mobile-first, privacy-conscious alternative to Reddit built with React Native and Expo. Fomio connects to a Discourse backend to provide a native mobile experience for social forums.
 
 ## Features
 
@@ -65,7 +65,7 @@ A mobile-first, privacy-conscious alternative to Reddit built with React Native 
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd FomioMobile
+cd Fomio
 ```
 
 2. Install dependencies:
@@ -107,7 +107,7 @@ npm start
 ## Project Structure
 
 ```
-FomioMobile/
+Fomio/
 ├── app/                          # Expo Router pages
 │   ├── (auth)/                   # Authentication screens
 │   │   ├── _layout.tsx
@@ -186,7 +186,7 @@ FomioMobile/
 
 ## Discourse Integration
 
-FomioMobile uses a custom mapping system to transform Discourse's forum structure into a social media interface:
+Fomio uses a custom mapping system to transform Discourse's forum structure into a social media interface:
 
 - **Categories** → **Hubs** - Main content categories
 - **Topics** → **Bytes** - Individual posts
@@ -194,7 +194,7 @@ FomioMobile uses a custom mapping system to transform Discourse's forum structur
 
 ### Authentication
 
-FomioMobile uses **User API Keys** for authentication:
+Fomio uses **User API Keys** for authentication:
 
 - Users authorize the app through Discourse's User API Key authorization flow
 - Each user generates their own API key with scoped permissions

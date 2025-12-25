@@ -21,9 +21,12 @@ export interface PostItem {
   hubName: string;
   teretName?: string;
   author: {
+    id?: number; // Author user ID
+    username?: string; // Author username
     name: string;
     avatar: string;
   };
+  excerpt?: string; // Post excerpt/content preview
   replyCount: number;
   likeCount: number;
   createdAt: string;

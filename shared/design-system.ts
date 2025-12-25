@@ -1,5 +1,5 @@
 /**
- * FomioMobile Design System
+ * Fomio Design System
  * Comprehensive design tokens for visual consistency and professional polish
  */
 

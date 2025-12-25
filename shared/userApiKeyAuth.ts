@@ -54,7 +54,7 @@ function getRedirectUri(): string {
 }
 
 const config = Constants.expoConfig?.extra || {};
-const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
+const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.fomio.app';
 const DEFAULT_AUTH_REDIRECT = getRedirectUri();
 const AUTH_REDIRECT_SCHEME = process.env.EXPO_PUBLIC_AUTH_REDIRECT_SCHEME || DEFAULT_AUTH_REDIRECT;
 

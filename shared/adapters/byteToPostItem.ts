@@ -15,9 +15,12 @@ export function byteToPostItem(byte: Byte): PostItem {
     hubName: byte.hub?.name || 'Uncategorized',
     teretName: byte.teret?.name,
     author: {
+      id: typeof byte.author.id === 'number' ? byte.author.id : undefined,
+      username: byte.author.username || undefined,
       name: byte.author.name || byte.author.username || 'Unknown',
       avatar: byte.author.avatar || '',
     },
+    excerpt: byte.cooked || undefined, // Use cooked content as excerpt
     replyCount: byte.stats.replies || 0,
     likeCount: byte.stats.likes || 0,
     createdAt: byte.createdAt,
@@ -76,11 +79,15 @@ export function discourseTopicToPostItem(topic: any, discourseApiInstance: typeo
   // 2. topic.posters array (from topic list endpoints)
   // 3. topic.username (from user_actions)
   // 4. topic.acting_username (from user_actions)
+  let authorId: number | undefined = undefined;
+  let authorUsername: string | undefined = undefined;
   let authorName = 'Unknown';
   let authorAvatar = '';
   
   if (topic.user) {
     // From activity endpoints
+    authorId = topic.user.id || undefined;
+    authorUsername = topic.user.username || undefined;
     authorName = topic.user.name || topic.user.username || 'Unknown';
     authorAvatar = topic.user.avatar_template
       ? discourseApiInstance.getAvatarUrl(topic.user.avatar_template, 120)
@@ -88,22 +95,50 @@ export function discourseTopicToPostItem(topic: any, discourseApiInstance: typeo
   } else if (topic.posters && topic.posters.length > 0) {
     // From topic list endpoints - find original poster
     const creator = topic.posters.find((poster: any) => 
-      poster.description?.includes('Original Poster') || poster.extras?.includes('single')
+      poster.description?.includes('Original Poster') || 
+      poster.extras?.includes('single') ||
+      poster.description?.includes('Creator')
     ) || topic.posters[0];
     
     if (creator?.user) {
+      authorId = creator.user.id || creator.user_id || undefined;
+      authorUsername = creator.user.username || undefined;
       authorName = creator.user.name || creator.user.username || 'Unknown';
       authorAvatar = creator.user.avatar_template
         ? discourseApiInstance.getAvatarUrl(creator.user.avatar_template, 120)
         : '';
+    } else if (creator?.user_id) {
+      // Poster only has user_id
+      authorId = creator.user_id;
+      authorUsername = creator.username || undefined;
+      authorName = creator.name || 'Unknown';
+      const avatarTemplate = creator.avatar_template || '';
+      authorAvatar = avatarTemplate
+        ? discourseApiInstance.getAvatarUrl(avatarTemplate, 120)
+        : '';
     }
   } else if (topic.username || topic.acting_username) {
     // From user_actions - username is directly on the action
+    authorId = topic.user_id || topic.acting_user_id || undefined;
+    authorUsername = topic.username || topic.acting_username || undefined;
     authorName = topic.name || topic.username || topic.acting_username || 'Unknown';
     authorAvatar = topic.avatar_template || topic.acting_avatar_template
       ? discourseApiInstance.getAvatarUrl(topic.avatar_template || topic.acting_avatar_template, 120)
       : '';
+  } else if (topic.details?.created_by) {
+    // Fallback to created_by
+    const createdBy = topic.details.created_by;
+    authorId = createdBy.id || undefined;
+    authorUsername = createdBy.username || undefined;
+    authorName = createdBy.name || createdBy.username || 'Unknown';
+    const avatarTemplate = createdBy.avatar_template || '';
+    authorAvatar = avatarTemplate
+      ? discourseApiInstance.getAvatarUrl(avatarTemplate, 120)
+      : '';
   }
+  
+  // Extract excerpt - can be in multiple places
+  const excerpt = topic.excerpt || topic.blurb || undefined;
   
   // Extract category info
   const categoryName = topic.category?.name || 
@@ -116,9 +151,12 @@ export function discourseTopicToPostItem(topic: any, discourseApiInstance: typeo
     hubName: categoryName,
     teretName: topic.category?.slug,
     author: {
+      id: authorId,
+      username: authorUsername,
       name: authorName,
       avatar: authorAvatar,
     },
+    excerpt, // Include excerpt if available
     replyCount: topic.reply_count || 0,
     likeCount: topic.like_count || 0,
     createdAt: topic.created_at || topic.created_at_ago || new Date().toISOString(),
@@ -145,10 +183,15 @@ export function userActionToPostItem(action: any, discourseApiInstance: typeof d
     : undefined;
   
   // Extract author from action object
+  const authorId = action.user_id || action.acting_user_id || undefined;
+  const authorUsername = action.username || action.acting_username || undefined;
   const authorName = action.name || action.username || action.acting_username || 'Unknown';
   const authorAvatar = (action.avatar_template || action.acting_avatar_template)
     ? discourseApiInstance.getAvatarUrl(action.avatar_template || action.acting_avatar_template, 120)
     : '';
+  
+  // Extract excerpt if available
+  const excerpt = action.excerpt || action.blurb || undefined;
   
   return {
     id: topicId,
@@ -156,9 +199,12 @@ export function userActionToPostItem(action: any, discourseApiInstance: typeof d
     title: action.title || 'Untitled',
     hubName: action.category_id ? 'Uncategorized' : 'Uncategorized', // Category name not in user_action
     author: {
+      id: authorId,
+      username: authorUsername,
       name: authorName,
       avatar: authorAvatar,
     },
+    excerpt, // Include excerpt if available
     replyCount: 0, // Not available in user_action
     likeCount: 0, // Not available in user_action
     createdAt: action.created_at || new Date().toISOString(),

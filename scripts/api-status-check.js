@@ -10,7 +10,7 @@ const { URL } = require('url');
 
 // Configuration
 const API_CONFIG = {
-  baseUrl: 'https://meta.techrebels.info',
+  baseUrl: 'https://meta.fomio.app',
   endpoints: [
     '/site.json',
     '/categories.json',
@@ -40,7 +40,7 @@ function makeRequest(url, timeout = 10000) {
       method: 'GET',
       timeout: timeout,
       headers: {
-        'User-Agent': 'FomioMobile-StatusCheck/1.0',
+        'User-Agent': 'Fomio-StatusCheck/1.0',
       },
     };
 
@@ -202,7 +202,7 @@ function securityCheck() {
     },
     {
       name: 'Valid Domain',
-      status: API_CONFIG.baseUrl.includes('meta.techrebels.info'),
+      status: API_CONFIG.baseUrl.includes('meta.fomio.app'),
       description: 'Using configured Discourse instance',
     },
     {
@@ -226,7 +226,7 @@ function securityCheck() {
 // Main execution
 async function main() {
   try {
-    console.log(`${colors.bold}🚀 FomioMobile Discourse API Status Check${colors.reset}`);
+    console.log(`${colors.bold}🚀 Fomio Discourse API Status Check${colors.reset}`);
     console.log(`Started at: ${new Date().toISOString()}`);
     console.log('');
 

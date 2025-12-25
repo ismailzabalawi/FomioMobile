@@ -3,11 +3,11 @@ import { View, Text, TouchableOpacity, Linking, ScrollView, useWindowDimensions,
 import Markdown from 'react-native-markdown-display';
 import RenderHTML, { HTMLContentModel, HTMLElementModel } from 'react-native-render-html';
 import { Image } from 'expo-image';
+import { WebView } from 'react-native-webview';
 import { useTheme } from '@/components/theme';
 import { getMarkdownStyles } from '@/shared/markdown-styles';
 import * as WebBrowser from 'expo-web-browser';
 import { getThemeColors } from '@/shared/theme-constants';
-import { LinkSimpleBreak } from 'phosphor-react-native';
 
 export interface MarkdownContentProps {
   content: string; // HTML from Discourse `cooked` field
@@ -31,7 +31,11 @@ export interface MarkdownContentProps {
 // - Themed with Fomio semantic tokens
 // - Links open in in-app browser
 // - Images use expo-image and are tappable (lightbox-ready)
-export function MarkdownContent({ content, isRawMarkdown = false, linkMetadata }: MarkdownContentProps) {
+export function MarkdownContent({
+  content,
+  isRawMarkdown = false,
+  linkMetadata: _linkMetadata,
+}: MarkdownContentProps) {
   const { isDark } = useTheme();
   const { width } = useWindowDimensions();
   const markdownStyles = useMemo(() => getMarkdownStyles(isDark), [isDark]);
@@ -39,6 +43,60 @@ export function MarkdownContent({ content, isRawMarkdown = false, linkMetadata }
   const contentWidth = Math.max(320, width - 32); // keep nice margins even on small screens
   const baseTextColor = isDark ? '#F5F5F7' : colors.foreground;
   const codeFont = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+
+  const oneboxContainerStyle = useMemo(
+    () => ({
+      marginVertical: 10,
+      padding: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      shadowColor: '#000',
+      shadowOpacity: 0.05,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 3 },
+    }),
+    [colors]
+  );
+
+  const classesStyles = useMemo(
+    () => ({
+      onebox: {
+        marginVertical: 0,
+      },
+      source: {
+        color: colors.secondary,
+        fontSize: 12,
+        marginBottom: 6,
+      },
+      'onebox-body': {
+        marginTop: 4,
+      },
+      'onebox-title': {
+        color: baseTextColor,
+        fontSize: 16,
+        fontWeight: '700',
+        lineHeight: 22,
+        marginBottom: 6,
+      },
+      'onebox-site-name': {
+        color: colors.accent,
+        fontSize: 12,
+        fontWeight: '600',
+      },
+      'onebox-image': {
+        borderRadius: 10,
+        overflow: 'hidden',
+        marginTop: 8,
+      },
+      'onebox-avatar': {
+        borderRadius: 8,
+        overflow: 'hidden',
+      },
+    }),
+    [baseTextColor, colors]
+  );
 
   // Renderer for links (shared across HTML and markdown paths)
   const renderLink = useMemo(
@@ -61,6 +119,86 @@ export function MarkdownContent({ content, isRawMarkdown = false, linkMetadata }
   // Custom renderers for RenderHTML (cooked HTML path)
   const htmlRenderers = useMemo(
     () => ({
+      aside: (props: any) => {
+        const { tnode, TDefaultRenderer, TNodeChildrenRenderer } = props;
+        const className = tnode?.attributes?.class || '';
+        const isOnebox = className.split(' ').includes('onebox');
+        if (!isOnebox) {
+          return <TDefaultRenderer {...props} />;
+        }
+        return (
+          <TDefaultRenderer {...props} style={[props.style, oneboxContainerStyle]}>
+            <TNodeChildrenRenderer tnode={tnode} />
+          </TDefaultRenderer>
+        );
+      },
+      div: (props: any) => {
+        const { tnode, TDefaultRenderer } = props;
+        const className = tnode?.attributes?.class || '';
+        const classList = className.split(' ');
+        const isVideoOnebox =
+          classList.includes('lazy-video-container') ||
+          classList.includes('youtube-onebox') ||
+          classList.includes('video-onebox');
+
+        if (!isVideoOnebox) {
+          return <TDefaultRenderer {...props} />;
+        }
+
+        const providerName = tnode?.attributes?.['data-provider-name'];
+        const rawVideoId = tnode?.attributes?.['data-video-id'];
+        const rawTitle = tnode?.attributes?.['data-video-title'];
+        const rawStart = tnode?.attributes?.['data-video-start-time'];
+        const href = findFirstHref(tnode);
+        const startSeconds = parseVideoStartTime(rawStart);
+        const embedUrl = buildVideoEmbedUrl({
+          providerName,
+          videoId: rawVideoId,
+          href,
+          startSeconds,
+        });
+
+        if (!embedUrl) {
+          return <TDefaultRenderer {...props} />;
+        }
+
+        return (
+          <TDefaultRenderer {...props} style={[props.style, { marginVertical: 10 }]}>
+            <View
+              style={{
+                width: '100%',
+                aspectRatio: 16 / 9,
+                borderRadius: 12,
+                overflow: 'hidden',
+                backgroundColor: colors.muted,
+                shadowColor: '#000',
+                shadowOpacity: 0.08,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+              }}
+            >
+              <WebView
+                source={{ html: buildVideoEmbedHtml(embedUrl) }}
+                originWhitelist={['*']}
+                allowsInlineMediaPlayback
+                mediaPlaybackRequiresUserAction={false}
+                javaScriptEnabled
+                domStorageEnabled
+                startInLoadingState
+                scrollEnabled={false}
+                allowsFullscreenVideo
+                setSupportMultipleWindows={false}
+                style={{ flex: 1, backgroundColor: 'transparent' }}
+              />
+            </View>
+            {rawTitle ? (
+              <Text style={{ color: baseTextColor, fontSize: 14, marginTop: 8 }}>
+                {rawTitle}
+              </Text>
+            ) : null}
+          </TDefaultRenderer>
+        );
+      },
       img: ({ tnode }: any) => {
         const attrs = tnode?.attributes || {};
         const src = attrs.src;
@@ -129,40 +267,8 @@ export function MarkdownContent({ content, isRawMarkdown = false, linkMetadata }
           </View>
         );
       },
-      a: ({ tnode }: any) => {
-        const href = tnode?.attributes?.href;
-        if (!href) return null;
-        const label = (tnode?.data || tnode?.textContent || href).trim();
-        const isStandalone =
-          tnode?.parent?.tagName === 'p' &&
-          Array.isArray(tnode?.parent?.children) &&
-          tnode.parent.children.length === 1;
-
-        if (isStandalone) {
-          return (
-            <LinkPreviewCard
-              key={href}
-              url={href}
-              label={label}
-              colors={colors}
-              baseTextColor={baseTextColor}
-              metadata={linkMetadata?.[href]}
-              onPress={() => renderLink.onPress?.(undefined, href)}
-            />
-          );
-        }
-
-        return (
-          <Text
-            style={markdownStyles.link}
-            onPress={(event) => renderLink.onPress?.(event, href)}
-          >
-            {label || href}
-          </Text>
-        );
-      },
     }),
-    [baseTextColor, codeFont, colors, isDark, markdownStyles.link, renderLink]
+    [baseTextColor, codeFont, colors, isDark, oneboxContainerStyle, renderLink]
   );
 
   // Styles for HTML tags (cooked content)
@@ -208,26 +314,6 @@ export function MarkdownContent({ content, isRawMarkdown = false, linkMetadata }
           rules={{
             link: (node: any, children: any, parent: any, styles: any) => {
               const url = node.attributes?.href;
-              const label = Array.isArray(children) ? children.join('') : url;
-              const isStandalone =
-                parent?.type === 'paragraph' &&
-                Array.isArray(parent?.children) &&
-                parent.children.length === 1;
-
-              if (isStandalone && url) {
-                return (
-                  <LinkPreviewCard
-                    key={node.key}
-                    url={url}
-                    label={label || url}
-                    colors={colors}
-                    baseTextColor={baseTextColor}
-                    metadata={linkMetadata?.[url]}
-                    onPress={() => renderLink.onPress?.(undefined, url)}
-                  />
-                );
-              }
-
               return (
                 <Text
                   key={node.key}
@@ -293,6 +379,7 @@ export function MarkdownContent({ content, isRawMarkdown = false, linkMetadata }
       }}
       defaultTextProps={{ selectable: false }}
       tagsStyles={tagsStyles}
+      classesStyles={classesStyles as any}
       renderers={htmlRenderers as any}
       renderersProps={{
         a: {
@@ -310,155 +397,101 @@ export function MarkdownContent({ content, isRawMarkdown = false, linkMetadata }
   );
 }
 
-function LinkPreviewCard({
-  url,
-  label,
-  colors,
-  baseTextColor,
-  onPress,
-  metadata,
-}: {
-  url: string;
-  label: string;
-  colors: ReturnType<typeof getThemeColors>;
-  baseTextColor: string;
-  onPress?: () => void;
-  metadata?: {
-    title?: string;
-    description?: string;
-    image?: string;
-    favicon?: string;
-    siteName?: string;
-    publishedAt?: string;
-    type?: 'article' | 'video' | 'post' | 'generic';
-  };
-}) {
-  let host = '';
-  try {
-    host = new URL(url).host;
-  } catch {
-    host = url;
+function parseVideoStartTime(raw?: string): number | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) {
+    return Number(trimmed);
   }
-
-  const isArticle = metadata?.type === 'article' || !!metadata?.description || !!metadata?.image;
-  const titleText = metadata?.title || label || url;
-  const descriptionText = metadata?.description;
-  const timeAgo = formatTimeAgo(metadata?.publishedAt);
-
-  return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={() => {
-        if (onPress) {
-          onPress();
-          return;
-        }
-        // Fallback open
-        Linking.openURL(url).catch(() => {});
-      }}
-      style={{
-        marginVertical: 10,
-        padding: isArticle ? 14 : 12,
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.card,
-        shadowColor: '#000',
-        shadowOpacity: 0.05,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 3 },
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-        <LinkSimpleBreak size={18} color={colors.accent} weight="bold" />
-        {metadata?.favicon ? (
-          <Image
-            source={{ uri: metadata.favicon }}
-            style={{ width: 18, height: 18, borderRadius: 4 }}
-            contentFit="cover"
-          />
-        ) : null}
-        <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
-          {metadata?.siteName || host}
-        </Text>
-        {timeAgo ? (
-          <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={1}>
-            · {timeAgo}
-          </Text>
-        ) : null}
-      </View>
-
-      {isArticle ? (
-        <>
-          <Text
-            numberOfLines={2}
-            style={{ color: baseTextColor, fontSize: 16, lineHeight: 23, fontWeight: '700', marginBottom: 6 }}
-          >
-            {titleText}
-          </Text>
-          {descriptionText ? (
-            <Text
-              numberOfLines={3}
-              style={{ color: colors.secondary, fontSize: 14, lineHeight: 20, marginBottom: metadata?.image ? 10 : 6 }}
-            >
-              {descriptionText}
-            </Text>
-          ) : null}
-          {metadata?.image ? (
-            <Image
-              source={{ uri: metadata.image }}
-              style={{ width: '100%', aspectRatio: 16 / 9, borderRadius: 12 }}
-              contentFit="cover"
-              transition={150}
-            />
-          ) : null}
-        </>
-      ) : (
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          {metadata?.image ? (
-            <Image
-              source={{ uri: metadata.image }}
-              style={{ width: 72, height: 72, borderRadius: 10 }}
-              contentFit="cover"
-              transition={150}
-            />
-          ) : null}
-
-          <View style={{ flex: 1 }}>
-            <Text
-              numberOfLines={2}
-              style={{ color: baseTextColor, fontSize: 15, lineHeight: 22, fontWeight: '700' }}
-            >
-              {titleText}
-            </Text>
-            {descriptionText ? (
-              <Text
-                numberOfLines={2}
-                style={{ color: colors.secondary, fontSize: 13, lineHeight: 18, marginTop: 4 }}
-              >
-                {descriptionText}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+  const match = trimmed.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/i);
+  if (!match) return null;
+  const hours = match[1] ? Number(match[1]) : 0;
+  const minutes = match[2] ? Number(match[2]) : 0;
+  const seconds = match[3] ? Number(match[3]) : 0;
+  const total = hours * 3600 + minutes * 60 + seconds;
+  return Number.isNaN(total) || total <= 0 ? null : total;
 }
 
-function formatTimeAgo(dateString?: string) {
-  if (!dateString) return null;
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return null;
-  const diff = Date.now() - date.getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 4) return `${weeks}w`;
-  const months = Math.floor(days / 30);
-  return `${months}mo`;
+function extractYouTubeId(url?: string): string | null {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([A-Za-z0-9_-]{6,})/i);
+  return match ? match[1] : null;
+}
+
+function extractVimeoId(url?: string): string | null {
+  if (!url) return null;
+  const match = url.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  return match ? match[1] : null;
+}
+
+function buildVideoEmbedUrl({
+  providerName,
+  videoId,
+  href,
+  startSeconds,
+}: {
+  providerName?: string;
+  videoId?: string;
+  href?: string | null;
+  startSeconds?: number | null;
+}): string | null {
+  const provider = (providerName || '').toLowerCase();
+  let id = videoId || '';
+
+  if (!id && provider.includes('youtube')) {
+    id = extractYouTubeId(href || '') || '';
+  }
+  if (!id && provider.includes('vimeo')) {
+    id = extractVimeoId(href || '') || '';
+  }
+
+  if (provider.includes('youtube') && id) {
+    const startParam = startSeconds ? `&start=${startSeconds}` : '';
+    return `https://www.youtube-nocookie.com/embed/${id}?playsinline=1&rel=0&modestbranding=1${startParam}`;
+  }
+  if (provider.includes('vimeo') && id) {
+    const startParam = startSeconds ? `#t=${startSeconds}s` : '';
+    return `https://player.vimeo.com/video/${id}${startParam}`;
+  }
+
+  return href || null;
+}
+
+function buildVideoEmbedHtml(url: string): string {
+  const escapedUrl = url.replace(/"/g, '&quot;');
+  return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <style>
+      html, body { margin: 0; padding: 0; background: transparent; height: 100%; }
+      .frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    </style>
+  </head>
+  <body>
+    <iframe class="frame" src="${escapedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+  </body>
+</html>`;
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .replace(/[-_]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function findFirstHref(tnode: any): string | null {
+  if (!tnode) return null;
+  const attrs = tnode.attributes || {};
+  if (attrs.href) return attrs.href;
+  const children = Array.isArray(tnode.children) ? tnode.children : [];
+  for (const child of children) {
+    const found = findFirstHref(child);
+    if (found) return found;
+  }
+  return null;
 }

@@ -164,7 +164,7 @@ const validateStoredAuth = (data: any): AppUser | null => {
 
 // Helper function to map DiscourseUser to AppUser
 const mapDiscourseUserToAppUser = (discourseUser: any): AppUser => {
-  const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
+  const DISCOURSE_URL = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.fomio.app';
   return {
     id: discourseUser.id?.toString() || '0',
     username: discourseUser.username || 'unknown',

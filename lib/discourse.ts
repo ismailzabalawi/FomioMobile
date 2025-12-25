@@ -10,8 +10,8 @@ import { authHeaders, signOut as authSignOut } from './auth';
 WebBrowser.maybeCompleteAuthSession();
 
 const config = Constants.expoConfig?.extra || {};
-const BASE_URL = config.DISCOURSE_BASE_URL || 'https://meta.techrebels.info';
-const APPLICATION_NAME = config.APPLICATION_NAME || 'Fomio Mobile';
+const BASE_URL = config.DISCOURSE_BASE_URL || 'https://meta.fomio.app';
+const APPLICATION_NAME = config.APPLICATION_NAME || 'Fomio';
 const SCOPES = config.SCOPES || 'read,write,session,notifications';
 
 function buildRedirectUri() {

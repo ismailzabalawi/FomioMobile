@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, Pressable, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
+import { useByteCardTokens } from './useByteCardTokens';
+import { createTextStyle } from '@/shared/design-system';
 import type { Byte } from '@/types/byte';
 
 /**
@@ -15,15 +17,19 @@ import type { Byte } from '@/types/byte';
  */
 export function ByteCardMedia({ byte }: { byte: Byte }) {
   const { media, linkPreview } = byte;
+  const { tokens, colors, spacing, borderRadius } = useByteCardTokens();
 
   // Image post
   if (media && media.length > 0) {
     return (
-      <View className="mt-3">
+      <View style={{ marginTop: spacing.sm }}>
         <Image
           source={{ uri: media[0] }}
-          className="w-full rounded-xl"
-          style={{ height: 224 }}
+          style={{ 
+            width: '100%',
+            height: 224,
+            borderRadius: tokens.radii.lg,
+          }}
           contentFit="cover"
           transition={200}
           accessibilityLabel="Post image"
@@ -47,31 +53,39 @@ export function ByteCardMedia({ byte }: { byte: Byte }) {
     return (
       <Pressable
         onPress={handleLinkPress}
-        className="mt-3 border border-fomio-border-soft dark:border-fomio-border-soft-dark rounded-xl overflow-hidden active:opacity-90"
+        style={{
+          marginTop: spacing.sm,
+          borderWidth: 1,
+          borderColor: tokens.colors.border,
+          borderRadius: tokens.radii.lg,
+          overflow: 'hidden',
+        }}
       >
         {linkPreview.image && (
           <Image
             source={{ uri: linkPreview.image }}
-            className="w-full"
-            style={{ height: 176 }}
+            style={{ 
+              width: '100%',
+              height: 176,
+            }}
             contentFit="cover"
             transition={200}
             accessibilityLabel="Link preview image"
           />
         )}
-        <View className="p-3">
-          <Text className="font-semibold text-base text-fomio-foreground dark:text-fomio-foreground-dark">
+        <View style={{ padding: spacing.sm }}>
+          <Text style={createTextStyle('body', colors.foreground)}>
             {linkPreview.title}
           </Text>
           {linkPreview.description && (
             <Text
-              className="text-caption text-fomio-muted dark:text-fomio-muted-dark mt-1"
+              style={[createTextStyle('caption', colors.mutedForeground), { marginTop: spacing.xs }]}
               numberOfLines={2}
             >
               {linkPreview.description}
             </Text>
           )}
-          <Text className="mt-2 text-fomio-primary dark:text-fomio-primary-dark text-caption">
+          <Text style={[createTextStyle('caption', colors.accent), { marginTop: spacing.sm }]}>
             {linkPreview.url}
           </Text>
         </View>

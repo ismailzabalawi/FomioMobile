@@ -5,8 +5,8 @@ import { CaretDown, CaretUp } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Byte } from '@/types/byte';
-import { useTheme } from '@/components/theme';
-import { getThemeColors } from '@/shared/theme-constants';
+import { useByteCardTokens } from './useByteCardTokens';
+import { createTextStyle } from '@/shared/design-system';
 
 /**
  * ByteCardContent - Renders Discourse cooked HTML as markdown
@@ -20,8 +20,7 @@ import { getThemeColors } from '@/shared/theme-constants';
  * - Preview mode: Shows truncated content with "Read more" link if content exceeds threshold
  */
 export function ByteCardContent({ byte, isPreview = true }: { byte: Byte; isPreview?: boolean }) {
-  const { themeMode, isDark } = useTheme();
-  const colors = getThemeColors(themeMode, isDark);
+  const { tokens, colors, spacing } = useByteCardTokens();
   const [isExpanded, setIsExpanded] = useState(false);
   
   const CONTENT_THRESHOLD = 350; // Characters
@@ -38,7 +37,7 @@ export function ByteCardContent({ byte, isPreview = true }: { byte: Byte; isPrev
   const showFade = shouldTruncate && !isExpanded;
 
   return (
-    <View className="mt-2">
+    <View style={{ marginTop: spacing.sm }}>
       <View style={{ position: 'relative', paddingBottom: showFade ? 36 : 0 }}>
         <MarkdownContent content={displayContent} />
 
@@ -46,7 +45,7 @@ export function ByteCardContent({ byte, isPreview = true }: { byte: Byte; isPrev
           <>
             <LinearGradient
               pointerEvents="none"
-              colors={['transparent', colors.card]}
+              colors={['transparent', tokens.colors.surfaceFrost]}
               style={{
                 position: 'absolute',
                 left: 0,
@@ -61,21 +60,21 @@ export function ByteCardContent({ byte, isPreview = true }: { byte: Byte; isPrev
                 left: 0,
                 right: 0,
                 bottom: 0,
-                backgroundColor: colors.card,
-                paddingTop: 8,
+                backgroundColor: tokens.colors.surfaceFrost,
+                paddingTop: spacing.sm,
               }}
             >
               <TouchableOpacity
                 onPress={handleToggleExpand}
-                className="flex-row items-center"
+                style={{ flexDirection: 'row', alignItems: 'center' }}
                 accessible
                 accessibilityRole="button"
                 accessibilityLabel={isExpanded ? 'Read less' : 'Read more'}
               >
-                <Text className="text-sm font-medium" style={{ color: colors.accent }}>
+                <Text style={[createTextStyle('caption', colors.accent), { fontWeight: '500' }]}>
                   Read more
                 </Text>
-                <CaretDown size={16} color={colors.accent} weight="regular" style={{ marginLeft: 4 }} />
+                <CaretDown size={16} color={colors.accent} weight="regular" style={{ marginLeft: spacing.xs }} />
               </TouchableOpacity>
             </View>
           </>
@@ -85,15 +84,15 @@ export function ByteCardContent({ byte, isPreview = true }: { byte: Byte; isPrev
       {shouldTruncate && isExpanded && (
         <TouchableOpacity
           onPress={handleToggleExpand}
-          className="flex-row items-center mt-2"
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm }}
           accessible
           accessibilityRole="button"
           accessibilityLabel="Read less"
         >
-          <Text className="text-sm font-medium" style={{ color: colors.accent }}>
+          <Text style={[createTextStyle('caption', colors.accent), { fontWeight: '500' }]}>
             Read less
           </Text>
-          <CaretUp size={16} color={colors.accent} weight="regular" style={{ marginLeft: 4 }} />
+          <CaretUp size={16} color={colors.accent} weight="regular" style={{ marginLeft: spacing.xs }} />
         </TouchableOpacity>
       )}
     </View>

@@ -1,4 +1,4 @@
-// ESLint v9 flat config for FomioMobile
+// ESLint v9 flat config for Fomio
 // Note: Install ESLint and plugins with: npm install --save-dev eslint @typescript-eslint/eslint-plugin @typescript-eslint/parser eslint-plugin-react eslint-plugin-react-hooks
 
 export default [

@@ -7,7 +7,7 @@ export function useDiscourseSettings() {
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const res = await fetch('https://meta.techrebels.info/site.json');
+        const res = await fetch('https://meta.fomio.app/site.json');
         const data = await res.json();
         setSettings({
           minTitle: data.site_settings.min_topic_title_length,

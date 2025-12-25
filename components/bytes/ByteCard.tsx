@@ -1,12 +1,12 @@
-import React, { useRef, useCallback, memo, useState } from 'react';
-import { Pressable, View, Text, Animated, PanResponder, Easing } from 'react-native';
+import React, { useRef, useCallback, memo, useState, useMemo } from 'react';
+import { Pressable, View, Text, Animated, PanResponder } from 'react-native';
 import type { Byte } from '@/types/byte';
 import { ByteCardHeader } from './ByteCardHeader';
 import { ByteCardContent } from './ByteCardContent';
 import { ByteCardMedia } from './ByteCardMedia';
 import { useByteCardActions } from './useByteCardActions';
-import { useTheme } from '@/components/theme';
-import { getThemeColors } from '@/shared/theme-constants';
+import { useByteCardTokens } from './useByteCardTokens';
+import { createTextStyle } from '@/shared/design-system';
 import { Heart, ChatCircle, BookmarkSimple, CaretDown } from 'phosphor-react-native';
 
 export interface ByteCardProps {
@@ -33,8 +33,7 @@ function ByteCardComponent({
   showSeparator = true,
   onPress,
 }: ByteCardProps) {
-  const { themeMode, isAmoled } = useTheme();
-  const colors = getThemeColors(themeMode, isAmoled);
+  const { tokens, colors, spacing, borderRadius, shadows } = useByteCardTokens();
   const [isTrayOpen, setIsTrayOpen] = useState(false);
 
   // Always call hooks unconditionally (Rules of Hooks)
@@ -51,17 +50,16 @@ function ByteCardComponent({
   const trayThreshold = -28;
   const maxDrag = 96;
   const panActiveRef = useRef(false);
-  const actionPadding = useRef(new Animated.Value(4)).current;
+  const actionPadding = useRef(new Animated.Value(4)).current; // spacing.xs = 4
   const arrowRotation = useRef(new Animated.Value(0)).current;
 
   const resetPosition = useCallback(() => {
     Animated.spring(translateX, {
       toValue: 0,
       useNativeDriver: true,
-      tension: 150,
-      friction: 18,
+      ...tokens.motion.liquidSpring,
     }).start();
-  }, [translateX]);
+  }, [translateX, tokens.motion.liquidSpring]);
 
   // Track if header area was pressed to prevent parent Pressable from handling
   const headerPressedRef = useRef(false);
@@ -125,20 +123,20 @@ function ByteCardComponent({
 
   // Animate padding around the action row and arrow rotation when tray toggles
   React.useEffect(() => {
-    Animated.timing(actionPadding, {
-      toValue: isTrayOpen ? 12 : 4,
-      duration: 160,
-      easing: Easing.out(Easing.quad),
+    Animated.spring(actionPadding, {
+      toValue: isTrayOpen ? spacing.sm : spacing.xs,
       useNativeDriver: false,
+      damping: tokens.motion.liquidSpring.damping,
+      stiffness: tokens.motion.liquidSpring.stiffness,
     }).start();
 
-    Animated.timing(arrowRotation, {
+    Animated.spring(arrowRotation, {
       toValue: isTrayOpen ? 1 : 0,
-      duration: 180,
-      easing: Easing.out(Easing.quad),
       useNativeDriver: true,
+      damping: tokens.motion.snapSpring.damping,
+      stiffness: tokens.motion.snapSpring.stiffness,
     }).start();
-  }, [actionPadding, arrowRotation, isTrayOpen]);
+  }, [actionPadding, arrowRotation, isTrayOpen, spacing, tokens.motion]);
 
   // Guard against invalid bytes - AFTER all hooks
   if (!isValidByte) {
@@ -179,40 +177,40 @@ function ByteCardComponent({
     resetPosition();
   };
 
+  const cardStyle = useMemo(() => ({
+    width: '100%' as const,
+    minWidth: 0,
+    backgroundColor: tokens.colors.surfaceFrost,
+    borderColor: tokens.colors.border,
+    borderWidth: 1,
+    borderRadius: tokens.radii.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...tokens.shadows.soft,
+    transform: [{ translateX }],
+  }), [tokens, spacing, translateX]);
+
   return (
     <Pressable
       onPress={handlePress}
       onPressIn={handlePressIn}
-      className="px-4 pt-4 active:opacity-90"
-      android_ripple={{ color: 'rgba(0,0,0,0.06)', foreground: true }}
+      style={{ 
+        width: '100%',
+        paddingHorizontal: spacing.md,
+        paddingTop: spacing.md,
+      }}
+      android_ripple={{ color: tokens.colors.shadow + '20', foreground: true }}
       accessible
       accessibilityRole="button"
       accessibilityLabel={`Byte by ${byte.author.name}`}
-      style={{ width: '100%' }}
     >
       <Animated.View
-        style={{
-          width: '100%',
-          minWidth: 0,
-          backgroundColor: colors.card,
-          borderColor: colors.border,
-          borderWidth: 1,
-          borderRadius: 16,
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-          shadowColor: '#000',
-          shadowOpacity: 0.05,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: 2,
-          transform: [{ translateX }],
-        }}
+        style={cardStyle}
         {...panResponder.panHandlers}
       >
-        {/* Remove flex-1 - FlatList items should use natural height */}
         {/* Title first */}
         {byte.title && (
-          <Text className="text-title font-bold text-fomio-foreground dark:text-fomio-foreground-dark mb-2">
+          <Text style={[createTextStyle('title', colors.foreground), { marginBottom: spacing.sm }]}>
             {byte.title}
           </Text>
         )}
@@ -226,20 +224,28 @@ function ByteCardComponent({
           <ByteCardMedia byte={byte} />
 
           {/* Inline metrics + tray toggle (arrow inline with icons) */}
-          <Animated.View className="flex-row items-center gap-4 mt-3" style={{ paddingVertical: actionPadding }}>
-            <View className="flex-row items-center gap-1">
+          <Animated.View 
+            style={{ 
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: spacing.md,
+              marginTop: spacing.sm,
+              paddingVertical: actionPadding,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
               <Heart
                 size={22}
                 weight={actions.isLiked ? 'fill' : 'regular'}
                 color={actions.isLiked ? colors.like : colors.comment}
               />
-              <Text className="text-base font-semibold text-fomio-muted dark:text-fomio-muted-dark">
+              <Text style={[createTextStyle('body', colors.mutedForeground), { fontWeight: '600' }]}>
                 {actions.likeCount}
               </Text>
             </View>
-            <View className="flex-row items-center gap-1">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
               <ChatCircle size={22} weight="bold" color={colors.comment} />
-              <Text className="text-base font-semibold text-fomio-muted dark:text-fomio-muted-dark">
+              <Text style={[createTextStyle('body', colors.mutedForeground), { fontWeight: '600' }]}>
                 {byte.stats.replies}
               </Text>
             </View>
@@ -250,7 +256,7 @@ function ByteCardComponent({
               accessibilityRole="button"
               accessibilityLabel="Show actions"
               accessibilityState={{ expanded: isTrayOpen }}
-              className="rounded-full"
+              style={{ borderRadius: borderRadius.full }}
             >
               <Animated.View
                 style={{
@@ -275,20 +281,23 @@ function ByteCardComponent({
 
           {isTrayOpen && (
             <View
-              className="flex-row items-center justify-between mt-3"
               style={{
-                backgroundColor: `${colors.muted}33`,
-                borderColor: colors.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginTop: spacing.sm,
+                backgroundColor: tokens.colors.surfaceMuted,
+                borderColor: tokens.colors.border,
                 borderWidth: 1,
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
+                borderRadius: tokens.radii.md,
+                paddingHorizontal: spacing.sm,
+                paddingVertical: spacing.sm,
               }}
             >
               <Pressable
                 onPress={actions.toggleLike}
                 disabled={actions.loadingLike}
-                className="flex-row items-center gap-2"
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Like"
@@ -299,20 +308,20 @@ function ByteCardComponent({
                   weight={actions.isLiked ? 'fill' : 'regular'}
                   color={actions.isLiked ? colors.like : colors.comment}
                 />
-                <Text className="text-sm font-semibold text-fomio-foreground dark:text-fomio-foreground-dark">
+                <Text style={createTextStyle('caption', colors.foreground)}>
                   {actions.isLiked ? 'Liked' : 'Like'}
                 </Text>
               </Pressable>
 
               <Pressable
                 onPress={actions.onCommentPress}
-                className="flex-row items-center gap-2"
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Reply"
               >
                 <ChatCircle size={20} weight="regular" color={colors.comment} />
-                <Text className="text-sm font-semibold text-fomio-foreground dark:text-fomio-foreground-dark">
+                <Text style={createTextStyle('caption', colors.foreground)}>
                   Reply
                 </Text>
               </Pressable>
@@ -320,7 +329,7 @@ function ByteCardComponent({
               <Pressable
                 onPress={actions.toggleBookmark}
                 disabled={actions.loadingBookmark}
-                className="flex-row items-center gap-2"
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Bookmark"
@@ -331,7 +340,7 @@ function ByteCardComponent({
                   weight={actions.isBookmarked ? 'fill' : 'regular'}
                   color={actions.isBookmarked ? colors.bookmark : colors.comment}
                 />
-                <Text className="text-sm font-semibold text-fomio-foreground dark:text-fomio-foreground-dark">
+                <Text style={createTextStyle('caption', colors.foreground)}>
                   {actions.isBookmarked ? 'Saved' : 'Save'}
                 </Text>
               </Pressable>
@@ -340,7 +349,15 @@ function ByteCardComponent({
         </View>
         
         {showSeparator && (
-          <View className="h-[1px] bg-fomio-border-soft dark:bg-fomio-border-soft-dark opacity-20 mt-3 mb-1" />
+          <View 
+            style={{ 
+              height: 1,
+              backgroundColor: tokens.colors.border,
+              opacity: 0.2,
+              marginTop: spacing.sm,
+              marginBottom: spacing.xs,
+            }} 
+          />
         )}
       </Animated.View>
     </Pressable>

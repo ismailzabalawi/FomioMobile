@@ -14,7 +14,7 @@ import { parseURLParameters } from './auth-utils';
 WebBrowser.maybeCompleteAuthSession();
 
 const config = Constants.expoConfig?.extra || {};
-const SITE = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info';
+const SITE = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.fomio.app';
 const STORAGE_KEY = 'disc_user_api_key';
 const CLIENT_ID_KEY = 'disc_client_id';
 

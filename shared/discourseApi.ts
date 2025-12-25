@@ -376,7 +376,7 @@ class DiscourseApiService {
       const isFormData = options.body instanceof FormData;
       const headers: Record<string, string> = {
         'X-Requested-With': 'XMLHttpRequest',
-        'User-Agent': 'FomioMobile/1.0',
+        'User-Agent': 'Fomio/1.0',
         ...(options.headers as Record<string, string> | undefined),
       };
       
@@ -2124,6 +2124,31 @@ class DiscourseApiService {
     // Detect if this is a summary (no post_stream) or full topic
     const isSummary = !topic.post_stream;
     
+    // Extract original poster - prefer created_by, then original poster from posters array, fallback to last_poster
+    let authorUser = topic.details?.created_by;
+    
+    if (!authorUser && topic.posters && topic.posters.length > 0) {
+      // Try to find original poster from posters array
+      const originalPoster = topic.posters.find((poster: any) => 
+        poster.description?.includes('Original Poster') || 
+        poster.extras?.includes('single') ||
+        poster.description?.includes('Creator')
+      ) || topic.posters[0];
+      
+      // If poster has user object, use it
+      if (originalPoster?.user) {
+        authorUser = originalPoster.user;
+      }
+    }
+    
+    // Fallback to last_poster only if we couldn't find original creator
+    if (!authorUser) {
+      authorUser = topic.last_poster;
+      if (__DEV__ && topic.id) {
+        console.warn(`⚠️ mapTopicToByte: Topic ${topic.id} - Using last_poster as fallback (original creator not found)`);
+      }
+    }
+    
     return {
       id: topic.id,
       title: topic.title,
@@ -2137,7 +2162,7 @@ class DiscourseApiService {
         : (topic.post_stream?.posts?.[0]?.raw || ''),
       hubId: topic.category_id,
       hubName: topic.category?.name || '',
-      author: this.mapDiscourseUserToAppUser(topic.details?.created_by || topic.last_poster),
+      author: this.mapDiscourseUserToAppUser(authorUser),
       category: {
         id: topic.category_id,
         name: topic.category?.name || '',
@@ -2523,7 +2548,7 @@ class DiscourseApiService {
         body: JSON.stringify({
           post: {
             raw: sanitizedContent,
-            edit_reason: 'Updated via FomioMobile'
+            edit_reason: 'Updated via Fomio'
           }
         })
       });
@@ -3082,7 +3107,7 @@ class DiscourseApiService {
 
 // Default configuration with security validation
 const defaultConfig: DiscourseConfig = {
-  baseUrl: config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.techrebels.info', // Use TechRebels as default
+  baseUrl: config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.fomio.app', // Use Fomio as default
 };
 
 // Log configuration status for debugging

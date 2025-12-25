@@ -10,13 +10,41 @@ import { discourseApi } from '../discourseApi';
  * @param topic - Topic object from Discourse /latest.json response
  */
 export function topicSummaryToByte(topic: any): Byte {
-  // Get author ID from posters array (original poster)
-  const authorId = topic.posters?.[0]?.user_id ?? 0;
+  // Extract original poster from posters array
+  // Try to find poster marked as "Original Poster" or use first poster
+  const originalPoster = topic.posters?.find((poster: any) => 
+    poster.description?.includes('Original Poster') || 
+    poster.extras?.includes('single') ||
+    poster.description?.includes('Creator')
+  ) || topic.posters?.[0];
   
-  // Get author info from topic fields
-  // Discourse /latest.json provides: last_poster_username, last_poster_avatar_template
-  const username = topic.last_poster_username ?? 'unknown';
-  const avatarTemplate = topic.last_poster_avatar_template ?? '';
+  // Get author ID from original poster
+  const authorId = originalPoster?.user_id ?? topic.posters?.[0]?.user_id ?? 0;
+  
+  // Get author username - prefer original poster's user object, fallback to created_by, then last_poster
+  let username = 'unknown';
+  let avatarTemplate = '';
+  
+  if (originalPoster?.user) {
+    // Posters array has full user object (from some endpoints)
+    username = originalPoster.user.username || 'unknown';
+    avatarTemplate = originalPoster.user.avatar_template || '';
+  } else if (topic.details?.created_by) {
+    // Use created_by if available (more reliable than last_poster)
+    username = topic.details.created_by.username || 'unknown';
+    avatarTemplate = topic.details.created_by.avatar_template || '';
+  } else if (originalPoster?.username) {
+    // Poster has username directly
+    username = originalPoster.username;
+  } else {
+    // Fallback to last_poster_username (not ideal, but better than 'unknown')
+    username = topic.last_poster_username ?? 'unknown';
+    avatarTemplate = topic.last_poster_avatar_template ?? '';
+    if (__DEV__) {
+      console.warn(`⚠️ topicSummaryToByte: Topic ${topic.id} - Using last_poster_username as fallback (original poster not found)`);
+    }
+  }
+  
   const avatar = avatarTemplate ? discourseApi.getAvatarUrl(avatarTemplate, 120) : '';
 
   // Map category to hub/teret badges
