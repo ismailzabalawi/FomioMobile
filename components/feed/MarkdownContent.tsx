@@ -278,6 +278,14 @@ export function MarkdownContent({
         color: baseTextColor,
         backgroundColor: 'transparent',
       },
+      div: {
+        color: baseTextColor,
+        backgroundColor: 'transparent',
+      },
+      span: {
+        color: baseTextColor,
+        backgroundColor: 'transparent',
+      },
       p: markdownStyles.paragraph,
       h1: markdownStyles.heading1,
       h2: markdownStyles.heading2,
@@ -285,6 +293,9 @@ export function MarkdownContent({
       h4: markdownStyles.heading4,
       h5: markdownStyles.heading5,
       h6: markdownStyles.heading6,
+      font: {
+        color: baseTextColor,
+      },
       ul: markdownStyles.listUnordered,
       ol: markdownStyles.listOrdered,
       li: markdownStyles.listItem,
@@ -372,12 +383,26 @@ export function MarkdownContent({
     <RenderHTML
       contentWidth={contentWidth}
       source={{ html: content || '' }}
+      enableCSSInlineProcessing={false} // Ignore inline CSS completely; use app theme styles
       baseStyle={{
         color: baseTextColor,
         lineHeight: 24,
         fontSize: 16,
       }}
-      defaultTextProps={{ selectable: false }}
+      // Ensure Discourse inline styles don't override app theming
+      ignoredStyles={[
+        'color',
+        'backgroundColor',
+        'fontFamily',
+        'fontSize',
+        'fontWeight',
+        'fontStyle',
+        'textAlign',
+        'lineHeight',
+        'letterSpacing',
+      ]}
+      // Force all text nodes to use app theme colors (RN Text doesn't inherit from View)
+      defaultTextProps={{ selectable: false, style: { color: baseTextColor } }}
       tagsStyles={tagsStyles}
       classesStyles={classesStyles as any}
       renderers={htmlRenderers as any}

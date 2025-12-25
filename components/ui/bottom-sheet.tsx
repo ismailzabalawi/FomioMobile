@@ -4,10 +4,11 @@
 // - Respects Light + AMOLED Dark themes via semantic tokens
 // - Provides consistent backdrop, handle, and background styling
 // - Type-safe with strict TypeScript
+// - Supports advanced features: detached mode, gesture config, dynamic sizing
 
 import 'react-native-reanimated';
 import React, { useCallback, useMemo } from 'react';
-import { Platform } from 'react-native';
+import { Platform, ViewStyle, AnimatedStyleProp } from 'react-native';
 import {
   BottomSheetModal,
   BottomSheetModalProps,
@@ -30,6 +31,47 @@ interface ThemedBottomSheetProps extends Omit<BottomSheetModalProps, 'background
    * Backdrop opacity (default: 0.5)
    */
   backdropOpacity?: number;
+
+  /**
+   * Enable detached mode for Instagram-style floating sheets
+   * When enabled, sheet appears with margins and rounded corners
+   */
+  detached?: boolean;
+
+  /**
+   * Enable over-drag resistance (default: false)
+   * Prevents over-dragging beyond snap points for smoother feel
+   */
+  enableOverDrag?: boolean;
+
+  /**
+   * Active offset Y for gesture detection
+   * Controls sensitivity of vertical drag gestures
+   */
+  activeOffsetY?: number[];
+
+  /**
+   * Fail offset X for gesture detection
+   * Prevents horizontal gestures from interfering with vertical drag
+   */
+  failOffsetX?: number[];
+
+  /**
+   * Over-drag resistance factor (default: 2)
+   * Higher values = more resistance when over-dragging
+   */
+  overDragResistanceFactor?: number;
+
+  /**
+   * Enable dynamic sizing based on content height
+   * When enabled, snap points adapt to content size
+   */
+  enableDynamicSizing?: boolean;
+
+  /**
+   * Animated handle style for custom handle animations
+   */
+  animatedHandleStyle?: AnimatedStyleProp<ViewStyle>;
 }
 
 /**
@@ -60,6 +102,13 @@ export const ThemedBottomSheet = React.forwardRef<BottomSheetModalRef, ThemedBot
       backdropComponent,
       children,
       topInset,
+      detached = false,
+      enableOverDrag = false,
+      activeOffsetY,
+      failOffsetX,
+      overDragResistanceFactor = 2,
+      animatedHandleStyle,
+      style,
       ...props
     },
     ref
@@ -78,7 +127,7 @@ export const ThemedBottomSheet = React.forwardRef<BottomSheetModalRef, ThemedBot
       ? topInset 
       : insets.top + headerHeight;
 
-    // Render backdrop with theme-aware styling
+    // Render backdrop with theme-aware styling, animated opacity, and tap-to-dismiss
     const renderBackdrop = useCallback(
       (backdropProps: BottomSheetBackdropProps) => {
         if (!enableBackdrop) {
@@ -91,7 +140,9 @@ export const ThemedBottomSheet = React.forwardRef<BottomSheetModalRef, ThemedBot
             disappearsOnIndex={-1}
             appearsOnIndex={0}
             opacity={backdropOpacity}
-            // Backdrop color respects theme
+            enableTouchThrough={false}
+            // Backdrop color respects theme with proper opacity
+            // Uses higher opacity for dark mode for better contrast
             style={[
               backdropProps.style,
               {
@@ -118,22 +169,71 @@ export const ThemedBottomSheet = React.forwardRef<BottomSheetModalRef, ThemedBot
       [isDark, isAmoled]
     );
 
-    // Theme-aware handle indicator color
+    // Enhanced handle indicator style with theme-aware colors and optional animated style
     const handleIndicatorStyle = useMemo(
+      () => {
+        const baseStyle: ViewStyle = {
+          backgroundColor: isDark ? '#1C1C1E' : '#E3E3E6', // border-fomio-border-soft tokens
+          width: 40,
+          height: 4,
+          borderRadius: 2,
+        };
+        
+        // Merge with animated style if provided
+        if (animatedHandleStyle) {
+          return [baseStyle, animatedHandleStyle];
+        }
+        
+        return baseStyle;
+      },
+      [isDark, animatedHandleStyle]
+    );
+
+    // Detached mode styling for Instagram-style floating sheets
+    const detachedStyle = useMemo(
+      () => {
+        if (!detached) return undefined;
+        
+        return {
+          marginHorizontal: 8,
+          borderRadius: 24,
+        };
+      },
+      [detached]
+    );
+
+    // Merge detached style with provided style
+    const mergedStyle = useMemo(
+      () => {
+        if (detachedStyle && style) {
+          return [detachedStyle, style];
+        }
+        return detachedStyle || style;
+      },
+      [detachedStyle, style]
+    );
+
+    // Gesture configuration with sensible defaults
+    const gestureConfig = useMemo(
       () => ({
-        backgroundColor: isDark ? '#1C1C1E' : '#E3E3E6', // border-fomio-border-soft tokens
+        enableOverDrag: enableOverDrag,
+        activeOffsetY: activeOffsetY || [10, -10],
+        failOffsetX: failOffsetX || [-5, 5],
+        overDragResistanceFactor: overDragResistanceFactor,
       }),
-      [isDark]
+      [enableOverDrag, activeOffsetY, failOffsetX, overDragResistanceFactor]
     );
 
     return (
       <BottomSheetModal
         ref={ref}
         {...props}
+        {...gestureConfig}
         topInset={calculatedTopInset}
         backdropComponent={backdropComponent || renderBackdrop}
         backgroundStyle={backgroundStyle}
         handleIndicatorStyle={handleIndicatorStyle}
+        style={mergedStyle}
       >
         {children}
       </BottomSheetModal>
@@ -150,7 +250,21 @@ export {
   BottomSheetView,
   useBottomSheetModal,
   useBottomSheet,
+  useBottomSheetDynamicSnapPoints,
+  useBottomSheetAnimatedPosition,
 } from '@gorhom/bottom-sheet';
+
+// Try to export BottomSheetFlashList if available (requires @shopify/flash-list)
+// This will be undefined if flash-list is not installed, but won't break the build
+let BottomSheetFlashList: any;
+try {
+  // Dynamic import to avoid breaking if flash-list is not installed
+  BottomSheetFlashList = require('@gorhom/bottom-sheet').BottomSheetFlashList;
+} catch {
+  // FlashList not available, will be undefined
+}
+
+export { BottomSheetFlashList };
 
 // Export the ref type
 export type { BottomSheetModalRef };

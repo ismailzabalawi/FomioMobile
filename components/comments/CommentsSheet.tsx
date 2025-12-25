@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { View, Text, Platform, BackHandler } from 'react-native';
+import React, { useCallback, useRef, useEffect, forwardRef, useImperativeHandle, useState } from 'react';
+import { View, Text, Platform, BackHandler, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetFooter } from '@gorhom/bottom-sheet';
 import { ThemedBottomSheet, BottomSheetModalRef, BottomSheetScrollView } from '@/components/ui/bottom-sheet';
@@ -20,6 +20,7 @@ interface CommentsSheetProps {
   } | null;
   isAuthenticated?: boolean; // Pass through for NewCommentInput when used in BottomSheetModal
   inputRef?: React.RefObject<NewCommentInputRef>; // Ref for programmatic focus control
+  onRefresh?: () => Promise<void>; // Pull-to-refresh callback
 }
 
 export interface CommentsSheetRef {
@@ -29,7 +30,7 @@ export interface CommentsSheetRef {
 }
 
 /**
- * CommentsSheet - Two-stage bottom sheet for viewing and writing comments
+ * CommentsSheet - Premium bottom sheet for viewing and writing comments
  * 
  * UI Spec: CommentsSheet
  * - Opens at 60% height (medium) for viewing comments
@@ -38,13 +39,15 @@ export interface CommentsSheetRef {
  * - Uses BottomSheetScrollView for smooth scrolling
  * - Integrates NewCommentInput with focus handler to expand sheet
  * - Respects Light + AMOLED Dark themes
+ * - Features: detached mode, pull-to-refresh, enhanced gestures, dynamic sizing
  */
 export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
-  ({ byteId, comments, onLike, onReply, onSend, replyTo, isAuthenticated, inputRef }, ref) => {
+  ({ byteId, comments, onLike, onReply, onSend, replyTo, isAuthenticated, inputRef, onRefresh }, ref) => {
     const sheetRef = useRef<BottomSheetModalRef>(null);
     const currentSnapIndexRef = useRef<number>(-1); // Track current snap index
     const { isDark, isAmoled } = useTheme();
     const insets = useSafeAreaInsets();
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Expose methods via ref
     useImperativeHandle(ref, () => ({
@@ -110,7 +113,22 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
       return () => backHandler.remove();
     }, []);
 
+    // Handle pull-to-refresh
+    const handleRefresh = useCallback(async () => {
+      if (!onRefresh) return;
+      
+      setIsRefreshing(true);
+      try {
+        await onRefresh();
+      } catch (error) {
+        console.error('Failed to refresh comments:', error);
+      } finally {
+        setIsRefreshing(false);
+      }
+    }, [onRefresh]);
+
     // Snap points: 60% (medium) and 100% (full screen)
+    // Using fixed percentages for now - can be enhanced with dynamic sizing if needed
     const snapPoints = React.useMemo(() => ['60%', '100%'], []);
 
     // Render footer with input bar using BottomSheetFooter (correct @gorhom/bottom-sheet pattern)
@@ -147,11 +165,19 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
         enablePanDownToClose
         enableDismissOnClose
         enableContentPanningGesture={true} // ✅ CRITICAL: Allows scroll view to scroll properly
+        enableHandlePanningGesture={true}
+        enableOverDrag={false}
+        activeOffsetY={[10, -10]}
+        failOffsetX={[-5, 5]}
+        overDragResistanceFactor={2}
+        detached={true}
         keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
         onChange={handleSnapPointChange}
         footerComponent={renderFooter}
+        accessibilityLabel="Comments sheet"
+        accessibilityHint="Swipe down to close, pull down to refresh comments"
       >
         {/* ✅ BottomSheetScrollView must be direct child - no wrapper View */}
         <BottomSheetScrollView
@@ -164,6 +190,16 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={true}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={isDark ? '#FFFFFF' : '#000000'}
+                colors={isDark ? ['#FFFFFF'] : ['#000000']}
+              />
+            ) : undefined
+          }
         >
           <CommentSection
             comments={comments}

@@ -55,11 +55,12 @@ export function TeretSelector({
   }, [terets, searchQuery]);
 
   const handleOpen = useCallback(() => {
-    bottomSheetRef.current?.expand();
+    bottomSheetRef.current?.present();
+    bottomSheetRef.current?.snapToIndex(0);
   }, []);
 
   const handleClose = useCallback(() => {
-    bottomSheetRef.current?.close();
+    bottomSheetRef.current?.dismiss();
     setSearchQuery('');
   }, []);
 
@@ -233,9 +234,16 @@ export function TeretSelector({
       {/* Bottom Sheet Modal */}
       <ThemedBottomSheet
         ref={bottomSheetRef}
-        index={0}
+        index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose
+        detached={true}
+        enableOverDrag={false}
+        activeOffsetY={[10, -10]}
+        failOffsetX={[-5, 5]}
+        overDragResistanceFactor={2}
+        accessibilityLabel="Teret selector sheet"
+        accessibilityHint="Swipe down to close, select a teret to post in"
       >
         <View className="flex-1 bg-fomio-bg dark:bg-fomio-bg-dark rounded-t-3xl">
           {/* Header */}
@@ -269,6 +277,8 @@ export function TeretSelector({
           </View>
 
           {/* Teret List */}
+          {/* Note: FlashList requires @shopify/flash-list to be installed */}
+          {/* Using BottomSheetFlatList with performance optimizations instead */}
           <BottomSheetFlatList
             data={filteredTerets}
             renderItem={renderTeretItem}
@@ -276,6 +286,18 @@ export function TeretSelector({
             contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
             ListEmptyComponent={renderEmpty}
             showsVerticalScrollIndicator={false}
+            // Performance optimizations
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={10}
+            windowSize={10}
+            initialNumToRender={15}
+            // Estimated item height for better performance (calculated from actual item)
+            // Teret item: padding (16px) + content (~60-80px) + margin (12px) ≈ 88px
+            getItemLayout={(data, index) => ({
+              length: 88,
+              offset: 88 * index,
+              index,
+            })}
           />
         </View>
       </ThemedBottomSheet>

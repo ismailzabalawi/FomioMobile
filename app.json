@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Fomio",
-    "slug": "fomio",
+    "slug": "FomioMobile",
     "version": "0.1.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",

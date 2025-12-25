@@ -7,8 +7,24 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs';
 export { Switch } from './switch';
 export { Textarea } from './textarea';
 export { AppHeader } from './AppHeader';
-export { ThemedBottomSheet, BottomSheetFlatList, BottomSheetScrollView, BottomSheetView, useBottomSheetModal, useBottomSheet } from './bottom-sheet';
+export { ThemedBottomSheet, BottomSheetFlatList, BottomSheetScrollView, BottomSheetView, useBottomSheetModal, useBottomSheet, useBottomSheetDynamicSnapPoints, useBottomSheetAnimatedPosition, BottomSheetFlashList } from './bottom-sheet';
 export { BottomSheetContent } from './bottom-sheet-content';
+
+// Export animation utilities
+export {
+  useBottomSheetAnimatedPosition as useAnimatedSheetPosition,
+  useSheetHeaderOpacity,
+  useSheetBackgroundBlur,
+  useSheetBackgroundScale,
+  useSheetScrollIndicatorOpacity,
+  ANIMATION_CONSTANTS,
+} from './bottom-sheet-animations';
+
+// Export custom components
+export { BottomSheetHandle } from './bottom-sheet-handle';
+export type { BottomSheetHandleProps } from './bottom-sheet-handle';
+export { EnhancedBottomSheetBackdrop } from './bottom-sheet-backdrop';
+export type { EnhancedBottomSheetBackdropProps } from './bottom-sheet-backdrop';
 
 export type { ButtonProps } from './button';
 export type { InputProps } from './input';

@@ -1,7 +1,7 @@
 import 'react-native-reanimated';
 import React, { useRef, useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, Alert, Platform } from 'react-native';
-import { ThemedBottomSheet, BottomSheetModalRef } from '@/components/ui/bottom-sheet';
+import { ThemedBottomSheet, BottomSheetModalRef, BottomSheetView } from '@/components/ui/bottom-sheet';
 import { DotsThreeVertical, Bell, BellSlash, PushPin, Lock, Archive, Flag, Link, Share as ShareIcon } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { getThemeColors } from '@/shared/theme-constants';
@@ -57,11 +57,27 @@ export function OverflowMenu({
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const bottomSheetRef = useRef<BottomSheetModalRef>(null);
-  const snapPoints = useMemo(() => ['50%'], []);
+  // Dynamic sizing based on available menu items
+  const menuItemCount = useMemo(() => {
+    let count = 2; // Notification toggle + Share section (Copy Link + Share)
+    if (topic?.canPin) count++;
+    if (topic?.canClose) count++;
+    if (topic?.canArchive) count++;
+    if (topic?.canFlag) count++;
+    // Adjust snap point based on item count (smaller for fewer items)
+    return count;
+  }, [topic]);
+  const snapPoints = useMemo(() => {
+    // Adaptive height: 35% for small menus, 45% for medium, 50% for large
+    if (menuItemCount <= 3) return ['35%'];
+    if (menuItemCount <= 5) return ['40%'];
+    return ['45%'];
+  }, [menuItemCount]);
 
   const handleOpen = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     bottomSheetRef.current?.present();
+    bottomSheetRef.current?.snapToIndex(0);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -185,11 +201,18 @@ export function OverflowMenu({
 
       <ThemedBottomSheet
         ref={bottomSheetRef}
-        index={0}
+        index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose
+        detached={true}
+        enableOverDrag={false}
+        activeOffsetY={[10, -10]}
+        failOffsetX={[-5, 5]}
+        overDragResistanceFactor={2}
+        accessibilityLabel="Topic options menu"
+        accessibilityHint="Swipe down to close"
       >
-        <View className="px-4 pb-6">
+        <BottomSheetView className="px-4 pb-6">
           <Text className="text-lg font-bold mb-4 text-fomio-foreground dark:text-fomio-foreground-dark">
             Topic Options
           </Text>
@@ -303,7 +326,7 @@ export function OverflowMenu({
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </BottomSheetView>
       </ThemedBottomSheet>
     </>
   );
