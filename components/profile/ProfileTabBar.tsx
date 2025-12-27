@@ -92,12 +92,24 @@ export function ProfileTabBar({
     return activeIndexProp ?? 0;
   });
   
-  // Sync SharedValue changes to state
+  // Sync SharedValue changes to state - throttled to reduce JS bridge calls
+  const lastIndexRef = useRef<number>(currentIndex);
+  
+  // Update ref when currentIndex changes from other sources
+  React.useEffect(() => {
+    lastIndexRef.current = currentIndex;
+  }, [currentIndex]);
+  
   useAnimatedReaction(
     () => indexSharedValue?.value,
     (value) => {
       if (value !== undefined) {
-        runOnJS(setCurrentIndex)(Math.round(value));
+        const rounded = Math.round(value);
+        // Only update if value changed significantly (throttle JS bridge calls)
+        if (rounded !== lastIndexRef.current) {
+          lastIndexRef.current = rounded;
+          runOnJS(setCurrentIndex)(rounded);
+        }
       }
     },
     [indexSharedValue]
@@ -179,7 +191,8 @@ export function ProfileTabBar({
     const translateX = interpolate(
       indicatorPosition.value,
       [0, maxIndex],
-      [0, tabStep * maxIndex]
+      [0, tabStep * maxIndex],
+      'clamp' // Add clamp to prevent overshooting
     );
     return {
       transform: [
@@ -191,7 +204,7 @@ export function ProfileTabBar({
         },
       ],
     };
-  });
+  }, [maxIndex, tabStep, containerPadding, tabWidth, indicatorWidth]);
 
   const handleLayout = useCallback((event: any) => {
     const nextWidth = event?.nativeEvent?.layout?.width;

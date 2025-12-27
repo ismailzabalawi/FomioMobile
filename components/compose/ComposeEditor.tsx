@@ -52,9 +52,13 @@ export function ComposeEditor({
 }: ComposeEditorProps) {
   const { isDark, isAmoled } = useTheme();
   const insets = useSafeAreaInsets();
-  const tokens = useMemo(
-    () => getTokens(isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light'),
+  const themeMode = useMemo(
+    () => (isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light'),
     [isDark, isAmoled]
+  );
+  const tokens = useMemo(
+    () => getTokens(themeMode),
+    [themeMode]
   );
   const [bodyHeight, setBodyHeight] = useState(120);
   const [selection, setSelection] = useState<{ start: number; end: number }>({
@@ -66,7 +70,7 @@ export function ComposeEditor({
   const inputBg = tokens.colors.surfaceFrost;
 
   // Markdown styles for preview mode (shared with MarkdownContent)
-  const markdownStyles = useMemo(() => getMarkdownStyles(isDark), [isDark]);
+  const markdownStyles = useMemo(() => getMarkdownStyles(themeMode), [themeMode]);
 
   // Image renderer for preview (prevents key prop spread warning from internal FitImage)
   const markdownRenderers = useMemo(() => ({

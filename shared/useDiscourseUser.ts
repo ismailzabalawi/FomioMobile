@@ -143,6 +143,8 @@ export function useDiscourseUser(username?: string): UseDiscourseUserReturn {
           userKeys: Object.keys(userData),
         });
         
+        // Add refresh timestamp for stale data detection
+        (userData as any)._lastRefreshed = Date.now();
         setUser(userData);
         
         // Update stored username in API key data if available

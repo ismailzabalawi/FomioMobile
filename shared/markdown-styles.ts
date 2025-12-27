@@ -4,19 +4,17 @@
  */
 
 import { Platform } from 'react-native';
-import { getThemeColors } from './theme-constants';
+import { getTokens } from './design/tokens';
 
 /**
  * Get markdown styles for react-native-markdown-display
- * Handles theme and Platform internally - only requires isDark boolean
+ * Handles theme and Platform internally
  */
-export function getMarkdownStyles(isDark: boolean) {
-  const colors = getThemeColors(isDark);
+export function getMarkdownStyles(mode: 'light' | 'dark' | 'darkAmoled' = 'light') {
+  const tokens = getTokens(mode);
   const codeFontFamily = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
   
-  // ✅ Use AMOLED foreground color (#F5F5F7) for dark mode for maximum visibility
-  // This matches the fomio-foreground-dark token from tailwind.config.js
-  const textColor = isDark ? '#F5F5F7' : colors.foreground;
+  const textColor = tokens.colors.text;
 
   return {
     // Root container - CRITICAL: Set default text color here for inheritance
@@ -116,8 +114,8 @@ export function getMarkdownStyles(isDark: boolean) {
     code_inline: {
       fontSize: 14,
       fontFamily: codeFontFamily,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-      color: isDark ? '#26A69A' : '#009688',
+      backgroundColor: tokens.colors.surfaceMuted,
+      color: tokens.colors.accent,
       paddingHorizontal: 4,
       paddingVertical: 2,
       borderRadius: 4,
@@ -125,33 +123,33 @@ export function getMarkdownStyles(isDark: boolean) {
     code_block: {
       fontSize: 14,
       fontFamily: codeFontFamily,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      backgroundColor: tokens.colors.surfaceMuted,
       color: textColor,
       padding: 12,
       borderRadius: 8,
       marginTop: 12,
       marginBottom: 16,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: tokens.colors.border,
     },
     fence: {
       fontSize: 14,
       fontFamily: codeFontFamily,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      backgroundColor: tokens.colors.surfaceMuted,
       color: textColor,
       padding: 12,
       borderRadius: 8,
       marginTop: 12,
       marginBottom: 16,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: tokens.colors.border,
     },
     
     // Blockquotes
     blockquote: {
-      backgroundColor: isDark ? 'rgba(38,166,154,0.12)' : 'rgba(0,150,136,0.08)',
+      backgroundColor: tokens.colors.accentSoft,
       borderLeftWidth: 4,
-      borderLeftColor: isDark ? '#26A69A' : '#009688',
+      borderLeftColor: tokens.colors.accent,
       paddingLeft: 16,
       paddingRight: 16,
       paddingTop: 12,
@@ -169,7 +167,7 @@ export function getMarkdownStyles(isDark: boolean) {
     
     // Links
     link: {
-      color: isDark ? '#26A69A' : '#009688',
+      color: tokens.colors.accent,
       textDecorationLine: 'underline' as const,
     },
     
@@ -193,7 +191,7 @@ export function getMarkdownStyles(isDark: boolean) {
     
     // Horizontal rule
     hr: {
-      backgroundColor: colors.border,
+      backgroundColor: tokens.colors.border,
       height: 1,
       marginTop: 24,
       marginBottom: 24,
@@ -204,24 +202,24 @@ export function getMarkdownStyles(isDark: boolean) {
       marginTop: 16,
       marginBottom: 16,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: tokens.colors.border,
       borderRadius: 8,
     },
     thead: {
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      backgroundColor: tokens.colors.surfaceMuted,
     },
     tbody: {},
     th: {
       padding: 12,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      borderBottomColor: tokens.colors.border,
       fontWeight: '600' as const,
       color: textColor,
     },
     td: {
       padding: 12,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      borderBottomColor: tokens.colors.border,
       color: textColor,
     },
     tr: {},

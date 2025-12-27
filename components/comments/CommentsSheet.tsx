@@ -6,10 +6,11 @@ import { ThemedBottomSheet, BottomSheetModalRef, BottomSheetScrollView } from '@
 import { CommentSection } from '@/components/feed/CommentSection';
 import { NewCommentInput, NewCommentInputRef } from '@/components/feed/NewCommentInput';
 import { useTheme } from '@/components/theme';
+import { getTokens } from '@/shared/design/tokens';
 import type { Comment } from '@/components/feed/CommentItem';
 
 interface CommentsSheetProps {
-  byteId: number;
+  byteId: number; // Byte/topic ID (for potential future use: analytics, context, etc.)
   comments: Comment[];
   onLike?: (id: string) => void;
   onReply?: (id: string) => void;
@@ -21,6 +22,7 @@ interface CommentsSheetProps {
   isAuthenticated?: boolean; // Pass through for NewCommentInput when used in BottomSheetModal
   inputRef?: React.RefObject<NewCommentInputRef>; // Ref for programmatic focus control
   onRefresh?: () => Promise<void>; // Pull-to-refresh callback
+  onClose?: () => void; // Callback when sheet is dismissed/closed
 }
 
 export interface CommentsSheetRef {
@@ -28,6 +30,15 @@ export interface CommentsSheetRef {
   dismiss: () => void;
   snapToIndex: (index: number) => void;
 }
+
+// Constants for spacing and layout
+const FOOTER_PADDING_BOTTOM_DEFAULT = 12; // Default padding when no safe area inset
+const FOOTER_PADDING_TOP = 8;
+const CONTENT_PADDING_BOTTOM = 120; // Account for footer height (input bar ~60-80px + padding + safe area)
+const HORIZONTAL_PADDING_IOS = 12;
+const HORIZONTAL_PADDING_ANDROID = 16;
+const CONTENT_PADDING_TOP_IOS = 8;
+const CONTENT_PADDING_TOP_ANDROID = 4;
 
 /**
  * CommentsSheet - Premium bottom sheet for viewing and writing comments
@@ -42,10 +53,12 @@ export interface CommentsSheetRef {
  * - Features: detached mode, pull-to-refresh, enhanced gestures, dynamic sizing
  */
 export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
-  ({ byteId, comments, onLike, onReply, onSend, replyTo, isAuthenticated, inputRef, onRefresh }, ref) => {
+  ({ byteId, comments, onLike, onReply, onSend, replyTo, isAuthenticated, inputRef, onRefresh, onClose }, ref) => {
     const sheetRef = useRef<BottomSheetModalRef>(null);
     const currentSnapIndexRef = useRef<number>(-1); // Track current snap index
     const { isDark, isAmoled } = useTheme();
+    const mode = isDark ? (isAmoled ? 'darkAmoled' : 'dark') : 'light';
+    const tokens = React.useMemo(() => getTokens(mode), [mode]);
     const insets = useSafeAreaInsets();
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -67,10 +80,14 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
       },
     }));
 
-    // Handle snap point changes to track current index
+    // Handle snap point changes to track current index and notify on close
     const handleSnapPointChange = useCallback((index: number) => {
       currentSnapIndexRef.current = index;
-    }, []);
+      // Notify parent when sheet closes
+      if (index === -1) {
+        onClose?.();
+      }
+    }, [onClose]);
 
     // Handle input focus - expand to full screen
     // This ensures the sheet expands when user taps input to add a new comment
@@ -113,7 +130,7 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
       return () => backHandler.remove();
     }, []);
 
-    // Handle pull-to-refresh
+    // Handle pull-to-refresh with error handling
     const handleRefresh = useCallback(async () => {
       if (!onRefresh) return;
       
@@ -121,6 +138,7 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
       try {
         await onRefresh();
       } catch (error) {
+        // Error is logged for debugging, user can retry by pulling again
         console.error('Failed to refresh comments:', error);
       } finally {
         setIsRefreshing(false);
@@ -131,19 +149,24 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
     // Using fixed percentages for now - can be enhanced with dynamic sizing if needed
     const snapPoints = React.useMemo(() => ['60%', '100%'], []);
 
+    // Footer style memoized for performance
+    // Use background (solid) instead of surfaceFrost (semi-transparent) for proper dark mode support
+    const footerStyle = React.useMemo(
+      () => ({
+        backgroundColor: tokens.colors.background,
+        borderColor: tokens.colors.border,
+        paddingBottom: insets.bottom > 0 ? insets.bottom : FOOTER_PADDING_BOTTOM_DEFAULT,
+        paddingTop: FOOTER_PADDING_TOP,
+        paddingHorizontal: Platform.OS === 'ios' ? HORIZONTAL_PADDING_IOS : HORIZONTAL_PADDING_ANDROID,
+      }),
+      [tokens.colors.background, tokens.colors.border, insets.bottom]
+    );
+
     // Render footer with input bar using BottomSheetFooter (correct @gorhom/bottom-sheet pattern)
     const renderFooter = useCallback(
-      ({ animatedFooterPosition }: any) => (
+      ({ animatedFooterPosition }: { animatedFooterPosition: any }) => (
         <BottomSheetFooter animatedFooterPosition={animatedFooterPosition}>
-          <View
-            className="border-t border-fomio-border-soft dark:border-fomio-border-soft-dark"
-            style={{
-              backgroundColor: isAmoled ? '#000000' : (isDark ? '#0A0A0A' : '#FFFFFF'),
-              paddingBottom: insets.bottom > 0 ? insets.bottom : 12,
-              paddingTop: 8,
-              paddingHorizontal: Platform.OS === 'ios' ? 12 : 16,
-            }}
-          >
+          <View className="border-t" style={footerStyle}>
             <NewCommentInput
               ref={inputRef}
               onSend={onSend}
@@ -154,7 +177,7 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
           </View>
         </BottomSheetFooter>
       ),
-      [isDark, isAmoled, insets.bottom, inputRef, onSend, replyTo, handleInputFocus, isAuthenticated]
+      [footerStyle, inputRef, onSend, replyTo, handleInputFocus, isAuthenticated]
     );
 
     return (
@@ -171,22 +194,21 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
         failOffsetX={[-5, 5]}
         overDragResistanceFactor={2}
         detached={true}
-        keyboardBehavior="extend"
+        keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
         onChange={handleSnapPointChange}
         footerComponent={renderFooter}
         accessibilityLabel="Comments sheet"
-        accessibilityHint="Swipe down to close, pull down to refresh comments"
       >
         {/* ✅ BottomSheetScrollView must be direct child - no wrapper View */}
         <BottomSheetScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
-            paddingTop: Platform.OS === 'ios' ? 8 : 4,
-            paddingBottom: 120, // ✅ Increased to account for footer height (input bar ~60-80px + padding + safe area)
-            paddingHorizontal: Platform.OS === 'ios' ? 12 : 16,
-            backgroundColor: isAmoled ? '#000000' : (isDark ? '#0A0A0A' : '#FFFFFF'),
+            paddingTop: Platform.OS === 'ios' ? CONTENT_PADDING_TOP_IOS : CONTENT_PADDING_TOP_ANDROID,
+            paddingBottom: CONTENT_PADDING_BOTTOM,
+            paddingHorizontal: Platform.OS === 'ios' ? HORIZONTAL_PADDING_IOS : HORIZONTAL_PADDING_ANDROID,
+            // Don't set backgroundColor here - let ThemedBottomSheet's backgroundStyle handle it
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={true}
@@ -195,8 +217,8 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
               <RefreshControl
                 refreshing={isRefreshing}
                 onRefresh={handleRefresh}
-                tintColor={isDark ? '#FFFFFF' : '#000000'}
-                colors={isDark ? ['#FFFFFF'] : ['#000000']}
+                tintColor={tokens.colors.text}
+                colors={[tokens.colors.accent]}
               />
             ) : undefined
           }
@@ -206,6 +228,8 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
             onLike={onLike}
             onReply={onReply}
             onSend={onSend}
+            isDark={isDark}
+            mode={mode}
           />
         </BottomSheetScrollView>
       </ThemedBottomSheet>
@@ -214,4 +238,3 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
 );
 
 CommentsSheet.displayName = 'CommentsSheet';
-

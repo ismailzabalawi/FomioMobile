@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard } from 'react-native';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard } from 'react-native';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { useTheme } from '@/components/theme';
 import { PaperPlaneRight } from 'phosphor-react-native';
 import { useAuth } from '@/shared/auth-context';
 import { router } from 'expo-router';
+import { getTokens } from '@/shared/design/tokens';
 
 // UI Spec: NewCommentInput — Input for adding a new comment or reply, with send button, theming, and accessibility.
 interface NewCommentInputProps {
@@ -31,7 +33,7 @@ export const NewCommentInput = forwardRef<NewCommentInputRef, NewCommentInputPro
   const [text, setText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<BottomSheetTextInput>(null);
   const wasFocusedRef = useRef<boolean>(false); // Track if input was focused
 
   // Expose focus/blur methods via ref
@@ -44,13 +46,16 @@ export const NewCommentInput = forwardRef<NewCommentInputRef, NewCommentInputPro
     },
   }));
   
+  const mode = isDark ? (isAmoled ? 'darkAmoled' : 'dark') : 'light';
+  const tokens = useMemo(() => getTokens(mode), [mode]);
+  
   const colors = {
-    background: isAmoled ? '#000000' : (isDark ? '#23232b' : '#f8fafc'),
-    text: isDark ? '#f4f4f5' : '#17131B',
-    placeholder: isDark ? '#a1a1aa' : '#5C5D67',
-    accent: isDark ? '#26A69A' : '#009688',
-    border: isDark ? '#374151' : '#e2e8f0',
-    error: isDark ? '#ef4444' : '#dc2626',
+    background: tokens.colors.background,
+    text: tokens.colors.text,
+    placeholder: tokens.colors.muted,
+    accent: tokens.colors.accent,
+    border: tokens.colors.border,
+    error: tokens.colors.danger,
   };
 
   // Auto-focus when replyTo changes
@@ -173,7 +178,7 @@ export const NewCommentInput = forwardRef<NewCommentInputRef, NewCommentInputPro
           </Text>
         </View>
       )}
-      <TextInput
+      <BottomSheetTextInput
         ref={inputRef}
         style={[styles.input, { color: colors.text }]}
         placeholder={replyTo ? `Reply to @${replyTo.username}...` : "Add a comment..."}
@@ -224,8 +229,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     padding: 10,
     borderRadius: 12,
-    marginTop: 8,
-    marginBottom: 4,
     borderWidth: 1,
   },
   input: {

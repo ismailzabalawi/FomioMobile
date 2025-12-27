@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, memo, useState } from 'react';
 import { View, Text, TouchableOpacity, Linking, ScrollView, useWindowDimensions, Platform } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import RenderHTML, { HTMLContentModel, HTMLElementModel } from 'react-native-render-html';
@@ -7,7 +7,7 @@ import { WebView } from 'react-native-webview';
 import { useTheme } from '@/components/theme';
 import { getMarkdownStyles } from '@/shared/markdown-styles';
 import * as WebBrowser from 'expo-web-browser';
-import { getThemeColors } from '@/shared/theme-constants';
+import { getTokens } from '@/shared/design/tokens';
 
 export interface MarkdownContentProps {
   content: string; // HTML from Discourse `cooked` field
@@ -24,6 +24,59 @@ export interface MarkdownContentProps {
       type?: 'article' | 'video' | 'post' | 'generic';
     }
   >;
+  lazyLoadVideos?: boolean; // If true, videos are only rendered when in viewport
+}
+
+// Lazy-loaded video embed component to avoid rendering heavy WebViews until needed
+function LazyVideoEmbed({ 
+  embedUrl, 
+  baseTextColor, 
+  tokens,
+  lazyLoad = true 
+}: { 
+  embedUrl: string; 
+  baseTextColor: string; 
+  tokens: any;
+  lazyLoad?: boolean;
+}) {
+  const [shouldLoad, setShouldLoad] = useState(!lazyLoad);
+  
+  if (!shouldLoad) {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => setShouldLoad(true)}
+        style={{
+          width: '100%',
+          aspectRatio: 16 / 9,
+          borderRadius: 12,
+          backgroundColor: tokens.colors.surfaceMuted,
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <Text style={{ color: baseTextColor, fontSize: 16, fontWeight: '600' }}>
+          ▶ Play Video
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+  
+  return (
+    <WebView
+      source={{ html: buildVideoEmbedHtml(embedUrl) }}
+      originWhitelist={['*']}
+      allowsInlineMediaPlayback
+      mediaPlaybackRequiresUserAction={false}
+      javaScriptEnabled
+      domStorageEnabled
+      startInLoadingState
+      scrollEnabled={false}
+      allowsFullscreenVideo
+      setSupportMultipleWindows={false}
+      style={{ flex: 1, backgroundColor: 'transparent' }}
+    />
+  );
 }
 
 // UI Spec: MarkdownContent — Renders Discourse cooked HTML or raw markdown with full fidelity
@@ -31,17 +84,19 @@ export interface MarkdownContentProps {
 // - Themed with Fomio semantic tokens
 // - Links open in in-app browser
 // - Images use expo-image and are tappable (lightbox-ready)
-export function MarkdownContent({
+function MarkdownContentComponent({
   content,
   isRawMarkdown = false,
   linkMetadata: _linkMetadata,
+  lazyLoadVideos = true,
 }: MarkdownContentProps) {
-  const { isDark } = useTheme();
+  const { isDark, isAmoled } = useTheme();
+  const mode = isDark ? (isAmoled ? 'darkAmoled' : 'dark') : 'light';
+  const tokens = useMemo(() => getTokens(mode), [mode]);
   const { width } = useWindowDimensions();
-  const markdownStyles = useMemo(() => getMarkdownStyles(isDark), [isDark]);
-  const colors = useMemo(() => getThemeColors(isDark), [isDark]);
+  const markdownStyles = useMemo(() => getMarkdownStyles(mode), [mode]);
   const contentWidth = Math.max(320, width - 32); // keep nice margins even on small screens
-  const baseTextColor = isDark ? '#F5F5F7' : colors.foreground;
+  const baseTextColor = tokens.colors.text;
   const codeFont = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
   const oneboxContainerStyle = useMemo(
@@ -50,14 +105,14 @@ export function MarkdownContent({
       padding: 12,
       borderRadius: 14,
       borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
+      borderColor: tokens.colors.border,
+      backgroundColor: tokens.colors.surfaceMuted,
       shadowColor: '#000',
       shadowOpacity: 0.05,
       shadowRadius: 6,
       shadowOffset: { width: 0, height: 3 },
     }),
-    [colors]
+    [tokens.colors.border, tokens.colors.surfaceMuted]
   );
 
   const classesStyles = useMemo(
@@ -66,7 +121,7 @@ export function MarkdownContent({
         marginVertical: 0,
       },
       source: {
-        color: colors.secondary,
+        color: tokens.colors.muted,
         fontSize: 12,
         marginBottom: 6,
       },
@@ -81,7 +136,7 @@ export function MarkdownContent({
         marginBottom: 6,
       },
       'onebox-site-name': {
-        color: colors.accent,
+        color: tokens.colors.accent,
         fontSize: 12,
         fontWeight: '600',
       },
@@ -95,7 +150,7 @@ export function MarkdownContent({
         overflow: 'hidden',
       },
     }),
-    [baseTextColor, colors]
+    [baseTextColor, tokens.colors.accent, tokens.colors.muted]
   );
 
   // Renderer for links (shared across HTML and markdown paths)
@@ -106,14 +161,14 @@ export function MarkdownContent({
         try {
           await WebBrowser.openBrowserAsync(href, {
             presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-            controlsColor: isDark ? '#26A69A' : '#009688',
+            controlsColor: tokens.colors.accent,
           });
         } catch {
           Linking.openURL(href).catch(() => {});
         }
       },
     }),
-    [isDark]
+    [tokens.colors.accent]
   );
 
   // Custom renderers for RenderHTML (cooked HTML path)
@@ -170,25 +225,18 @@ export function MarkdownContent({
                 aspectRatio: 16 / 9,
                 borderRadius: 12,
                 overflow: 'hidden',
-                backgroundColor: colors.muted,
+                backgroundColor: tokens.colors.surfaceMuted,
                 shadowColor: '#000',
                 shadowOpacity: 0.08,
                 shadowRadius: 10,
                 shadowOffset: { width: 0, height: 4 },
               }}
             >
-              <WebView
-                source={{ html: buildVideoEmbedHtml(embedUrl) }}
-                originWhitelist={['*']}
-                allowsInlineMediaPlayback
-                mediaPlaybackRequiresUserAction={false}
-                javaScriptEnabled
-                domStorageEnabled
-                startInLoadingState
-                scrollEnabled={false}
-                allowsFullscreenVideo
-                setSupportMultipleWindows={false}
-                style={{ flex: 1, backgroundColor: 'transparent' }}
+              <LazyVideoEmbed 
+                embedUrl={embedUrl}
+                baseTextColor={baseTextColor}
+                tokens={tokens}
+                lazyLoad={lazyLoadVideos}
               />
             </View>
             {rawTitle ? (
@@ -244,8 +292,8 @@ export function MarkdownContent({
         return (
           <View
             style={{
-              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-              borderColor: colors.border,
+              backgroundColor: tokens.colors.surfaceMuted,
+              borderColor: tokens.colors.border,
               borderWidth: 1,
               borderRadius: 10,
               padding: 12,
@@ -268,7 +316,7 @@ export function MarkdownContent({
         );
       },
     }),
-    [baseTextColor, codeFont, colors, isDark, oneboxContainerStyle, renderLink]
+    [baseTextColor, codeFont, isDark, oneboxContainerStyle, renderLink, tokens.colors.border, tokens.colors.surfaceMuted]
   );
 
   // Styles for HTML tags (cooked content)
@@ -421,6 +469,16 @@ export function MarkdownContent({
     />
   );
 }
+
+// Memoize MarkdownContent to prevent unnecessary re-renders
+export const MarkdownContent = memo(MarkdownContentComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.content === nextProps.content &&
+    prevProps.isRawMarkdown === nextProps.isRawMarkdown &&
+    prevProps.lazyLoadVideos === nextProps.lazyLoadVideos
+  );
+});
+MarkdownContent.displayName = 'MarkdownContent';
 
 function parseVideoStartTime(raw?: string): number | null {
   if (!raw) return null;

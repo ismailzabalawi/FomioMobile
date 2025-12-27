@@ -45,13 +45,25 @@ export default function ProfileScreen(): React.ReactElement {
     }
   }, []);
 
-  // Refresh user data on focus to keep header/actions and data fresh
+  // Refresh user data on focus only if stale (older than 30 seconds)
+  // This prevents unnecessary API calls on every screen focus
   useFocusEffect(
     React.useCallback(() => {
-      if (isAuthenticated) {
+      if (isAuthenticated && user) {
+        // Only refresh if data is stale (older than 30 seconds)
+        // Check if user object has a timestamp, otherwise refresh
+        const lastRefresh = (user as any)._lastRefreshed || 0;
+        const now = Date.now();
+        const STALE_THRESHOLD = 30000; // 30 seconds
+        
+        if (now - lastRefresh > STALE_THRESHOLD) {
+          refreshUser();
+        }
+      } else if (isAuthenticated && !user) {
+        // If authenticated but no user data, always refresh
         refreshUser();
       }
-    }, [isAuthenticated, refreshUser])
+    }, [isAuthenticated, refreshUser, user])
   );
 
   const handleSettings = useCallback(async () => {

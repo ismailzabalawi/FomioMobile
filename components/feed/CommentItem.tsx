@@ -2,9 +2,8 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Animated } from 'react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
-import { getThemeColors } from '@/shared/theme-constants';
 import { Heart, ChatCircle } from 'phosphor-react-native';
-import { MarkdownContent } from './MarkdownContent';
+import { getTokens } from '@/shared/design/tokens';
 
 // UI Spec: CommentItem — Renders a comment or reply with avatar, name, time, text, like/reply actions, and theming.
 export interface Comment {
@@ -25,11 +24,17 @@ interface CommentItemProps {
   isReply?: boolean;
   onLike?: (id: string) => void;
   onReply?: (id: string) => void;
+  isDark?: boolean; // Pass theme from parent when used in portal (e.g., bottom sheet)
+  mode?: 'light' | 'dark' | 'darkAmoled'; // Pass mode from parent when used in portal
 }
 
-export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemProps) {
-  const { isDark, isAmoled, themeMode } = useTheme();
-  const colors = useMemo(() => getThemeColors(themeMode, isDark), [themeMode, isDark]);
+export function CommentItem({ comment, isReply, onLike, onReply, isDark: isDarkProp, mode: modeProp }: CommentItemProps) {
+  // Use props if provided (for portal contexts), otherwise fall back to theme context
+  const themeContext = useTheme();
+  const isDark = isDarkProp !== undefined ? isDarkProp : themeContext.isDark;
+  const mode = modeProp || (isDark ? 'darkAmoled' : 'light');
+  const tokens = useMemo(() => getTokens(mode), [mode]);
+  const primaryTextColor = tokens.colors.text; // Use theme token instead of hardcoded color
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-10)).current;
   
@@ -56,12 +61,16 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
 
   return (
     <Animated.View
-      style={{
-        opacity: fadeAnim,
-        transform: [{ translateY }],
-      }}
-      className={`flex-row items-start py-3 pr-2 border-b ${isReply ? 'ml-11' : ''} border-fomio-border-soft dark:border-fomio-border-soft-dark`}
-    > 
+      className={`flex-row items-start py-3 border-b ${isReply ? 'ml-11' : ''}`}
+      style={[
+        {
+          opacity: fadeAnim,
+          transform: [{ translateY }],
+          borderBottomColor: tokens.colors.border,
+        },
+        { paddingHorizontal: 16 },
+      ]}
+    >
       {avatarSource ? (
         <Image 
           source={avatarSource} 
@@ -69,26 +78,28 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
           accessibilityLabel={`${comment.author.name}'s avatar`} 
         />
       ) : (
-        <View className={`w-8 h-8 rounded-full mr-3 mt-0.5 justify-center items-center bg-fomio-muted dark:bg-fomio-muted-dark`}>
-          <Text className={`text-xs font-semibold ${isAmoled ? 'text-fomio-bg-dark' : isDark ? 'text-fomio-bg-dark' : 'text-fomio-bg'}`}>
+        <View
+          className="w-8 h-8 rounded-full mr-3 mt-0.5 justify-center items-center"
+          style={{ backgroundColor: tokens.colors.surfaceMuted }}
+        >
+          <Text className="text-xs font-semibold" style={{ color: primaryTextColor }}>
             {comment.author.name.charAt(0).toUpperCase()}
           </Text>
         </View>
       )}
       <View className="flex-1">
         <View className="flex-row items-center mb-0.5">
-          <Text className="text-[15px] font-semibold mr-2 text-fomio-foreground dark:text-fomio-foreground-dark">
+          <Text className="text-[15px] font-semibold mr-2" style={{ color: primaryTextColor }}>
             {comment.author.name}
           </Text>
-          <Text className="text-xs font-normal text-fomio-muted dark:text-fomio-muted-dark">
+          <Text className="text-xs font-normal" style={{ color: tokens.colors.muted }}>
             {comment.createdAt}
           </Text>
         </View>
         <View className="mb-1.5">
-          <MarkdownContent 
-            content={comment.content} 
-            isRawMarkdown={false} 
-          />
+          <Text style={{ color: primaryTextColor, lineHeight: 22, fontSize: 15 }}>
+            {toPlainText(comment.content)}
+          </Text>
         </View>
         <View className="flex-row items-center gap-3">
           <TouchableOpacity
@@ -101,9 +112,9 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
             <Heart 
               size={18} 
               weight={comment.likes > 0 ? 'fill' : 'regular'} 
-              color={colors.foreground} 
+              color={primaryTextColor} 
             />
-            <Text className="text-[13px] ml-1 font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
+            <Text className="text-[13px] ml-1 font-medium" style={{ color: primaryTextColor }}>
               {comment.likes}
             </Text>
           </TouchableOpacity>
@@ -114,8 +125,8 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
             accessibilityRole="button"
             accessibilityLabel="Reply to comment"
           >
-            <ChatCircle size={18} weight="regular" color={colors.foreground} />
-            <Text className="text-[13px] ml-1 font-medium text-fomio-foreground dark:text-fomio-foreground-dark">
+            <ChatCircle size={18} weight="regular" color={primaryTextColor} />
+            <Text className="text-[13px] ml-1 font-medium" style={{ color: primaryTextColor }}>
               Reply
             </Text>
           </TouchableOpacity>
@@ -123,4 +134,20 @@ export function CommentItem({ comment, isReply, onLike, onReply }: CommentItemPr
       </View>
     </Animated.View>
   );
+}
+
+function toPlainText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/[*_`~]/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

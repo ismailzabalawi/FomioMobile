@@ -1,6 +1,6 @@
 // Tab component for "All" activity - combined view of Topics and Replies
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View } from 'react-native';
 import { useUserPosts } from '@/shared/useUserPosts';
 import { useUserReplies } from '@/shared/useUserReplies';
@@ -17,8 +17,21 @@ export interface ProfileActivityAllTabProps {
 export function ProfileActivityAllTab({
   username,
 }: ProfileActivityAllTabProps) {
+  // Defer replies loading until posts finish loading to reduce initial API calls
+  const [shouldLoadReplies, setShouldLoadReplies] = useState(false);
   const { posts, isLoading: postsLoading, hasMore: hasMorePosts, loadMore: loadMorePosts } = useUserPosts(username);
-  const { replies, isLoading: repliesLoading, hasMore: hasMoreReplies, loadMore: loadMoreReplies } = useUserReplies(username);
+  const { replies, isLoading: repliesLoading, hasMore: hasMoreReplies, loadMore: loadMoreReplies } = useUserReplies(username, { enabled: shouldLoadReplies });
+
+  // Load replies after posts finish loading (or immediately if posts are already loaded)
+  useEffect(() => {
+    if (!postsLoading && !shouldLoadReplies) {
+      // Small delay to let posts render first, then load replies
+      const timer = setTimeout(() => {
+        setShouldLoadReplies(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [postsLoading, shouldLoadReplies]);
 
   const isLoading = postsLoading || repliesLoading;
   

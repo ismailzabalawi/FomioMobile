@@ -78,9 +78,10 @@ async function fetchUserRepliesPage(
 /**
  * useUserReplies hook with TanStack Query
  */
-export function useUserReplies(username: string): UseUserRepliesReturn {
+export function useUserReplies(username: string, options?: { enabled?: boolean }): UseUserRepliesReturn {
   const queryClient = useQueryClient();
   const repliesQueryKey = queryKeys.userReplies(username);
+  const enabled = options?.enabled !== undefined ? options.enabled : !!username;
 
   const {
     data,
@@ -100,7 +101,7 @@ export function useUserReplies(username: string): UseUserRepliesReturn {
       return lastPage.hasMore ? lastPage.page + 1 : undefined;
     },
     initialPageParam: 0,
-    enabled: !!username,
+    enabled: enabled && !!username,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 15 * 60 * 1000, // 15 minutes
   });

@@ -6,7 +6,7 @@
 // - Pull-to-refresh support
 // - Lazy loading tabs
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, lazy, Suspense } from 'react';
 import { View, Platform, useWindowDimensions, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'react-native-collapsible-tab-view';
@@ -29,15 +29,24 @@ import { useHeader } from '@/components/ui/header';
 import { ProfileHeader, ProfileBio, ProfileStats, ProfileActions } from './';
 import { ProfileTabBar, TabItem } from './ProfileTabBar';
 import { getTokens } from '@/shared/design/tokens';
-import { ProfileActivityAllTab } from './tabs/ProfileActivityAllTab';
-import { ProfileActivityTopicsTab } from './tabs/ProfileActivityTopicsTab';
-import { ProfileActivityRepliesTab } from './tabs/ProfileActivityRepliesTab';
-import { ProfileActivityReadTab } from './tabs/ProfileActivityReadTab';
-import { ProfileActivityDraftsTab } from './tabs/ProfileActivityDraftsTab';
-import { ProfileActivityLikesTab } from './tabs/ProfileActivityLikesTab';
-import { ProfileActivityBookmarkedTab } from './tabs/ProfileActivityBookmarkedTab';
-import { ProfileActivitySolvedTab } from './tabs/ProfileActivitySolvedTab';
-import { ProfileActivityVotesTab } from './tabs/ProfileActivityVotesTab';
+import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
+// Lazy load tab components to reduce initial bundle size and improve first load performance
+const ProfileActivityAllTab = lazy(() => import('./tabs/ProfileActivityAllTab').then(m => ({ default: m.ProfileActivityAllTab })));
+const ProfileActivityTopicsTab = lazy(() => import('./tabs/ProfileActivityTopicsTab').then(m => ({ default: m.ProfileActivityTopicsTab })));
+const ProfileActivityRepliesTab = lazy(() => import('./tabs/ProfileActivityRepliesTab').then(m => ({ default: m.ProfileActivityRepliesTab })));
+const ProfileActivityReadTab = lazy(() => import('./tabs/ProfileActivityReadTab').then(m => ({ default: m.ProfileActivityReadTab })));
+const ProfileActivityDraftsTab = lazy(() => import('./tabs/ProfileActivityDraftsTab').then(m => ({ default: m.ProfileActivityDraftsTab })));
+const ProfileActivityLikesTab = lazy(() => import('./tabs/ProfileActivityLikesTab').then(m => ({ default: m.ProfileActivityLikesTab })));
+const ProfileActivityBookmarkedTab = lazy(() => import('./tabs/ProfileActivityBookmarkedTab').then(m => ({ default: m.ProfileActivityBookmarkedTab })));
+const ProfileActivitySolvedTab = lazy(() => import('./tabs/ProfileActivitySolvedTab').then(m => ({ default: m.ProfileActivitySolvedTab })));
+const ProfileActivityVotesTab = lazy(() => import('./tabs/ProfileActivityVotesTab').then(m => ({ default: m.ProfileActivityVotesTab })));
+
+// Loading fallback for lazy-loaded tabs
+const TabLoadingFallback = () => (
+  <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
+    <PostSkeletonEnhanced />
+  </View>
+);
 
 export interface ProfileTabViewProps {
   user: DiscourseUser | null;
@@ -128,10 +137,12 @@ export function ProfileTabView({
   );
   // Scroll handler for tracking scroll position for fluid nav
   // This tracks the container's scroll position (header collapse)
+  // Throttled to reduce worklet overhead
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       'worklet';
       if (scrollY) {
+        // Update scroll position - collapsible tab view handles its own scroll
         scrollY.value = event.contentOffset.y;
       }
     },
@@ -245,98 +256,58 @@ export function ProfileTabView({
         width={screenWidth}
       >
         {visibleTabs.map((tab) => {
-          const renderTabContent = () => {
-            switch (tab.key) {
-              case 'all':
-                return (
-                  <ProfileActivityAllTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              case 'topics':
-                return (
-                  <ProfileActivityTopicsTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              case 'replies':
-                return (
-                  <ProfileActivityRepliesTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              case 'read':
-                return (
-                  <ProfileActivityReadTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              case 'drafts':
-                return (
-                  <ProfileActivityDraftsTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              case 'likes':
-                return (
-                  <ProfileActivityLikesTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              case 'bookmarked':
-                return (
-                  <ProfileActivityBookmarkedTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              case 'solved':
-                return (
-                  <ProfileActivitySolvedTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              case 'votes':
-                return (
-                  <ProfileActivityVotesTab
-                    username={username}
-                    isOwnProfile={isOwnProfile}
-                    isAuthenticated={isAuthenticated}
-                  />
-                );
-              default:
-                return null;
-            }
-          };
+          // Render tab content - lazy loaded components wrapped in Suspense
+          const props = { username, isOwnProfile, isAuthenticated };
+          let TabComponent: React.ComponentType<any> | null = null;
+          
+          switch (tab.key) {
+            case 'all':
+              TabComponent = ProfileActivityAllTab;
+              break;
+            case 'topics':
+              TabComponent = ProfileActivityTopicsTab;
+              break;
+            case 'replies':
+              TabComponent = ProfileActivityRepliesTab;
+              break;
+            case 'read':
+              TabComponent = ProfileActivityReadTab;
+              break;
+            case 'drafts':
+              TabComponent = ProfileActivityDraftsTab;
+              break;
+            case 'likes':
+              TabComponent = ProfileActivityLikesTab;
+              break;
+            case 'bookmarked':
+              TabComponent = ProfileActivityBookmarkedTab;
+              break;
+            case 'solved':
+              TabComponent = ProfileActivitySolvedTab;
+              break;
+            case 'votes':
+              TabComponent = ProfileActivityVotesTab;
+              break;
+          }
 
           return (
             <Tabs.Tab name={tab.key} key={tab.key}>
               <Tabs.ScrollView
-                nestedScrollEnabled
+                // Removed nestedScrollEnabled - it causes scroll conflicts with parent
+                // The collapsible tab view handles nested scrolling internally
                 contentContainerStyle={{
                   width: '100%',
                   backgroundColor: pageBackground,
                 }}
                 style={{ width: '100%', backgroundColor: pageBackground }}
+                scrollEventThrottle={100}
+                showsVerticalScrollIndicator={false}
               >
-                <View style={{ width: '100%' }}>
-                  {renderTabContent()}
-                </View>
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <View style={{ width: '100%' }}>
+                    {TabComponent ? <TabComponent {...props} /> : null}
+                  </View>
+                </Suspense>
               </Tabs.ScrollView>
             </Tabs.Tab>
           );

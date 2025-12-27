@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { MarkdownContent } from '../feed/MarkdownContent';
 import { CaretDown, CaretUp } from 'phosphor-react-native';
@@ -19,7 +19,7 @@ import { createTextStyle } from '@/shared/design-system';
  * - Note: Title is now rendered in ByteCard component above the header
  * - Preview mode: Shows truncated content with "Read more" link if content exceeds threshold
  */
-export function ByteCardContent({ byte, isPreview = true }: { byte: Byte; isPreview?: boolean }) {
+function ByteCardContentComponent({ byte, isPreview = true }: { byte: Byte; isPreview?: boolean }) {
   const { tokens, colors, spacing } = useByteCardTokens();
   const [isExpanded, setIsExpanded] = useState(false);
   
@@ -98,3 +98,13 @@ export function ByteCardContent({ byte, isPreview = true }: { byte: Byte; isPrev
     </View>
   );
 }
+
+// Memoize ByteCardContent to prevent unnecessary re-renders when byte props haven't changed
+export const ByteCardContent = memo(ByteCardContentComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.byte.id === nextProps.byte.id &&
+    prevProps.byte.cooked === nextProps.byte.cooked &&
+    prevProps.isPreview === nextProps.isPreview
+  );
+});
+ByteCardContent.displayName = 'ByteCardContent';
