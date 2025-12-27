@@ -2,8 +2,8 @@ import React, { useCallback, useRef, useEffect, forwardRef, useImperativeHandle,
 import { View, Text, Platform, BackHandler, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetFooter } from '@gorhom/bottom-sheet';
-import { ThemedBottomSheet, BottomSheetModalRef, BottomSheetScrollView } from '@/components/ui/bottom-sheet';
-import { CommentSection } from '@/components/feed/CommentSection';
+import { ThemedBottomSheet, BottomSheetModalRef, BottomSheetFlatList } from '@/components/ui/bottom-sheet';
+import { CommentItem } from '@/components/feed/CommentItem';
 import { NewCommentInput, NewCommentInputRef } from '@/components/feed/NewCommentInput';
 import { useTheme } from '@/components/theme';
 import { getTokens } from '@/shared/design/tokens';
@@ -162,6 +162,35 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
       [tokens.colors.background, tokens.colors.border, insets.bottom]
     );
 
+    const renderCommentItem = useCallback(
+      ({ item }: { item: Comment }) => (
+        <CommentItem
+          comment={item}
+          isReply={item.isReply}
+          shouldAnimate={item.isNew}
+          onLike={onLike}
+          onReply={onReply}
+          isDark={isDark}
+          mode={mode}
+        />
+      ),
+      [onLike, onReply, isDark, mode]
+    );
+
+    const renderEmptyState = useCallback(
+      () => (
+        <View className="py-12 px-5 items-center">
+          <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8, color: tokens.colors.text }}>
+            Be the first to reply
+          </Text>
+          <Text style={{ fontSize: 14, textAlign: 'center', color: tokens.colors.muted }}>
+            Start the conversation by adding a comment below.
+          </Text>
+        </View>
+      ),
+      [tokens.colors.muted, tokens.colors.text]
+    );
+
     // Render footer with input bar using BottomSheetFooter (correct @gorhom/bottom-sheet pattern)
     const renderFooter = useCallback(
       ({ animatedFooterPosition }: { animatedFooterPosition: any }) => (
@@ -201,14 +230,15 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
         footerComponent={renderFooter}
         accessibilityLabel="Comments sheet"
       >
-        {/* ✅ BottomSheetScrollView must be direct child - no wrapper View */}
-        <BottomSheetScrollView
-          style={{ flex: 1 }}
+        <BottomSheetFlatList
+          data={comments}
+          keyExtractor={(item: Comment) => item.id}
+          renderItem={renderCommentItem}
           contentContainerStyle={{
+            flexGrow: 1,
             paddingTop: Platform.OS === 'ios' ? CONTENT_PADDING_TOP_IOS : CONTENT_PADDING_TOP_ANDROID,
             paddingBottom: CONTENT_PADDING_BOTTOM,
             paddingHorizontal: Platform.OS === 'ios' ? HORIZONTAL_PADDING_IOS : HORIZONTAL_PADDING_ANDROID,
-            // Don't set backgroundColor here - let ThemedBottomSheet's backgroundStyle handle it
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={true}
@@ -222,16 +252,8 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
               />
             ) : undefined
           }
-        >
-          <CommentSection
-            comments={comments}
-            onLike={onLike}
-            onReply={onReply}
-            onSend={onSend}
-            isDark={isDark}
-            mode={mode}
-          />
-        </BottomSheetScrollView>
+          ListEmptyComponent={renderEmptyState}
+        />
       </ThemedBottomSheet>
     );
   }

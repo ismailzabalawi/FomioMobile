@@ -134,9 +134,9 @@ export function topicSummaryToByte(topic: any): Byte {
     }
   }
 
-  // Don't use excerpt - summaries should only show title, not body content
-  // Full content will be loaded when user taps to view detail page
+  // Summaries don't include cooked content; use excerpt for lightweight previews only
   const cooked = '';
+  const excerpt = topic.excerpt || '';
 
   return {
     id: topic.id,
@@ -151,6 +151,7 @@ export function topicSummaryToByte(topic: any): Byte {
     teret, // Show teret if subcategory
     raw: '', // Summaries don't have raw markdown
     cooked, // Empty for summaries - only title is shown
+    excerpt,
     createdAt: topic.created_at || new Date().toISOString(),
     updatedAt: topic.last_posted_at || topic.created_at || new Date().toISOString(),
     origin: 'summary', // Always summary from /latest.json
@@ -165,4 +166,3 @@ export function topicSummaryToByte(topic: any): Byte {
     isBookmarked: false, // Summary doesn't include bookmark state
   };
 }
-

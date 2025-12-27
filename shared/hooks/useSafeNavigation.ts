@@ -8,7 +8,7 @@ export function useSafeNavigation() {
     // If we're in the tabs context (compose, home, etc.), always navigate to home feed
     // This prevents going back to onboarding or other auth screens
     if (pathname?.startsWith("/(tabs)")) {
-      router.replace("/(tabs)/");
+      router.replace('/(tabs)');
       return;
     }
     
@@ -17,7 +17,7 @@ export function useSafeNavigation() {
       router.back();
     } else {
       // Fallback: navigate to safe screen (home tab)
-      router.replace("/(tabs)/");
+      router.replace('/(tabs)');
     }
   }, [pathname]);
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, Image, FlatList } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, Image, FlatList, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
@@ -100,7 +100,7 @@ export default function HomeScreen(): React.ReactElement {
     return (
       <ByteCard
         byte={item}
-        onPress={() => handleBytePress(Number(item.id))}
+        onPressByteId={handleBytePress}
       />
     );
   }, [handleBytePress]);
@@ -304,7 +304,7 @@ export default function HomeScreen(): React.ReactElement {
         initialNumToRender={10}
         maxToRenderPerBatch={5}
         windowSize={10}
-        removeClippedSubviews={false}
+        removeClippedSubviews={Platform.OS === 'android'}
         updateCellsBatchingPeriod={50}
         ListFooterComponent={renderFooter}
         ListEmptyComponent={hasError ? renderError : renderEmptyState}

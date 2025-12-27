@@ -17,6 +17,8 @@ export interface Comment {
   likes: number;
   parentId?: string;
   replyToPostNumber?: number;
+  isReply?: boolean;
+  isNew?: boolean;
 }
 
 interface CommentItemProps {
@@ -26,20 +28,28 @@ interface CommentItemProps {
   onReply?: (id: string) => void;
   isDark?: boolean; // Pass theme from parent when used in portal (e.g., bottom sheet)
   mode?: 'light' | 'dark' | 'darkAmoled'; // Pass mode from parent when used in portal
+  shouldAnimate?: boolean;
 }
 
-export function CommentItem({ comment, isReply, onLike, onReply, isDark: isDarkProp, mode: modeProp }: CommentItemProps) {
+export function CommentItem({ comment, isReply, onLike, onReply, isDark: isDarkProp, mode: modeProp, shouldAnimate }: CommentItemProps) {
   // Use props if provided (for portal contexts), otherwise fall back to theme context
   const themeContext = useTheme();
   const isDark = isDarkProp !== undefined ? isDarkProp : themeContext.isDark;
   const mode = modeProp || (isDark ? 'darkAmoled' : 'light');
   const tokens = useMemo(() => getTokens(mode), [mode]);
   const primaryTextColor = tokens.colors.text; // Use theme token instead of hardcoded color
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-10)).current;
+  const shouldRunAnimation = shouldAnimate ?? comment.isNew ?? false;
+  const fadeAnim = useRef(new Animated.Value(shouldRunAnimation ? 0 : 1)).current;
+  const translateY = useRef(new Animated.Value(shouldRunAnimation ? -10 : 0)).current;
+  const plainContent = useMemo(() => toPlainText(comment.content), [comment.content]);
   
-  // Animate on mount
+  // Animate only for newly added comments to avoid heavy list mounts
   useEffect(() => {
+    if (!shouldRunAnimation) {
+      fadeAnim.setValue(1);
+      translateY.setValue(0);
+      return;
+    }
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -52,7 +62,7 @@ export function CommentItem({ comment, isReply, onLike, onReply, isDark: isDarkP
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, translateY, shouldRunAnimation]);
   
   // Handle empty avatar URLs
   const avatarSource = comment.author.avatar && comment.author.avatar.trim() !== '' 
@@ -98,7 +108,7 @@ export function CommentItem({ comment, isReply, onLike, onReply, isDark: isDarkP
         </View>
         <View className="mb-1.5">
           <Text style={{ color: primaryTextColor, lineHeight: 22, fontSize: 15 }}>
-            {toPlainText(comment.content)}
+            {plainContent}
           </Text>
         </View>
         <View className="flex-row items-center gap-3">

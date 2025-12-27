@@ -27,6 +27,7 @@ export interface Byte {
   };
   raw: string;      // Markdown raw content
   cooked: string;   // HTML from Discourse
+  excerpt?: string; // Plain text or HTML excerpt for previews
   createdAt: string;
   updatedAt?: string; // When post was last updated
   origin: 'summary' | 'hydrated'; // Explicit source tracking
@@ -55,4 +56,3 @@ export interface Byte {
     userId: number;
   };
 }
-

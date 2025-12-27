@@ -1,4 +1,4 @@
-import React, { useState, memo } from 'react';
+import React, { useState, memo, useMemo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { MarkdownContent } from '../feed/MarkdownContent';
 import { CaretDown, CaretUp } from 'phosphor-react-native';
@@ -22,12 +22,15 @@ import { createTextStyle } from '@/shared/design-system';
 function ByteCardContentComponent({ byte, isPreview = true }: { byte: Byte; isPreview?: boolean }) {
   const { tokens, colors, spacing } = useByteCardTokens();
   const [isExpanded, setIsExpanded] = useState(false);
+  const plainExcerpt = useMemo(() => stripHtmlToText(byte.excerpt || ''), [byte.excerpt]);
+  const shouldUsePlainPreview = isPreview && byte.origin === 'summary' && plainExcerpt.length > 0;
   
   const CONTENT_THRESHOLD = 350; // Characters
-  const shouldTruncate = isPreview && byte.cooked && byte.cooked.length > CONTENT_THRESHOLD;
+  const cookedContent = byte.cooked || '';
+  const shouldTruncate = isPreview && cookedContent.length > CONTENT_THRESHOLD;
   const displayContent = shouldTruncate && !isExpanded 
-    ? byte.cooked.substring(0, CONTENT_THRESHOLD).replace(/\s+\S*$/, '') + '...'
-    : byte.cooked;
+    ? cookedContent.substring(0, CONTENT_THRESHOLD).replace(/\s+\S*$/, '') + '...'
+    : cookedContent;
 
   const handleToggleExpand = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -35,6 +38,19 @@ function ByteCardContentComponent({ byte, isPreview = true }: { byte: Byte; isPr
   };
 
   const showFade = shouldTruncate && !isExpanded;
+
+  if (shouldUsePlainPreview) {
+    return (
+      <View style={{ marginTop: spacing.sm }}>
+        <Text
+          style={[createTextStyle('body', colors.foreground), { lineHeight: 22 }]}
+          numberOfLines={6}
+        >
+          {plainExcerpt}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ marginTop: spacing.sm }}>
@@ -104,7 +120,22 @@ export const ByteCardContent = memo(ByteCardContentComponent, (prevProps, nextPr
   return (
     prevProps.byte.id === nextProps.byte.id &&
     prevProps.byte.cooked === nextProps.byte.cooked &&
+    prevProps.byte.excerpt === nextProps.byte.excerpt &&
     prevProps.isPreview === nextProps.isPreview
   );
 });
 ByteCardContent.displayName = 'ByteCardContent';
+
+function stripHtmlToText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}

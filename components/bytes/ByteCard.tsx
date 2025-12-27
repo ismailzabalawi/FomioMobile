@@ -13,6 +13,7 @@ export interface ByteCardProps {
   byte: Byte;
   showSeparator?: boolean;
   onPress?: () => void;
+  onPressByteId?: (byteId: number | string) => void;
 }
 
 /**
@@ -32,6 +33,7 @@ function ByteCardComponent({
   byte, 
   showSeparator = true,
   onPress,
+  onPressByteId,
 }: ByteCardProps) {
   const { tokens, colors, spacing, borderRadius, shadows } = useByteCardTokens();
   const [isTrayOpen, setIsTrayOpen] = useState(false);
@@ -41,8 +43,8 @@ function ByteCardComponent({
   const isValidByte = !!(byte && byte.id && byte.title);
   const safeByte = isValidByte ? byte : { id: 0, title: '', author: { id: 0, name: '', username: '', avatar: '' }, raw: '', cooked: '', createdAt: '', stats: { likes: 0, replies: 0 } } as Byte;
   
-  const { onCardPress } = useByteCardActions(safeByte);
   const actions = useByteCardActions(safeByte);
+  const { onCardPress } = actions;
 
   // All hooks must be called unconditionally (Rules of Hooks)
   const translateX = useRef(new Animated.Value(0)).current;
@@ -162,6 +164,8 @@ function ByteCardComponent({
     
     if (onPress) {
       onPress();
+    } else if (onPressByteId) {
+      onPressByteId(byte.id);
     } else {
       onCardPress();
     }
@@ -368,7 +372,8 @@ const arePropsEqual = (prev: ByteCardProps, next: ByteCardProps) => {
   return (
     prev.byte.id === next.byte.id &&
     prev.showSeparator === next.showSeparator &&
-    prev.onPress === next.onPress
+    prev.onPress === next.onPress &&
+    prev.onPressByteId === next.onPressByteId
   );
 };
 

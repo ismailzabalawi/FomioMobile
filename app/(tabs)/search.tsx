@@ -65,12 +65,12 @@ interface SearchResultItem {
 }
 
 // Helper to render ByteCard from topic data
-function renderTopicCard(topic: any, onPress: () => void) {
+function renderTopicCard(topic: any, onPressByteId: (byteId: number | string) => void) {
   const byte = searchResultToByte(topic);
   return (
     <ByteCard
       byte={byte}
-      onPress={onPress}
+      onPressByteId={onPressByteId}
     />
   );
 }
@@ -79,6 +79,9 @@ function HubCard({ category, onPress }: { category: any; onPress: () => void }) 
   const { themeMode, isAmoled, isDark } = useTheme();
   const colors = getThemeColors(themeMode, isAmoled);
   const tokens = useMemo(() => getTokens(isDark ? 'dark' : 'light'), [isDark]);
+  const handleBytePress = useCallback((byteId: number | string) => {
+    router.push(`/feed/${byteId}` as any);
+  }, []);
 
   return (
     <TouchableOpacity
@@ -324,10 +327,7 @@ function SearchResults({
           className="mb-3"
           entering={FadeInDown.delay(staggerDelay).duration(350).springify()}
         >
-          {renderTopicCard(
-            item.data,
-            () => router.push(`/feed/${item.data.id}`)
-          )}
+          {renderTopicCard(item.data, handleBytePress)}
         </Animated.View>
       );
     }

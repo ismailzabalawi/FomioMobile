@@ -273,6 +273,7 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
     teret, // Show teret if subcategory
     raw: rawContent,
     cooked, // Show excerpt/content for search context
+    excerpt,
     createdAt,
     updatedAt,
     origin: 'hydrated', // Search results are hydrated (have content)
@@ -300,4 +301,3 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
   
   return transformedByte;
 }
-

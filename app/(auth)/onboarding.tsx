@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
+import { CommonActions } from '@react-navigation/native';
 import PagerView from 'react-native-pager-view';
 import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
@@ -42,6 +43,7 @@ export default function OnboardingScreen() {
   const [currentStep, setCurrentStep] = useState(0);
   const pagerRef = useRef<PagerView>(null);
   const { width } = useWindowDimensions(); // Responsive to dimension changes (foldable devices)
+  const navigation = useNavigation();
 
   const colors = {
     background: tokens.colors.background,
@@ -75,7 +77,15 @@ export default function OnboardingScreen() {
   const handleFinishToGuest = async (): Promise<void> => {
     try {
       await setOnboardingCompleted();
-      router.replace('/(tabs)');
+      // Reset navigation stack to prevent going back to onboarding
+      // Use getParent() to get root navigator and reset the entire stack
+      const rootNavigation = navigation.getParent() || navigation;
+      rootNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: '/(tabs)' }],
+        })
+      );
     } catch (err) {
       console.log('⚠️ Failed to mark onboarding complete for guest:', err);
       Alert.alert('Unable to continue', 'Please try again. If this keeps happening, restart the app.');
@@ -85,7 +95,15 @@ export default function OnboardingScreen() {
   const handleSkip = async (): Promise<void> => {
     try {
       await setOnboardingCompleted();
-      router.replace('/(tabs)');
+      // Reset navigation stack to prevent going back to onboarding
+      // Use getParent() to get root navigator and reset the entire stack
+      const rootNavigation = navigation.getParent() || navigation;
+      rootNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: '/(tabs)' }],
+        })
+      );
     } catch (err) {
       console.log('⚠️ Failed to mark onboarding complete on skip:', err);
       Alert.alert('Skip failed', 'We could not save your progress. Please try again.');

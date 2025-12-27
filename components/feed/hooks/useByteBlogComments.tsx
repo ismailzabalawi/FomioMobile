@@ -81,17 +81,29 @@ export function useByteBlogComments({
     if (!topic) return [];
 
     const comments = transformPostsToComments(topic.posts);
-    const parents = comments.filter(c => !c.parentId && !c.replyToPostNumber);
-    const replies = comments.filter(c => c.parentId || c.replyToPostNumber);
-    
-    function getReplies(parentId: string) {
-      return replies.filter(r => r.parentId === parentId);
-    }
+    const parents: Comment[] = [];
+    const replyMap = new Map<string, Comment[]>();
+
+    comments.forEach((comment) => {
+      const isReply = !!(comment.parentId || comment.replyToPostNumber);
+      if (!isReply) {
+        parents.push({ ...comment, isReply: false });
+        return;
+      }
+
+      if (comment.parentId) {
+        const existing = replyMap.get(comment.parentId) || [];
+        existing.push({ ...comment, isReply: true });
+        replyMap.set(comment.parentId, existing);
+      } else {
+        parents.push({ ...comment, isReply: false });
+      }
+    });
 
     // Compose a flat list of items: parent, then its replies indented
-    const realComments = parents.flatMap(parent => [
-      { ...parent, isReply: false },
-      ...getReplies(parent.id).map(reply => ({ ...reply, isReply: true })),
+    const realComments = parents.flatMap((parent) => [
+      parent,
+      ...(replyMap.get(parent.id) || []),
     ]);
 
     // Merge with optimistic comments
@@ -121,6 +133,8 @@ export function useByteBlogComments({
       createdAt: 'Just now',
       likes: 0,
       replyToPostNumber,
+      isReply: !!replyToPostNumber,
+      isNew: true,
     };
 
     // Add to optimistic list immediately
@@ -334,4 +348,3 @@ export function useByteBlogComments({
     commentInputRef,
   };
 }
-

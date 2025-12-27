@@ -9,7 +9,8 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { CommonActions } from '@react-navigation/native';
 import { X } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import { WebView } from 'react-native-webview';
@@ -93,7 +94,14 @@ export default function AuthModalScreen(): React.ReactElement {
             logger.info('AuthModal: Navigating to returnTo', { returnTo });
             router.replace(decodeURIComponent(returnTo) as any);
           } else {
-            router.replace('/(tabs)');
+            // Reset navigation stack to prevent going back to auth screens
+            const rootNavigation = navigation.getParent() || navigation;
+            rootNavigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: '/(tabs)' }],
+              })
+            );
           }
         } else {
           throw new Error('Sign-in failed. Please try again.');

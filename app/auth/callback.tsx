@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { CommonActions } from '@react-navigation/native';
 import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
@@ -188,8 +189,14 @@ export default function AuthCallbackScreen() {
           await setAuthenticatedUser(appUser);
           logger.info('AuthCallbackScreen: User authenticated successfully');
 
-          // Navigate to main app
-          router.replace('/(tabs)');
+          // Reset navigation stack to prevent going back to auth screens
+          const rootNavigation = navigation.getParent() || navigation;
+          rootNavigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: '/(tabs)' }],
+            })
+          );
         } else {
           const errorMsg = userResponse.error || 'Failed to fetch user data';
           logger.error('AuthCallbackScreen: Failed to fetch user data', {
