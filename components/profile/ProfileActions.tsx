@@ -5,7 +5,7 @@
 // - Uses NativeWind button styles
 
 import React, { useCallback, useMemo } from 'react';
-import { View } from 'react-native';
+import { View, StyleProp, ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
 import { useAuth } from '@/shared/auth-context';
@@ -18,6 +18,8 @@ export interface ProfileActionsProps {
   username?: string; // For public profile actions
   onReport?: () => void;
   onBlock?: () => void;
+  layout?: 'stacked' | 'inline';
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 export function ProfileActions({
@@ -25,6 +27,8 @@ export function ProfileActions({
   username: _username,
   onReport,
   onBlock,
+  layout = 'stacked',
+  containerStyle,
 }: ProfileActionsProps) {
   const { isDark } = useTheme();
   const { isAuthenticated } = useAuth();
@@ -43,18 +47,33 @@ export function ProfileActions({
   }
 
   // PublicProfile mode
+  const isInline = layout === 'inline';
+
   return (
-    <View className="px-4 py-2" style={{ width: '100%' }}>
+    <View
+      className="px-4 py-1"
+      style={[
+        { width: '100%' },
+        isInline && { paddingHorizontal: 0, paddingVertical: 0 },
+        containerStyle,
+      ]}
+    >
       <FluidSection
         mode={themeMode}
         style={{
-          paddingVertical: 12,
-          paddingHorizontal: 12,
-          gap: 12,
+          paddingVertical: 8,
+          paddingHorizontal: 8,
+          gap: 8,
           alignItems: 'center',
         }}
       >
-        <View className="flex-row flex-wrap gap-8" style={{ justifyContent: 'center' }}>
+        <View
+          className="flex-row flex-wrap gap-6"
+          style={{
+            justifyContent: isInline ? 'flex-end' : 'center',
+            flexWrap: isInline ? 'nowrap' : 'wrap',
+          }}
+        >
           {/* Message - Coming soon - only show if authenticated */}
           {isAuthenticated && (
             <View pointerEvents="none">
@@ -63,7 +82,7 @@ export function ProfileActions({
                 onPress={undefined}
                 mode={themeMode}
                 style={{
-                  minWidth: 120,
+                  minWidth: 100,
                   backgroundColor: tokens.colors.surfaceMuted,
                   borderColor: tokens.colors.border,
                 }}
@@ -78,7 +97,7 @@ export function ProfileActions({
               onPress={undefined}
               mode={themeMode}
               style={{
-                minWidth: 120,
+                minWidth: 100,
                 backgroundColor: tokens.colors.surfaceMuted,
                 borderColor: tokens.colors.border,
               }}
@@ -92,7 +111,7 @@ export function ProfileActions({
               onPress={withHaptics(onReport)}
               mode={themeMode}
               style={{
-                minWidth: 120,
+                minWidth: 100,
                 backgroundColor: tokens.colors.accent,
                 borderColor: tokens.colors.accent,
               }}
@@ -106,7 +125,7 @@ export function ProfileActions({
               onPress={withHaptics(onBlock)}
               mode={themeMode}
               style={{
-                minWidth: 120,
+                minWidth: 100,
                 backgroundColor: tokens.colors.accent,
                 borderColor: tokens.colors.accent,
               }}

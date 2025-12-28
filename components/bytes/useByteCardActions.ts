@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Share, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -307,7 +307,7 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
     try {
       // Build share URL - future-proof with byte.url if available
       const baseUrl = discourseApi.getBaseUrl();
-      const shareUrl = (byte as any).url ?? byte.linkPreview?.url ?? `${baseUrl}/t/${byte.id}`;
+      const shareUrl = (byte as { url?: string }).url ?? byte.linkPreview?.url ?? `${baseUrl}/t/${byte.id}`;
       const shareMessage = `Check out this post on Fomio: ${shareUrl}`;
       
       const result = await Share.share({
@@ -320,7 +320,8 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
       }
     } catch (error) {
       // User cancelled share - don't show error
-      if ((error as any)?.message === 'User did not share') {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage === 'User did not share') {
         return;
       }
       
@@ -332,7 +333,7 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
     }
   }, [byte.id, byte.linkPreview?.url, showError]);
   
-  return {
+  return useMemo(() => ({
     // State
     isLiked,
     isBookmarked,
@@ -347,6 +348,18 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
     onCommentPress,
     onCardPress,
     onSharePress,
-  };
+  }), [
+    isLiked,
+    isBookmarked,
+    likeCount,
+    byte.stats.replies,
+    loadingLike,
+    loadingBookmark,
+    toggleLike,
+    toggleBookmark,
+    onCommentPress,
+    onCardPress,
+    onSharePress,
+  ]);
 }
 

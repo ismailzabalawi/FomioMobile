@@ -72,6 +72,7 @@ export function ProfileTabView({
   const tokens = useMemo(() => getTokens(mode), [mode]);
   const pageBackground = mode === 'dark' ? '#000000' : '#f8fafc';
   const [activeTab, setActiveTab] = useState<string>('topics');
+  const isWide = screenWidth >= 520;
 
   const visibleTabs = useMemo(() => {
     return getVisibleTabs(isOwnProfile, isAuthenticated);
@@ -80,7 +81,7 @@ export function ProfileTabView({
   const headerContainerStyle = useMemo(
     () => ({
       width: '100%' as const,
-      marginTop: -8,
+      marginTop: -4,
       backgroundColor: pageBackground,
     }),
     [pageBackground]
@@ -99,16 +100,45 @@ export function ProfileTabView({
           isPublic={!isOwnProfile}
         />
         <ProfileBio bio={user.bio_raw} isOwnProfile={isOwnProfile} />
-        <ProfileStats user={user} />
-        <ProfileActions
-          mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
-          username={user.username}
-          onReport={onReport}
-          onBlock={onBlock}
-        />
+        {isWide ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              paddingHorizontal: 16,
+              paddingTop: 6,
+            }}
+          >
+            <ProfileStats
+              user={user}
+              containerStyle={{ marginTop: 0, paddingHorizontal: 0, flex: 1 }}
+              textAlign="left"
+            />
+            <ProfileActions
+              mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
+              username={user.username}
+              onReport={onReport}
+              onBlock={onBlock}
+              layout="inline"
+              containerStyle={{ width: 'auto' }}
+            />
+          </View>
+        ) : (
+          <>
+            <ProfileStats user={user} />
+            <ProfileActions
+              mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
+              username={user.username}
+              onReport={onReport}
+              onBlock={onBlock}
+            />
+          </>
+        )}
       </View>
     );
-  }, [user, isOwnProfile, onReport, onBlock, headerContainerStyle]);
+  }, [user, isOwnProfile, onReport, onBlock, headerContainerStyle, isWide]);
 
   if (!user) {
     return null;
@@ -159,7 +189,7 @@ export function ProfileTabView({
       <View
         style={{
           paddingHorizontal: 12,
-          paddingVertical: 10,
+          paddingVertical: 8,
           backgroundColor: pageBackground,
         }}
       >

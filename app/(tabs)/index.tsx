@@ -4,15 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTheme } from '@/components/theme';
 import { ByteCard } from '@/components/bytes/ByteCard';
-import { topicSummaryToByte } from '@/shared/adapters/topicSummaryToByte';
 import { useFeedHeader } from '@/shared/hooks/useFeedHeader';
 import { useFeed, FeedItem } from '../../shared/useFeed';
 import { useAuth } from '@/shared/auth-context';
-import { getSession } from '../../lib/discourse';
-import { FeedFilterChips } from '@/components/feed/FeedFilterChips';
-import { useHubs } from '@/shared/useHubs';
 import { ByteCardSkeleton } from '@/components/bytes/ByteCardSkeleton';
-import { ArrowClockwise, Newspaper, Bell } from 'phosphor-react-native';
+import { ArrowClockwise, Newspaper } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedScrollHandler } from 'react-native-reanimated';
 import { useFluidNav } from '@/shared/navigation/fluidNavContext';
@@ -20,12 +16,8 @@ import { useFluidNav } from '@/shared/navigation/fluidNavContext';
 export default function HomeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
-  const { hubs } = useHubs();
   const { scrollY, setUpHandler } = useFluidNav();
   
-  const [selectedSort, setSelectedSort] = useState<'latest' | 'hot' | 'unread'>('latest');
-  const [selectedHubId, setSelectedHubId] = useState<number | undefined>(undefined);
-  const filtersVisible = false;
   const flatListRef = useRef<Animated.FlatList<FeedItem>>(null);
 
   const colors = useMemo(() => ({
@@ -36,26 +28,19 @@ export default function HomeScreen(): React.ReactElement {
     error: isDark ? '#ef4444' : '#dc2626',
     primary: isDark ? '#26A69A' : '#009688',
   }), [isAmoled, isDark]);
-
-  // Memoize filters to prevent unnecessary re-renders
-  const feedFilters = useMemo(() => ({
-    hubId: selectedHubId,
-    sortBy: selectedSort,
-  }), [selectedHubId, selectedSort]);
   
   const { 
     items, 
     isLoading: isFeedLoading, 
     isRefreshing, 
+    isFetchingNextPage,
     hasError, 
     errorMessage, 
     hasMore, 
     refresh, 
     loadMore, 
     retry 
-  } = useFeed(feedFilters);
-  
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  } = useFeed(); // No filters - always fetch latest
 
   const headerTitle = useMemo(
     () => (
@@ -75,23 +60,6 @@ export default function HomeScreen(): React.ReactElement {
     centerTitle: true,
   });
   
-  // Load user session if authenticated
-  useEffect(() => {
-    if (isAuthenticated && !isAuthLoading) {
-      getSession()
-        .then((session) => {
-          setCurrentUser(session.user || user);
-        })
-        .catch((err: any) => {
-          // Only log if it's not an expected "not authenticated" error
-          if (err?.message && !err.message.includes('Not authenticated') && !err.message.includes('Please sign in')) {
-            console.warn('Failed to load session:', err.message);
-          }
-          // If not authenticated, that's expected - don't log as error
-        });
-    }
-  }, [isAuthenticated, isAuthLoading, user]);
-  
   const handleBytePress = useCallback((byteId: number): void => {
     router.push(`/feed/${byteId}` as any);
   }, []);
@@ -107,7 +75,16 @@ export default function HomeScreen(): React.ReactElement {
 
   const keyExtractor = useCallback((item: FeedItem) => item.id.toString(), []);
 
-  const renderFooter = () => {
+  const getErrorMessage = useCallback((error: string | null) => {
+    if (!error) return 'Failed to load posts';
+    const errorLower = error.toLowerCase();
+    if (errorLower.includes('network') || errorLower.includes('fetch') || errorLower.includes('connection')) {
+      return 'Connection issue. Check your internet and try again.';
+    }
+    return error;
+  }, []);
+
+  const renderFooter = useCallback(() => {
     if (!hasMore) {
       return (
         <View style={styles.footer}>
@@ -118,7 +95,7 @@ export default function HomeScreen(): React.ReactElement {
       );
     }
     
-    if (isFeedLoading) {
+    if (isFetchingNextPage) {
       return (
         <View style={styles.footer}>
           <ActivityIndicator size="small" color={colors.text} />
@@ -130,7 +107,7 @@ export default function HomeScreen(): React.ReactElement {
     }
     
     return null;
-  };
+  }, [hasMore, isFetchingNextPage, colors.text, colors.secondary]);
 
   const handleRetry = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -138,17 +115,14 @@ export default function HomeScreen(): React.ReactElement {
   }, [retry]);
 
   const handleScrollToTop = useCallback(() => {
-    console.log('[Feed] ===== Scroll-to-top handler CALLED =====');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
   
   // Share scroll position with fluid nav and keep scroll-to-top handler accessible
   useEffect(() => {
-    console.log('[Feed] ===== Registering scroll-to-top handler =====');
     setUpHandler(handleScrollToTop);
     return () => {
-      console.log('[Feed] ===== Clearing scroll-to-top handler =====');
       setUpHandler(null);
     };
   }, [handleScrollToTop, setUpHandler]);
@@ -164,13 +138,13 @@ export default function HomeScreen(): React.ReactElement {
     scrollY.value = 0;
   }, [scrollY]);
 
-  const renderError = () => {
+  const renderError = useCallback(() => {
     if (!hasError) return null;
     
     return (
       <View style={styles.errorContainer}>
         <Text style={[styles.errorText, { color: colors.error }]}>
-          {errorMessage || 'Failed to load posts'}
+          {getErrorMessage(errorMessage)}
         </Text>
         <TouchableOpacity 
           style={styles.retryButton}
@@ -186,15 +160,15 @@ export default function HomeScreen(): React.ReactElement {
         </TouchableOpacity>
       </View>
     );
-  };
+  }, [hasError, errorMessage, colors, handleRetry, getErrorMessage]);
 
-  const renderErrorBanner = () => {
+  const renderErrorBanner = useCallback(() => {
     if (!hasError || items.length === 0) return null;
     
     return (
       <View style={[styles.errorBanner, { backgroundColor: colors.error + '10', borderBottomColor: colors.error + '20' }]}>
         <Text style={[styles.errorBannerText, { color: colors.error }]}>
-          {errorMessage || 'Failed to refresh'}
+          {getErrorMessage(errorMessage)}
         </Text>
         <TouchableOpacity 
           onPress={handleRetry}
@@ -206,29 +180,23 @@ export default function HomeScreen(): React.ReactElement {
         </TouchableOpacity>
       </View>
     );
-  };
+  }, [hasError, items.length, errorMessage, colors, handleRetry, getErrorMessage]);
 
-  const renderEmptyState = () => {
+  const renderEmptyState = useCallback(() => {
     if (hasError || items.length > 0 || isFeedLoading) return null;
     
-    let message = 'No posts yet';
-    let icon = Newspaper;
-    
-    if (selectedHubId) {
-      message = 'No posts in this category yet';
-    } else if (selectedSort === 'unread') {
-      message = 'No unread posts';
-      icon = Bell;
-    }
+    const emptyMessage = isAuthenticated 
+      ? 'Pull down to refresh or check back later'
+      : 'Sign in to see personalized content';
     
     return (
       <View style={styles.emptyContainer}>
-        {React.createElement(icon, { size: 48, color: colors.secondary, weight: 'regular' })}
+        {React.createElement(Newspaper, { size: 48, color: colors.secondary, weight: 'regular' })}
         <Text style={[styles.emptyText, { color: colors.text }]}>
-          {message}
+          No posts yet
         </Text>
         <Text style={[styles.emptySubtext, { color: colors.secondary }]}>
-          {selectedHubId ? 'Try a different category' : 'Try a different filter'}
+          {emptyMessage}
         </Text>
         <TouchableOpacity
           style={[styles.emptyButton, { backgroundColor: colors.primary }]}
@@ -237,27 +205,17 @@ export default function HomeScreen(): React.ReactElement {
           accessibilityRole="button"
           accessibilityLabel="Refresh feed"
         >
-          <Text style={[styles.emptyButtonText, { color: '#ffffff' }]}>
+          <Text style={[styles.emptyButtonText, { color: colors.background }]}>
             Refresh
           </Text>
         </TouchableOpacity>
       </View>
     );
-  };
+  }, [hasError, items.length, isFeedLoading, colors, refresh, isAuthenticated]);
 
   if (isFeedLoading && items.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        {filtersVisible && (
-          <FeedFilterChips
-            activeSort={selectedSort}
-            onSortChange={setSelectedSort}
-            activeHubId={selectedHubId}
-            onHubChange={setSelectedHubId}
-            hubs={hubs}
-            isAuthenticated={isAuthenticated}
-          />
-        )}
         <FlatList
           data={Array(5).fill(null)}
           renderItem={() => <ByteCardSkeleton />}
@@ -271,16 +229,6 @@ export default function HomeScreen(): React.ReactElement {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {filtersVisible && (
-        <FeedFilterChips
-          activeSort={selectedSort}
-          onSortChange={setSelectedSort}
-          activeHubId={selectedHubId}
-          onHubChange={setSelectedHubId}
-          hubs={hubs}
-          isAuthenticated={isAuthenticated}
-        />
-      )}
       {renderErrorBanner()}
       <Animated.FlatList
         ref={flatListRef}
@@ -316,16 +264,6 @@ export default function HomeScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
   },
   footer: {
     paddingVertical: 10,
@@ -368,16 +306,6 @@ const styles = StyleSheet.create({
   },
   feedContainer: {
     paddingVertical: 8,
-  },
-  connectButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  connectButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,

@@ -1,13 +1,15 @@
 import React, { useRef, useCallback, memo, useState, useMemo } from 'react';
-import { Pressable, View, Text, Animated, PanResponder } from 'react-native';
+import { Pressable, View, Text, Animated, PanResponder, ActivityIndicator } from 'react-native';
 import type { Byte } from '@/types/byte';
 import { ByteCardHeader } from './ByteCardHeader';
 import { ByteCardContent } from './ByteCardContent';
 import { ByteCardMedia } from './ByteCardMedia';
+import { ByteCardActionTray } from './ByteCardActionTray';
 import { useByteCardActions } from './useByteCardActions';
 import { useByteCardTokens } from './useByteCardTokens';
 import { createTextStyle } from '@/shared/design-system';
-import { Heart, ChatCircle, BookmarkSimple, CaretDown } from 'phosphor-react-native';
+import { Heart, ChatCircle, CaretDown } from 'phosphor-react-native';
+import { logger } from '@/shared/logger';
 
 export interface ByteCardProps {
   byte: Byte;
@@ -48,9 +50,9 @@ function ByteCardComponent({
 
   // All hooks must be called unconditionally (Rules of Hooks)
   const translateX = useRef(new Animated.Value(0)).current;
-  const likeThreshold = 28;
-  const trayThreshold = -28;
-  const maxDrag = 96;
+  const LIKE_THRESHOLD = 28;
+  const TRAY_THRESHOLD = -28;
+  const MAX_DRAG = 96;
   const panActiveRef = useRef(false);
   const actionPadding = useRef(new Animated.Value(4)).current; // spacing.xs = 4
   const arrowRotation = useRef(new Animated.Value(0)).current;
@@ -74,8 +76,8 @@ function ByteCardComponent({
     }, 200);
   }, []);
 
-  const panResponder = useRef(
-    PanResponder.create({
+  const panResponder = useMemo(
+    () => PanResponder.create({
       onStartShouldSetPanResponder: (_, gesture) => {
         return Math.abs(gesture.dx) > 6 && Math.abs(gesture.dx) > Math.abs(gesture.dy);
       },
@@ -86,7 +88,7 @@ function ByteCardComponent({
       onPanResponderMove: (_, gesture) => {
         panActiveRef.current = true;
         if (actions.loadingLike || actions.loadingBookmark) return;
-        const clamped = Math.max(-maxDrag, Math.min(maxDrag, gesture.dx));
+        const clamped = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, gesture.dx));
         translateX.setValue(clamped);
       },
       onPanResponderRelease: (_, gesture) => {
@@ -100,14 +102,14 @@ function ByteCardComponent({
           return;
         }
 
-        if (gesture.dx > likeThreshold) {
+        if (gesture.dx > LIKE_THRESHOLD) {
           actions.toggleLike();
           setIsTrayOpen(false);
           performReset();
           return;
         }
 
-        if (gesture.dx < trayThreshold) {
+        if (gesture.dx < TRAY_THRESHOLD) {
           setIsTrayOpen(true);
           performReset();
           return;
@@ -120,8 +122,9 @@ function ByteCardComponent({
         panActiveRef.current = false;
         resetPosition();
       },
-    })
-  ).current;
+    }),
+    [actions.loadingLike, actions.loadingBookmark, actions.toggleLike, resetPosition, MAX_DRAG, LIKE_THRESHOLD, TRAY_THRESHOLD, translateX]
+  );
 
   // Animate padding around the action row and arrow rotation when tray toggles
   React.useEffect(() => {
@@ -143,7 +146,7 @@ function ByteCardComponent({
   // Guard against invalid bytes - AFTER all hooks
   if (!isValidByte) {
     if (__DEV__) {
-      console.warn('⚠️ [ByteCard] Invalid byte prop:', { 
+      logger.warn('⚠️ [ByteCard] Invalid byte prop:', { 
         hasByte: !!byte, 
         hasId: !!byte?.id, 
         hasTitle: !!byte?.title 
@@ -180,6 +183,14 @@ function ByteCardComponent({
     setIsTrayOpen(prev => !prev);
     resetPosition();
   };
+
+  const actionRowStyle = useMemo(() => ({ 
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.md,
+    marginTop: spacing.sm,
+    paddingVertical: actionPadding,
+  }), [spacing.md, spacing.sm, actionPadding]);
 
   const cardStyle = useMemo(() => ({
     width: '100%' as const,
@@ -229,20 +240,18 @@ function ByteCardComponent({
 
           {/* Inline metrics + tray toggle (arrow inline with icons) */}
           <Animated.View 
-            style={{ 
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: spacing.md,
-              marginTop: spacing.sm,
-              paddingVertical: actionPadding,
-            }}
+            style={actionRowStyle}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-              <Heart
-                size={22}
-                weight={actions.isLiked ? 'fill' : 'regular'}
-                color={actions.isLiked ? colors.like : colors.comment}
-              />
+              {actions.loadingLike ? (
+                <ActivityIndicator size="small" color={colors.like} />
+              ) : (
+                <Heart
+                  size={22}
+                  weight={actions.isLiked ? 'fill' : 'regular'}
+                  color={actions.isLiked ? colors.like : colors.comment}
+                />
+              )}
               <Text style={[createTextStyle('body', colors.mutedForeground), { fontWeight: '600' }]}>
                 {actions.likeCount}
               </Text>
@@ -283,73 +292,7 @@ function ByteCardComponent({
             </Pressable>
           </Animated.View>
 
-          {isTrayOpen && (
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginTop: spacing.sm,
-                backgroundColor: tokens.colors.surfaceMuted,
-                borderColor: tokens.colors.border,
-                borderWidth: 1,
-                borderRadius: tokens.radii.md,
-                paddingHorizontal: spacing.sm,
-                paddingVertical: spacing.sm,
-              }}
-            >
-              <Pressable
-                onPress={actions.toggleLike}
-                disabled={actions.loadingLike}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Like"
-                accessibilityState={{ disabled: actions.loadingLike, selected: actions.isLiked }}
-              >
-                <Heart
-                  size={20}
-                  weight={actions.isLiked ? 'fill' : 'regular'}
-                  color={actions.isLiked ? colors.like : colors.comment}
-                />
-                <Text style={createTextStyle('caption', colors.foreground)}>
-                  {actions.isLiked ? 'Liked' : 'Like'}
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={actions.onCommentPress}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Reply"
-              >
-                <ChatCircle size={20} weight="regular" color={colors.comment} />
-                <Text style={createTextStyle('caption', colors.foreground)}>
-                  Reply
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={actions.toggleBookmark}
-                disabled={actions.loadingBookmark}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Bookmark"
-                accessibilityState={{ disabled: actions.loadingBookmark, selected: actions.isBookmarked }}
-              >
-                <BookmarkSimple
-                  size={20}
-                  weight={actions.isBookmarked ? 'fill' : 'regular'}
-                  color={actions.isBookmarked ? colors.bookmark : colors.comment}
-                />
-                <Text style={createTextStyle('caption', colors.foreground)}>
-                  {actions.isBookmarked ? 'Saved' : 'Save'}
-                </Text>
-              </Pressable>
-            </View>
-          )}
+          <ByteCardActionTray isOpen={isTrayOpen} actions={actions} />
         </View>
         
         {showSeparator && (
@@ -369,12 +312,29 @@ function ByteCardComponent({
 }
 
 const arePropsEqual = (prev: ByteCardProps, next: ByteCardProps) => {
-  return (
-    prev.byte.id === next.byte.id &&
-    prev.showSeparator === next.showSeparator &&
-    prev.onPress === next.onPress &&
-    prev.onPressByteId === next.onPressByteId
-  );
+  // Compare by ID first (most stable identifier)
+  if (prev.byte.id !== next.byte.id) return false;
+  
+  // Compare critical fields that affect rendering
+  if (prev.byte.title !== next.byte.title) return false;
+  if (prev.byte.author?.username !== next.byte.author?.username) return false;
+  if (prev.byte.stats?.likes !== next.byte.stats?.likes) return false;
+  if (prev.byte.stats?.replies !== next.byte.stats?.replies) return false;
+  if (prev.byte.isLiked !== next.byte.isLiked) return false;
+  if (prev.byte.isBookmarked !== next.byte.isBookmarked) return false;
+  if (prev.byte.cooked !== next.byte.cooked) return false;
+  if (prev.byte.excerpt !== next.byte.excerpt) return false;
+  
+  // Compare teret/hub (category badges)
+  if (prev.byte.teret?.id !== next.byte.teret?.id) return false;
+  if (prev.byte.hub?.id !== next.byte.hub?.id) return false;
+  
+  // Compare callbacks (reference equality)
+  if (prev.onPress !== next.onPress) return false;
+  if (prev.onPressByteId !== next.onPressByteId) return false;
+  if (prev.showSeparator !== next.showSeparator) return false;
+  
+  return true; // All fields match, skip re-render
 };
 
 export const ByteCard = memo(ByteCardComponent, arePropsEqual);

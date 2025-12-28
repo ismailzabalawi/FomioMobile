@@ -8,7 +8,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, Platform, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { Calendar, Eye } from 'phosphor-react-native';
+import { Eye } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
 import { useHeader } from '@/components/ui/header';
@@ -79,15 +79,15 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
       })()
     : null;
 
-  const heroHeight = 160;
-  const avatarSize = 88;
+  const heroHeight = 112;
+  const avatarSize = 72;
 
   return (
     <View style={{ width: '100%' }}>
       <View
         style={{
           height: heroHeight,
-          paddingTop: headerTopPadding + 12,
+          paddingTop: headerTopPadding + 4,
           borderBottomLeftRadius: tokens.radii.lg,
           borderBottomRightRadius: tokens.radii.lg,
           // Lighter, grayish hero for contrast against the black body
@@ -113,112 +113,93 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
       <View
         style={{
           marginTop: -avatarSize / 2,
-          alignItems: 'center',
           paddingHorizontal: 16,
         }}
       >
-        {/* Avatar */}
-        <View
-          style={{
-            width: avatarSize,
-            height: avatarSize,
-            borderRadius: avatarSize / 2,
-            overflow: 'hidden',
-            borderWidth: 3,
-            borderColor: tokens.colors.surfaceFrost,
-            ...tokens.shadows.soft,
-          }}
-        >
-          {avatarUrl ? (
-            <Image
-              source={{ uri: avatarUrl }}
-              style={{ width: '100%', height: '100%' }}
-              contentFit="cover"
-              transition={200}
-              accessible
-              accessibilityLabel={`${displayName}'s profile picture`}
-            />
-          ) : (
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: tokens.colors.surfaceMuted,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {/* Avatar */}
+          <View
+            style={{
+              width: avatarSize,
+              height: avatarSize,
+              borderRadius: avatarSize / 2,
+              overflow: 'hidden',
+              borderWidth: 3,
+              borderColor: tokens.colors.surfaceFrost,
+              ...tokens.shadows.soft,
+            }}
+          >
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                style={{ width: '100%', height: '100%' }}
+                contentFit="cover"
+                transition={200}
+                accessible
+                accessibilityLabel={`${displayName}'s profile picture`}
+              />
+            ) : (
+              <View
                 style={{
-                  fontSize: 32,
-                  fontWeight: '700',
-                  color: tokens.colors.text,
+                  flex: 1,
+                  backgroundColor: tokens.colors.surfaceMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                {displayName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Name, username, bio */}
-        <View style={{ marginTop: 16, alignItems: 'center', gap: 2 }}>
-          <Text
-            className="text-2xl font-semibold"
-            style={{ color: tokens.colors.text }}
-          >
-            {displayName}
-          </Text>
-          <Text
-            className="text-base"
-            style={{ color: tokens.colors.muted }}
-          >
-            @{username}
-          </Text>
-        </View>
-
-        {/* Meta: Joined date and Last seen */}
-        {(joinedDate || lastSeen) && (
-          <View className="flex-row items-center gap-3 mt-3" style={{ justifyContent: 'center' }}>
-            {joinedDate && (
-              <View className="flex-row items-center gap-1.5">
-                <Calendar
-                  size={16}
-                  color={tokens.colors.muted}
-                  weight="regular"
-                />
                 <Text
-                  className="text-sm"
-                  style={{ color: tokens.colors.muted }}
+                  style={{
+                    fontSize: 28,
+                    fontWeight: '700',
+                    color: tokens.colors.text,
+                  }}
                 >
-                  Joined {joinedDate}
-                </Text>
-              </View>
-            )}
-            {lastSeen && joinedDate && (
-              <Text
-                className="text-sm"
-                style={{ color: tokens.colors.muted }}
-              >
-                •
-              </Text>
-            )}
-            {lastSeen && (
-              <View className="flex-row items-center gap-1.5">
-                <Eye
-                  size={16}
-                  color={tokens.colors.muted}
-                  weight="regular"
-                />
-                <Text
-                  className="text-sm"
-                  style={{ color: tokens.colors.muted }}
-                >
-                  {lastSeen}
+                  {displayName.charAt(0).toUpperCase()}
                 </Text>
               </View>
             )}
           </View>
-        )}
+
+          {/* Name, username, meta */}
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text
+              className="text-xl font-semibold"
+              style={{ color: tokens.colors.text }}
+              numberOfLines={1}
+            >
+              {displayName}
+            </Text>
+            <Text
+              className="text-sm"
+              style={{ color: tokens.colors.muted }}
+              numberOfLines={1}
+            >
+              @{username}
+            </Text>
+            {(joinedDate || lastSeen) && (
+              <View className="flex-row items-center gap-2">
+                {joinedDate && (
+                  <Text className="text-xs" style={{ color: tokens.colors.muted }}>
+                    Joined {joinedDate}
+                  </Text>
+                )}
+                {lastSeen && joinedDate && (
+                  <Text className="text-xs" style={{ color: tokens.colors.muted }}>
+                    •
+                  </Text>
+                )}
+                {lastSeen && (
+                  <View className="flex-row items-center gap-1">
+                    <Eye size={14} color={tokens.colors.muted} weight="regular" />
+                    <Text className="text-xs" style={{ color: tokens.colors.muted }}>
+                      {lastSeen}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
       </View>
     </View>
   );

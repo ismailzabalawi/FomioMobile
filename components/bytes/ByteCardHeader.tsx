@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, memo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { CheckCircle, CaretRight } from 'phosphor-react-native';
 import { Avatar } from '../ui/avatar';
@@ -23,11 +23,11 @@ export interface ByteCardHeaderProps {
  * - Teret badge: colored pill below metadata (if exists)
  * - Spacing: 3px gap between avatar and content
  */
-export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
+function ByteCardHeaderComponent({ byte, onHeaderPress }: ByteCardHeaderProps) {
   const { author } = byte;
   const { tokens, colors, spacing } = useByteCardTokens();
 
-  const handleAvatarPress = useCallback((e?: any) => {
+  const handleAvatarPress = useCallback((e?: unknown) => {
     // Notify parent that header handled the press (prevents parent Pressable from firing)
     // Call this FIRST before navigation to ensure parent doesn't handle the event
     if (onHeaderPress) {
@@ -36,7 +36,7 @@ export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
     goToProfile(author.username);
   }, [author.username, onHeaderPress]);
 
-  const handleNamePress = useCallback((e?: any) => {
+  const handleNamePress = useCallback((e?: unknown) => {
     // Notify parent that header handled the press (prevents parent Pressable from firing)
     // Call this FIRST before navigation to ensure parent doesn't handle the event
     if (onHeaderPress) {
@@ -126,3 +126,16 @@ export function ByteCardHeader({ byte, onHeaderPress }: ByteCardHeaderProps) {
     </View>
   );
 }
+
+const areHeaderPropsEqual = (prev: ByteCardHeaderProps, next: ByteCardHeaderProps) => {
+  return (
+    prev.byte.id === next.byte.id &&
+    prev.byte.author?.username === next.byte.author?.username &&
+    prev.byte.hub?.id === next.byte.hub?.id &&
+    prev.byte.teret?.id === next.byte.teret?.id &&
+    prev.onHeaderPress === next.onHeaderPress
+  );
+};
+
+export const ByteCardHeader = memo(ByteCardHeaderComponent, areHeaderPropsEqual);
+ByteCardHeader.displayName = 'ByteCardHeader';

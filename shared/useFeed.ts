@@ -233,6 +233,7 @@ export function useFeed(filters: FeedFilters = {}) {
     // Loading states (backward compatible)
     isLoading,
     isRefreshing,
+    isFetchingNextPage,
     hasMore: hasNextPage ?? false,
 
     // Error handling

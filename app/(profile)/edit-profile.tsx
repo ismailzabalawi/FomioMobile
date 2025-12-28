@@ -4,6 +4,7 @@ import {
   Text, 
   StyleSheet, 
   ScrollView,
+  Pressable,
   TouchableOpacity,
   Alert,
   ActivityIndicator,
@@ -49,6 +50,7 @@ export default function EditProfileScreen(): React.ReactElement {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [allowBack, setAllowBack] = useState(false);
   const [originalValues, setOriginalValues] = useState({
     displayName: '',
     bio: '',
@@ -145,6 +147,10 @@ export default function EditProfileScreen(): React.ReactElement {
     accent: tokens.colors.accent,
     error: isDark ? '#ef4444' : '#dc2626',
   };
+  const bioMaxLength = 500;
+  const bioRemaining = Math.max(0, bioMaxLength - bio.length);
+  const bioCounterColor =
+    bioRemaining <= 10 ? colors.error : bioRemaining <= 50 ? colors.accent : colors.secondary;
 
   // Update local state when user data loads
   React.useEffect(() => {
@@ -165,17 +171,6 @@ export default function EditProfileScreen(): React.ReactElement {
     }
   }, [user]);
 
-  // Auto-focus first field on mount
-  React.useEffect(() => {
-    if (user && !loading) {
-      // Small delay to ensure the component is fully rendered
-      const timer = setTimeout(() => {
-        displayNameRef.current?.focus();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [user, loading]);
-
   // Track dirty state based on diffs vs original values
   React.useEffect(() => {
     const nextHasChanges =
@@ -185,6 +180,12 @@ export default function EditProfileScreen(): React.ReactElement {
       website !== originalValues.website;
     setHasChanges(nextHasChanges);
   }, [displayName, bio, location, website, originalValues]);
+
+  React.useEffect(() => {
+    if (!hasChanges) {
+      setAllowBack(false);
+    }
+  }, [hasChanges]);
 
   const handleAvatarUpload = useCallback(async () => {
     try {
@@ -440,7 +441,14 @@ export default function EditProfileScreen(): React.ReactElement {
         'You have unsaved changes. Are you sure you want to discard them?',
         [
           { text: 'Keep Editing', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => safeBack() }
+          { 
+            text: 'Discard', 
+            style: 'destructive', 
+            onPress: () => {
+              setAllowBack(true);
+              requestAnimationFrame(() => safeBack());
+            },
+          }
         ]
       );
     } else {
@@ -508,8 +516,8 @@ export default function EditProfileScreen(): React.ReactElement {
   );
 
   useScreenBackBehavior({
-    onBackPress: handleCancel,
-  }, [handleCancel]);
+    onBackPress: hasChanges && !allowBack ? handleCancel : undefined,
+  }, [hasChanges, allowBack, handleCancel]);
 
   if (loading) {
     return (
@@ -588,41 +596,63 @@ export default function EditProfileScreen(): React.ReactElement {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-          {/* Hero Edit Banner */}
+          {/* Live Preview */}
           <View
             style={[
-              styles.heroHeader,
+              styles.previewCard,
               {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
+                backgroundColor: isDark ? colors.card : 'rgba(255,255,255,0.7)',
+                borderColor: isDark ? colors.border : 'rgba(15,23,42,0.08)',
               },
             ]}
           >
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={[styles.heroTitle, { color: colors.text }]}>
-                Edit your profile
-              </Text>
-              <Text style={[styles.heroSubtitle, { color: colors.secondary }]}>
-                Update your picture and details
-              </Text>
+            <View style={styles.previewRow}>
+              <Avatar
+                source={
+                  currentAvatarUrl 
+                    ? { uri: currentAvatarUrl } 
+                    : user?.avatar_template 
+                      ? { uri: discourseApi.getAvatarUrl(user.avatar_template, 120) }
+                      : undefined
+                }
+                fallback={(displayName || user?.username || authUser?.username || 'U').charAt(0).toUpperCase()}
+                size="md"
+              />
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={[styles.previewName, { color: colors.text }]} numberOfLines={1}>
+                  {displayName || user?.name || user?.username || 'Your Name'}
+                </Text>
+                <Text style={[styles.previewHandle, { color: colors.secondary }]} numberOfLines={1}>
+                  @{user?.username || authUser?.username || 'username'}
+                </Text>
+              </View>
+              <View style={[styles.previewBadge, { backgroundColor: colors.accent }]}>
+                <Text style={styles.previewBadgeText}>Preview</Text>
+              </View>
             </View>
-            <TouchableOpacity
-              onPress={handleHeroEditPress}
-              style={[
-                styles.heroPill,
-                { backgroundColor: colors.accent },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Jump to display name field"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            <Text
+              style={[styles.previewBio, { color: colors.secondary }]}
+              numberOfLines={2}
             >
-              <NotePencil size={16} color="#ffffff" weight="bold" />
-              <Text style={[styles.heroPillText, { color: '#ffffff' }]}>Editing</Text>
-            </TouchableOpacity>
+              {bio?.trim().length ? bio.trim() : 'Your bio will appear here.'}
+            </Text>
+          </View>
+          {/* Images Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Images</Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.secondary }]}>
+              Update your avatar and header
+            </Text>
           </View>
           {/* Cover Section */}
           <View style={[styles.coverSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.coverImageWrapper}>
+            <Pressable
+              style={styles.coverImageWrapper}
+              disabled
+              accessibilityRole="button"
+              accessibilityLabel="Profile header image (coming soon)"
+              accessibilityHint="Header image uploads are coming soon"
+            >
               {currentCoverUrl ? (
                 <Image
                   source={{ uri: currentCoverUrl }}
@@ -640,26 +670,41 @@ export default function EditProfileScreen(): React.ReactElement {
                   </Text>
                 </View>
               )}
+              <View style={styles.coverComingSoonPill}>
+                <Text style={styles.coverComingSoonText}>Coming soon</Text>
+              </View>
+              <View style={styles.coverHintPill}>
+                <Text style={styles.coverHintText}>Tap to change</Text>
+              </View>
+              {uploadingCover && (
+                <View style={styles.coverUploadingOverlay}>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text style={styles.coverUploadingText}>Uploading...</Text>
+                </View>
+              )}
               <TouchableOpacity 
-                style={[styles.coverButton, { backgroundColor: colors.accent }]}
-                onPress={handleCoverUpload}
-                disabled={uploadingCover}
+                style={[styles.coverButton, { backgroundColor: colors.accent }, styles.coverButtonDisabled]}
+                onPress={undefined}
+                disabled={true}
                 accessible
                 accessibilityRole="button"
-                accessibilityLabel="Change profile header"
+                accessibilityLabel="Change profile header (coming soon)"
               >
-                {uploadingCover ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>Change cover</Text>
-                )}
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Change cover</Text>
               </TouchableOpacity>
-            </View>
+            </Pressable>
           </View>
 
           {/* Avatar Section */}
           <View style={[styles.avatarSection, { backgroundColor: colors.card }]}>
-            <View style={styles.avatarContainer}>
+            <Pressable
+              style={styles.avatarContainer}
+              onPress={handleAvatarUpload}
+              disabled={uploadingAvatar}
+              accessibilityRole="button"
+              accessibilityLabel="Change profile picture"
+              accessibilityHint="Opens your photo library"
+            >
               <Avatar
                 source={
                   currentAvatarUrl 
@@ -671,6 +716,11 @@ export default function EditProfileScreen(): React.ReactElement {
                 fallback={(user?.username || user?.name || authUser?.username || 'U').charAt(0).toUpperCase()}
                 size="xl"
               />
+              {uploadingAvatar && (
+                <View style={styles.avatarUploadingOverlay}>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                </View>
+              )}
               <TouchableOpacity 
                 style={[styles.avatarButton, { backgroundColor: colors.accent }]}
                 onPress={handleAvatarUpload}
@@ -685,13 +735,19 @@ export default function EditProfileScreen(): React.ReactElement {
                   <Camera size={20} color="white" weight="fill" />
                 )}
               </TouchableOpacity>
-            </View>
+            </Pressable>
             <Text style={[styles.avatarText, { color: colors.secondary }]}>
               Tap to change your profile picture
             </Text>
           </View>
 
-          {/* Form Fields */}
+          {/* Identity Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Identity</Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.secondary }]}>
+              How you appear to others
+            </Text>
+          </View>
           <View style={[styles.formSection, { backgroundColor: colors.card }]}>
             {/* Username (Read-only) */}
             <View style={styles.fieldContainer}>
@@ -726,21 +782,23 @@ export default function EditProfileScreen(): React.ReactElement {
                 accessibilityHint="Enter your display name. Must be at least 2 characters."
                 accessibilityLiveRegion="polite"
               />
-              {(() => {
-                const fieldValidation = getFieldValidation('displayName');
-                if (fieldValidation.hasBeenBlurred && !fieldValidation.isValid && fieldValidation.errors.length > 0) {
-                  return (
-                    <Text 
-                      style={[styles.fieldError, { color: colors.error }]}
-                      accessibilityRole="alert"
-                      accessibilityLiveRegion="assertive"
-                    >
-                      {fieldValidation.errors[0].message}
-                    </Text>
-                  );
-                }
-                return null;
-              })()}
+              <View style={styles.fieldFooter}>
+                {(() => {
+                  const fieldValidation = getFieldValidation('displayName');
+                  if (fieldValidation.hasBeenBlurred && !fieldValidation.isValid && fieldValidation.errors.length > 0) {
+                    return (
+                      <Text 
+                        style={[styles.fieldError, { color: colors.error }]}
+                        accessibilityRole="alert"
+                        accessibilityLiveRegion="assertive"
+                      >
+                        {fieldValidation.errors[0].message}
+                      </Text>
+                    );
+                  }
+                  return null;
+                })()}
+              </View>
             </View>
 
             {/* Bio */}
@@ -751,7 +809,7 @@ export default function EditProfileScreen(): React.ReactElement {
                 value={bio}
                 onChangeText={(text) => {
                   // Enforce 500 character limit
-                  const limitedText = text.length > 500 ? text.substring(0, 500) : text;
+                  const limitedText = text.length > bioMaxLength ? text.substring(0, bioMaxLength) : text;
                   setBio(limitedText);
                   setHasChanges(true);
                   setTouchedFields(prev => new Set(prev).add('bio'));
@@ -762,20 +820,23 @@ export default function EditProfileScreen(): React.ReactElement {
                 placeholder="Tell us about yourself"
                 multiline
                 numberOfLines={4}
+                maxLength={bioMaxLength}
                 style={StyleSheet.flatten([styles.input, styles.textArea])}
                 accessibilityLabel="Bio"
-                accessibilityHint={`Enter your bio. Current length: ${bio.length} of 500 characters maximum.`}
+                accessibilityHint={`Enter your bio. Current length: ${bio.length} of ${bioMaxLength} characters maximum.`}
                 accessibilityLiveRegion="polite"
               />
-              <Text style={[styles.fieldHint, { color: colors.secondary }]}>
-                {bio.length}/500 characters
-              </Text>
+              <View style={styles.fieldFooterRow}>
+                <Text style={[styles.fieldHint, { color: bioCounterColor }]}>
+                  {bioRemaining} characters left
+                </Text>
+              </View>
               {(() => {
                 const fieldValidation = getFieldValidation('bio');
                 if (fieldValidation.hasBeenBlurred && !fieldValidation.isValid && fieldValidation.errors.length > 0) {
                   return (
                     <Text 
-                      style={[styles.fieldError, { color: colors.error }]}
+                      style={[styles.fieldError, { color: colors.error, marginTop: 4 }]}
                       accessibilityRole="alert"
                       accessibilityLiveRegion="assertive"
                     >
@@ -786,7 +847,16 @@ export default function EditProfileScreen(): React.ReactElement {
                 return null;
               })()}
             </View>
+          </View>
 
+          {/* Details Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Details</Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.secondary }]}>
+              Optional profile metadata
+            </Text>
+          </View>
+          <View style={[styles.formSection, { backgroundColor: colors.card }]}>
             {/* Location */}
             <View style={styles.fieldContainer}>
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Location</Text>
@@ -806,21 +876,23 @@ export default function EditProfileScreen(): React.ReactElement {
                 accessibilityLabel="Location"
                 accessibilityHint="Enter your location"
               />
-              {(() => {
-                const fieldValidation = getFieldValidation('location');
-                if (fieldValidation.hasBeenBlurred && !fieldValidation.isValid && fieldValidation.errors.length > 0) {
-                  return (
-                    <Text 
-                      style={[styles.fieldError, { color: colors.error }]}
-                      accessibilityRole="alert"
-                      accessibilityLiveRegion="assertive"
-                    >
-                      {fieldValidation.errors[0].message}
-                    </Text>
-                  );
-                }
-                return null;
-              })()}
+              <View style={styles.fieldFooter}>
+                {(() => {
+                  const fieldValidation = getFieldValidation('location');
+                  if (fieldValidation.hasBeenBlurred && !fieldValidation.isValid && fieldValidation.errors.length > 0) {
+                    return (
+                      <Text 
+                        style={[styles.fieldError, { color: colors.error }]}
+                        accessibilityRole="alert"
+                        accessibilityLiveRegion="assertive"
+                      >
+                        {fieldValidation.errors[0].message}
+                      </Text>
+                    );
+                  }
+                  return null;
+                })()}
+              </View>
             </View>
 
             {/* Website */}
@@ -847,21 +919,23 @@ export default function EditProfileScreen(): React.ReactElement {
                 accessibilityLabel="Website"
                 accessibilityHint="Enter your website URL. Must start with http:// or https://"
               />
-              {(() => {
-                const fieldValidation = getFieldValidation('website');
-                if (fieldValidation.hasBeenBlurred && !fieldValidation.isValid && fieldValidation.errors.length > 0) {
-                  return (
-                    <Text 
-                      style={[styles.fieldError, { color: colors.error }]}
-                      accessibilityRole="alert"
-                      accessibilityLiveRegion="assertive"
-                    >
-                      {fieldValidation.errors[0].message}
-                    </Text>
-                  );
-                }
-                return null;
-              })()}
+              <View style={styles.fieldFooter}>
+                {(() => {
+                  const fieldValidation = getFieldValidation('website');
+                  if (fieldValidation.hasBeenBlurred && !fieldValidation.isValid && fieldValidation.errors.length > 0) {
+                    return (
+                      <Text 
+                        style={[styles.fieldError, { color: colors.error }]}
+                        accessibilityRole="alert"
+                        accessibilityLiveRegion="assertive"
+                      >
+                        {fieldValidation.errors[0].message}
+                      </Text>
+                    );
+                  }
+                  return null;
+                })()}
+              </View>
             </View>
           </View>
 
@@ -900,38 +974,62 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
-  heroHeader: {
+  previewCard: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 4,
+    marginBottom: 16,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
-  heroTitle: {
-    fontSize: 18,
+  previewName: {
+    fontSize: 16,
     fontWeight: '700',
   },
-  heroSubtitle: {
-    fontSize: 14,
+  previewHandle: {
+    fontSize: 13,
   },
-  heroPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  previewBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
   },
-  heroPillText: {
+  previewBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  previewBio: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  sectionHeader: {
+    marginBottom: 8,
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
   },
   coverSection: {
     padding: 0,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
@@ -962,10 +1060,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
+  coverButtonDisabled: {
+    opacity: 0.6,
+  },
+  coverHintPill: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  coverHintText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  coverComingSoonPill: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  coverComingSoonText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  coverUploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  coverUploadingText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   avatarSection: {
     padding: 24,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     alignItems: 'center',
   },
   avatarContainer: {
@@ -984,6 +1125,13 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#ffffff',
   },
+  avatarUploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarText: {
     fontSize: 14,
     textAlign: 'center',
@@ -991,7 +1139,7 @@ const styles = StyleSheet.create({
   formSection: {
     padding: 20,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   fieldContainer: {
     marginBottom: 20,
@@ -1001,13 +1149,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
+  fieldFooter: {
+    minHeight: 16,
+    marginTop: 4,
+  },
+  fieldFooterRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
   fieldHint: {
     fontSize: 12,
-    marginTop: 4,
   },
   fieldError: {
     fontSize: 12,
-    marginTop: 4,
   },
   input: {
     width: '100%',

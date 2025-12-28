@@ -1,18 +1,12 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { ByteBlogPageSkeleton } from './ByteBlogPageSkeleton';
 
 /**
  * Loading state component for ByteBlogPage
  */
 export function ByteBlogPageLoading({ isDark }: { isDark: boolean }) {
-  return (
-    <View className="flex-1 justify-center items-center bg-fomio-bg dark:bg-fomio-bg-dark">
-      <ActivityIndicator size="large" color={isDark ? '#26A69A' : '#009688'} />
-      <Text className="mt-2.5 text-base text-fomio-foreground dark:text-fomio-foreground-dark">
-        Loading topic...
-      </Text>
-    </View>
-  );
+  return <ByteBlogPageSkeleton isDark={isDark} />;
 }
 
 /**

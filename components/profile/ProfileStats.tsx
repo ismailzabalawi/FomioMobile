@@ -5,17 +5,18 @@
 // - Uses data from DiscourseUser interface
 
 import React, { useMemo } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, StyleProp, ViewStyle } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { DiscourseUser } from '@/shared/discourseApi';
 import { getTokens } from '@/shared/design/tokens';
-import { FluidSection } from '@/shared/ui/FluidSection';
 
 export interface ProfileStatsProps {
   user: DiscourseUser;
+  containerStyle?: StyleProp<ViewStyle>;
+  textAlign?: 'left' | 'center';
 }
 
-export function ProfileStats({ user }: ProfileStatsProps) {
+export function ProfileStats({ user, containerStyle, textAlign = 'center' }: ProfileStatsProps) {
   const { isDark } = useTheme();
   const mode = isDark ? 'dark' : 'light';
   const tokens = useMemo(() => getTokens(mode), [mode]);
@@ -55,56 +56,19 @@ export function ProfileStats({ user }: ProfileStatsProps) {
     { label: 'Trust', value: getTrustLevelLabel(trustLevel) },
   ].filter((stat) => stat.value !== '0' || stat.label === 'Trust'); // Always show trust level
 
+  const statsText = stats
+    .map((stat) => `${stat.value} ${stat.label}`)
+    .join(' · ');
+
   return (
-    <View className="px-4" style={{ width: '100%', marginTop: 16 }}>
-      <FluidSection
-        mode={mode}
-        style={{
-          paddingVertical: 12,
-          paddingHorizontal: 12,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
+    <View className="px-4" style={[{ width: '100%', marginTop: 6 }, containerStyle]}>
+      <Text
+        className="text-xs"
+        style={{ color: tokens.colors.muted, textAlign }}
+        numberOfLines={1}
       >
-        {stats.map((stat, index) => (
-          <View
-            key={stat.label}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              gap: 2,
-              flexDirection: 'row',
-              justifyContent: 'center',
-            }}
-          >
-            <View style={{ alignItems: 'center' }}>
-              <Text
-                className="text-sm font-semibold"
-                style={{ color: tokens.colors.text }}
-              >
-                {stat.value}
-              </Text>
-              <Text
-                className="text-xs"
-                style={{ color: tokens.colors.muted }}
-              >
-                {stat.label}
-              </Text>
-            </View>
-            {index < stats.length - 1 && (
-              <View
-                style={{
-                  width: 1,
-                  height: 28,
-                  backgroundColor: tokens.colors.border,
-                  marginLeft: 12,
-                }}
-              />
-            )}
-          </View>
-        ))}
-      </FluidSection>
+        {statsText}
+      </Text>
     </View>
   );
 }

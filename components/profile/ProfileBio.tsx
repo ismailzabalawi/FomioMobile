@@ -80,12 +80,12 @@ export function ProfileBio({ bio, isOwnProfile = false }: ProfileBioProps) {
   }
 
   // Simple check: if bio is short enough, don't show expand/collapse
-  const shouldShowExpand = bio.length > 150; // Approximate 3 lines
+  const shouldShowExpand = bio.length > 110; // Approximate 2 lines
   const containerBackground = mode === 'dark' ? '#000000' : '#f8fafc';
 
   return (
     <View 
-      className="px-4 pb-4" 
+      className="px-4 pb-2"
       style={{ 
         width: '100%',
         backgroundColor: containerBackground,
@@ -93,7 +93,7 @@ export function ProfileBio({ bio, isOwnProfile = false }: ProfileBioProps) {
     >
       <View
         style={{
-          maxHeight: isExpanded || !shouldShowExpand ? undefined : 60,
+          maxHeight: isExpanded || !shouldShowExpand ? undefined : 40,
           overflow: 'hidden',
           width: '100%',
         }}
