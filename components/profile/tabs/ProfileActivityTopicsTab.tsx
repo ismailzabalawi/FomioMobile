@@ -1,7 +1,7 @@
 // Tab component for "Topics" activity
 
 import React from 'react';
-import { View, Text } from 'react-native';
+import { Text } from 'react-native';
 import { useUserPosts } from '@/shared/useUserPosts';
 import { ProfilePostList } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
@@ -19,19 +19,25 @@ export function ProfileActivityTopicsTab({
 
   if (isLoading && posts.length === 0) {
     return (
-      <View className="px-4 py-6">
+      <Tabs.ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         <PostSkeletonEnhanced />
-      </View>
+      </Tabs.ScrollView>
     );
   }
 
   if (hasError) {
     return (
-      <View className="px-4 py-6 items-center">
+      <Tabs.ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24, alignItems: 'center' }}
+        showsVerticalScrollIndicator={false}
+      >
         <Text className="text-fomio-muted text-center">
           {errorMessage || 'Failed to load topics'}
         </Text>
-      </View>
+      </Tabs.ScrollView>
     );
   }
 
@@ -43,8 +49,6 @@ export function ProfileActivityTopicsTab({
       onLoadMore={loadMore}
       filter="posts"
       emptyMessage="No topics yet"
-      renderAsList
     />
   );
 }
-

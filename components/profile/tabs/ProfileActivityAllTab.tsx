@@ -1,12 +1,12 @@
 // Tab component for "All" activity - combined view of Topics and Replies
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { View } from 'react-native';
 import { useUserPosts } from '@/shared/useUserPosts';
 import { useUserReplies } from '@/shared/useUserReplies';
 import { ProfilePostList } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
 import { PostItem } from '../ProfilePostList';
+import { Tabs } from 'react-native-collapsible-tab-view';
 
 export interface ProfileActivityAllTabProps {
   username: string;
@@ -80,9 +80,12 @@ export function ProfileActivityAllTab({
 
   if (isLoading && allItems.length === 0) {
     return (
-      <View className="px-4 py-6">
+      <Tabs.ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         <PostSkeletonEnhanced />
-      </View>
+      </Tabs.ScrollView>
     );
   }
 
@@ -97,8 +100,7 @@ export function ProfileActivityAllTab({
       }}
       filter="posts"
       emptyMessage="No activity yet"
-      renderAsList
+      ListComponent={Tabs.FlatList}
     />
   );
 }
-

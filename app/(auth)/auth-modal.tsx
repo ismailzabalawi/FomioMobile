@@ -34,6 +34,7 @@ export default function AuthModalScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
   const tokens = getTokens(isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light');
   const params = useLocalSearchParams<{ returnTo?: string }>();
+  const navigation = useNavigation();
   const config = Constants.expoConfig?.extra || {};
   const baseUrl = config.DISCOURSE_BASE_URL;
 

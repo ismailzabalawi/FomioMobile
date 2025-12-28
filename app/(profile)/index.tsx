@@ -246,8 +246,6 @@ export default function ProfileScreen(): React.ReactElement {
         user={user}
         isOwnProfile={true}
         isAuthenticated={isAuthenticated}
-        containerRef={containerRef}
-        scrollY={scrollY}
       />
     </SafeAreaView>
   );

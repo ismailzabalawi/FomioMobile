@@ -5,14 +5,15 @@
 // - Redirects to ByteBlogPage on tap
 // - Handles empty state ("No posts yet")
 // - Accepts filter prop: 'posts' | 'replies'
-// - renderAsList prop to render as View list (for nested scroll contexts)
+// - Supports custom ListComponent (e.g., Tabs.FlatList for collapsible tabs)
 
 import React, { useCallback } from 'react';
-import { View, Text, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, Platform } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { ByteCard } from '@/components/bytes/ByteCard';
 import { postItemToByte } from '@/shared/adapters/postItemToByte';
 import { router } from 'expo-router';
+import type { FlatListProps } from 'react-native';
 
 export interface PostItem {
   id: number;
@@ -49,8 +50,7 @@ export interface ProfilePostListProps {
   onLoadMore?: () => void;
   filter: 'posts' | 'replies';
   emptyMessage?: string;
-  /** When true, renders as View list instead of FlatList (for nested scroll contexts) */
-  renderAsList?: boolean;
+  ListComponent?: React.ComponentType<FlatListProps<PostItem>>;
 }
 
 // formatDate removed - now handled by formatTimeAgo in ByteCard component
@@ -62,9 +62,10 @@ export function ProfilePostList({
   onLoadMore,
   filter,
   emptyMessage,
-  renderAsList = false,
+  ListComponent,
 }: ProfilePostListProps) {
   const { isDark } = useTheme();
+  const ResolvedListComponent = ListComponent || FlatList;
 
   const handlePress = useCallback((postId: number) => {
     router.push(`/feed/${postId}` as any);
@@ -75,7 +76,7 @@ export function ProfilePostList({
       const byte = postItemToByte(item);
       // Generate truly unique key: postId (for replies) or id (for topics) + index as fallback
       // This ensures uniqueness even if postId/id are duplicated across posts and replies
-      // Note: For FlatList, keyExtractor handles keys, so index is only needed for renderAsList
+      // Note: For FlatList, keyExtractor handles keys, so index is only needed for in-list keys
       const uniqueKey = item.postId 
         ? `post-${item.postId}` 
         : index !== undefined 
@@ -85,7 +86,7 @@ export function ProfilePostList({
         <ByteCard
           key={uniqueKey}
           byte={byte}
-          onPress={() => handlePress(item.id)}
+          onPressByteId={handlePress}
         />
       );
     },
@@ -132,23 +133,8 @@ export function ProfilePostList({
     return null;
   };
 
-  // Render as View list for nested scroll contexts (e.g., inside Tabs.ScrollView)
-  // Note: Parent ScrollView handles scrolling, so we just render the content
-  if (renderAsList) {
-    if (posts.length === 0) {
-      return renderEmpty();
-    }
-
-    return (
-      <View style={{ width: '100%' }}>
-        {posts.map((item, index) => renderPostItem(item, index))}
-        {renderFooter()}
-      </View>
-    );
-  }
-
   return (
-    <FlatList
+    <ResolvedListComponent
       data={posts}
       renderItem={renderItem}
       keyExtractor={(item, index) => {
@@ -162,6 +148,14 @@ export function ProfilePostList({
       onEndReached={hasMore && !isLoading ? onLoadMore : undefined}
       onEndReachedThreshold={0.5}
       showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: 12 }}
+      initialNumToRender={10}
+      maxToRenderPerBatch={10}
+      windowSize={10}
+      updateCellsBatchingPeriod={100}
+      removeClippedSubviews={false}
+      getItemLayout={undefined}
+      disableVirtualization={false}
     />
   );
 }

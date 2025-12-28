@@ -1,11 +1,12 @@
 // Tab component for "Read" activity - only visible for own profile
 
 import React from 'react';
-import { View, Text } from 'react-native';
+import { Text } from 'react-native';
 import { useUserRead } from '@/shared/hooks/useUserRead';
 import { ProfilePostList } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
 import { useTheme } from '@/components/theme';
+import { Tabs } from 'react-native-collapsible-tab-view';
 
 export interface ProfileActivityReadTabProps {
   username: string;
@@ -22,14 +23,17 @@ export function ProfileActivityReadTab({
   
   if (!isOwnProfile || !isAuthenticated) {
     return (
-      <View className="flex-1 items-center justify-center px-4 py-12">
+      <Tabs.ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 48, alignItems: 'center' }}
+        showsVerticalScrollIndicator={false}
+      >
         <Text
           className="text-base text-center"
           style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
         >
           This section is only visible to you
         </Text>
-      </View>
+      </Tabs.ScrollView>
     );
   }
 
@@ -37,9 +41,12 @@ export function ProfileActivityReadTab({
 
   if (isLoading && items.length === 0) {
     return (
-      <View className="px-4 py-6">
+      <Tabs.ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         <PostSkeletonEnhanced />
-      </View>
+      </Tabs.ScrollView>
     );
   }
 
@@ -51,8 +58,7 @@ export function ProfileActivityReadTab({
       onLoadMore={loadMore}
       filter="posts"
       emptyMessage="No read topics yet"
-      renderAsList
+      ListComponent={Tabs.FlatList}
     />
   );
 }
-

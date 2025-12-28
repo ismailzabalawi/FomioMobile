@@ -104,6 +104,7 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
             style={StyleSheet.absoluteFillObject}
             contentFit="cover"
             transition={200}
+            pointerEvents="none"
             accessible
             accessibilityLabel="Profile header image"
           />

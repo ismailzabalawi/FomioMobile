@@ -1,7 +1,6 @@
 // Tab component for "Replies" activity
 
 import React from 'react';
-import { View } from 'react-native';
 import { useUserReplies } from '@/shared/useUserReplies';
 import { ProfilePostList } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
@@ -19,9 +18,12 @@ export function ProfileActivityRepliesTab({
 
   if (isLoading && replies.length === 0) {
     return (
-      <View className="px-4 py-6">
+      <Tabs.ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         <PostSkeletonEnhanced />
-      </View>
+      </Tabs.ScrollView>
     );
   }
 
@@ -33,8 +35,6 @@ export function ProfileActivityRepliesTab({
       onLoadMore={loadMore}
       filter="replies"
       emptyMessage="No replies yet"
-      renderAsList
     />
   );
 }
-

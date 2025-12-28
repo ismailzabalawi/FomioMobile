@@ -10,6 +10,7 @@ import { PostItem } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
 import { discourseApi } from '@/shared/discourseApi';
 import { formatTimeAgo } from '@/lib/utils/time';
+import { Tabs } from 'react-native-collapsible-tab-view';
 
 export interface ProfileActivityDraftsTabProps {
   username: string;
@@ -124,62 +125,61 @@ export function ProfileActivityDraftsTab({
     [refresh]
   );
 
-  if (!isOwnProfile || !isAuthenticated) {
-    return (
-      <View className="flex-1 items-center justify-center px-4 py-12">
-        <Text
-          className="text-base text-center"
-          style={{ color: muted }}
-        >
-          This section is only visible to you
-        </Text>
-      </View>
-    );
-  }
-
-  if (isLoading && drafts.length === 0) {
-    return (
-      <View className="px-4 py-6">
-        <PostSkeletonEnhanced />
-      </View>
-    );
-  }
-
   return (
-    <View className="px-4 py-4">
-      {(hasError || actionError) && (
-        <View className="mb-3 p-3 rounded-fomio-card bg-fomio-danger/15 dark:bg-fomio-danger-dark/15 flex-row items-center">
-          <Warning size={16} color="#ef4444" weight="regular" />
-          <Text className="text-body text-fomio-danger dark:text-fomio-danger-dark ml-2 flex-1">
-            {actionError || errorMessage || 'Failed to load drafts'}
+    <Tabs.ScrollView
+      contentContainerStyle={{ paddingBottom: 12 }}
+      showsVerticalScrollIndicator={false}
+    >
+      {!isOwnProfile || !isAuthenticated ? (
+        <View className="flex-1 items-center justify-center px-4 py-12">
+          <Text
+            className="text-base text-center"
+            style={{ color: muted }}
+          >
+            This section is only visible to you
           </Text>
         </View>
-      )}
-
-      {drafts.length === 0 && !isLoading ? (
-        <View className="py-12 items-center">
-          <Text className="text-base" style={{ color: muted }}>
-            No drafts yet
-          </Text>
+      ) : isLoading && drafts.length === 0 ? (
+        <View className="px-4 py-6">
+          <PostSkeletonEnhanced />
         </View>
       ) : (
-        drafts.map((draft) => (
-          <DraftCard
-            key={draft.draftKey || draft.id}
-            draft={draft}
-            onEdit={() => handleNavigateToCompose(draft)}
-            onPost={() => handleNavigateToCompose(draft)}
-            onDelete={() => handleDelete(draft)}
-            isDeleting={deletingKey === draft.draftKey}
-          />
-        ))
-      )}
+        <View className="px-4 py-4">
+          {(hasError || actionError) && (
+            <View className="mb-3 p-3 rounded-fomio-card bg-fomio-danger/15 dark:bg-fomio-danger-dark/15 flex-row items-center">
+              <Warning size={16} color="#ef4444" weight="regular" />
+              <Text className="text-body text-fomio-danger dark:text-fomio-danger-dark ml-2 flex-1">
+                {actionError || errorMessage || 'Failed to load drafts'}
+              </Text>
+            </View>
+          )}
 
-      {isLoading && drafts.length > 0 && (
-        <View className="py-4 items-center">
-          <ActivityIndicator size="small" color={isDark ? '#26A69A' : '#009688'} />
+          {drafts.length === 0 && !isLoading ? (
+            <View className="py-12 items-center">
+              <Text className="text-base" style={{ color: muted }}>
+                No drafts yet
+              </Text>
+            </View>
+          ) : (
+            drafts.map((draft) => (
+              <DraftCard
+                key={draft.draftKey || draft.id}
+                draft={draft}
+                onEdit={() => handleNavigateToCompose(draft)}
+                onPost={() => handleNavigateToCompose(draft)}
+                onDelete={() => handleDelete(draft)}
+                isDeleting={deletingKey === draft.draftKey}
+              />
+            ))
+          )}
+
+          {isLoading && drafts.length > 0 && (
+            <View className="py-4 items-center">
+              <ActivityIndicator size="small" color={isDark ? '#26A69A' : '#009688'} />
+            </View>
+          )}
         </View>
       )}
-    </View>
+    </Tabs.ScrollView>
   );
 }

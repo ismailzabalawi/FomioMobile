@@ -1,10 +1,10 @@
 // Tab component for "Solved" activity - public
 
 import React from 'react';
-import { View } from 'react-native';
 import { useUserSolved } from '@/shared/hooks/useUserSolved';
 import { ProfilePostList } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
+import { Tabs } from 'react-native-collapsible-tab-view';
 
 export interface ProfileActivitySolvedTabProps {
   username: string;
@@ -19,9 +19,12 @@ export function ProfileActivitySolvedTab({
 
   if (isLoading && items.length === 0) {
     return (
-      <View className="px-4 py-6">
+      <Tabs.ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         <PostSkeletonEnhanced />
-      </View>
+      </Tabs.ScrollView>
     );
   }
 
@@ -33,8 +36,7 @@ export function ProfileActivitySolvedTab({
       onLoadMore={loadMore}
       filter="posts"
       emptyMessage="No solved topics yet"
-      renderAsList
+      ListComponent={Tabs.FlatList}
     />
   );
 }
-
