@@ -563,14 +563,16 @@ export class UserApiKeyManager {
   static async decryptPayload(encryptedPayload: string): Promise<{ key: string; one_time_password?: string; nonce?: string }> {
     try {
       logger.info('UserApiKeyManager: Decrypting payload...');
-      
+
       const privateKey = await this.getPrivateKey();
       if (!privateKey) {
         throw new Error('Private key not found. Cannot decrypt payload.');
       }
 
+      const normalizedPayload = this.normalizeBase64Payload(encryptedPayload);
+
       // Decode base64 payload
-      const encryptedData = this.base64ToArrayBuffer(encryptedPayload);
+      const encryptedData = this.base64ToArrayBuffer(normalizedPayload);
 
       // Try react-native-quick-crypto first (React Native)
       const quickCrypto = loadQuickCrypto();
@@ -607,9 +609,9 @@ export class UserApiKeyManager {
           logger.info('UserApiKeyManager: Payload decrypted successfully using QuickCrypto');
           return payload;
         } catch (cryptoError: any) {
-          logger.error('UserApiKeyManager: QuickCrypto decryption failed, trying Web Crypto API', {
-            error: cryptoError?.message || String(cryptoError),
-            stack: cryptoError?.stack,
+          // Use warn instead of error since this is an expected fallback path
+          logger.warn('UserApiKeyManager: QuickCrypto decryption failed, trying fallback', {
+            error: cryptoError?.message || (cryptoError === null ? 'null' : String(cryptoError)),
           });
         }
       }
@@ -654,9 +656,9 @@ export class UserApiKeyManager {
           logger.info('UserApiKeyManager: Payload decrypted successfully using Web Crypto API');
           return payload;
         } catch (cryptoError: any) {
-          logger.error('UserApiKeyManager: Web Crypto API decryption failed', {
-            error: cryptoError?.message || String(cryptoError),
-            stack: cryptoError?.stack,
+          // Use warn instead of error since this is an expected fallback path
+          logger.warn('UserApiKeyManager: Web Crypto API decryption failed, trying node-forge', {
+            error: cryptoError?.message || (cryptoError === null ? 'null' : String(cryptoError)),
           });
           // Fall through to node-forge fallback
         }
@@ -666,7 +668,7 @@ export class UserApiKeyManager {
       // This works in React Native environments where Web Crypto API isn't available
       try {
         logger.info('UserApiKeyManager: Attempting decryption with node-forge');
-        const decryptedText = decryptPayloadBase64ToUtf8(encryptedPayload, privateKey);
+        const decryptedText = decryptPayloadBase64ToUtf8(normalizedPayload, privateKey);
         const payload = JSON.parse(decryptedText);
         
         logger.info('UserApiKeyManager: Payload decrypted successfully using node-forge');
@@ -679,9 +681,53 @@ export class UserApiKeyManager {
         throw new Error('RSA decryption failed: No crypto API available. Please ensure react-native-quick-crypto is installed or node-forge is available.');
       }
     } catch (error: any) {
-      logger.error('UserApiKeyManager: Failed to decrypt payload', error);
-      throw new Error(`Failed to decrypt API key payload: ${error.message || 'Unknown error'}. Please try authorizing again.`);
+      // Handle null errors gracefully - crypto libraries sometimes throw null
+      const errorMessage = error?.message || (error === null ? 'Null error from crypto' : String(error) || 'Unknown error');
+      logger.error('UserApiKeyManager: Failed to decrypt payload', {
+        errorMessage,
+        errorType: error === null ? 'null' : typeof error,
+      });
+      throw new Error(`Failed to decrypt API key payload: ${errorMessage}. Please try authorizing again.`);
     }
+  }
+
+  /**
+   * Normalize base64 payloads from URL params (handles +, -, _, and padding).
+   */
+  private static normalizeBase64Payload(input: string): string {
+    let normalized = String(input || '').trim();
+    if (!normalized) {
+      return normalized;
+    }
+    
+    // First, URL-decode if needed (in case it wasn't decoded upstream)
+    if (normalized.includes('%')) {
+      try {
+        normalized = decodeURIComponent(normalized);
+      } catch {
+        // If decoding fails, continue with original
+      }
+    }
+    
+    // Remove all whitespace including newlines, carriage returns, tabs, and spaces
+    normalized = normalized.replace(/\s/g, '');
+    
+    // Convert URL-safe base64 to standard base64
+    normalized = normalized.replace(/-/g, '+').replace(/_/g, '/');
+    
+    // Add padding if needed
+    const remainder = normalized.length % 4;
+    if (remainder) {
+      normalized = normalized.padEnd(normalized.length + (4 - remainder), '=');
+    }
+    
+    logger.debug('UserApiKeyManager: Normalized base64 payload', {
+      originalLength: input?.length,
+      normalizedLength: normalized.length,
+      first50: normalized.substring(0, 50),
+    });
+    
+    return normalized;
   }
 
   /**

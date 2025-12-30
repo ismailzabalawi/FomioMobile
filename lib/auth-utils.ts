@@ -15,14 +15,16 @@ export function parseURLParameters(url: string): Record<string, string> {
     
     // Parse query string
     urlObj.searchParams.forEach((value, key) => {
-      params[key] = decodeURIComponent(value);
+      const decoded = decodeURIComponent(value);
+      params[key] = key === 'payload' ? decoded.replace(/ /g, '+') : decoded;
     });
     
     // Parse hash fragment if present (some OAuth flows use this)
     if (urlObj.hash) {
       const hashParams = new URLSearchParams(urlObj.hash.substring(1));
       hashParams.forEach((value, key) => {
-        params[key] = decodeURIComponent(value);
+        const decoded = decodeURIComponent(value);
+        params[key] = key === 'payload' ? decoded.replace(/ /g, '+') : decoded;
       });
     }
   } catch {
@@ -33,7 +35,9 @@ export function parseURLParameters(url: string): Record<string, string> {
       queryString.split('&').forEach((param) => {
         const [key, value] = param.split('=');
         if (key && value) {
-          params[decodeURIComponent(key)] = decodeURIComponent(value);
+          const decodedKey = decodeURIComponent(key);
+          const decodedValue = decodeURIComponent(value);
+          params[decodedKey] = decodedKey === 'payload' ? decodedValue.replace(/ /g, '+') : decodedValue;
         }
       });
     }
@@ -45,7 +49,9 @@ export function parseURLParameters(url: string): Record<string, string> {
       hashString.split('&').forEach((param) => {
         const [key, value] = param.split('=');
         if (key && value) {
-          params[decodeURIComponent(key)] = decodeURIComponent(value);
+          const decodedKey = decodeURIComponent(key);
+          const decodedValue = decodeURIComponent(value);
+          params[decodedKey] = decodedKey === 'payload' ? decodedValue.replace(/ /g, '+') : decodedValue;
         }
       });
     }
@@ -53,4 +59,3 @@ export function parseURLParameters(url: string): Record<string, string> {
   
   return params;
 }
-

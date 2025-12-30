@@ -1,29 +1,32 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { parseURLParameters } from '@/lib/auth-utils';
 
-export default function AuthRedirectScreen(): React.ReactElement {
+export default function AuthRedirectScreen(): React.ReactElement | null {
+  const params = useLocalSearchParams();
+
   useEffect(() => {
-    router.replace('/(auth)/signin');
-  }, []);
+    const normalizePayload = (value: string): string => value.replace(/ /g, '+');
+    const payloadParam = typeof params.payload === 'string'
+      ? params.payload
+      : Array.isArray(params.payload) && typeof params.payload[0] === 'string'
+        ? params.payload[0]
+        : null;
+    const urlParam = typeof params.url === 'string' ? params.url : null;
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" />
-      </View>
-    </SafeAreaView>
-  );
+    let payload = payloadParam;
+    if (!payload && urlParam) {
+      const parsed = parseURLParameters(urlParam);
+      payload = parsed.payload || null;
+    }
+
+    if (payload) {
+      const normalized = normalizePayload(payload);
+      router.replace(`/auth/callback?payload=${encodeURIComponent(normalized)}`);
+    } else {
+      router.replace('/(auth)/signin');
+    }
+  }, [params.payload, params.url]);
+
+  return null;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

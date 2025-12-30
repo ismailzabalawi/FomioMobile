@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import Constants from 'expo-constants';
 import { useTheme } from '@/components/theme';
 import { getTokens } from '@/shared/design/tokens';
 import { logger } from '@/shared/logger';
-import { buildAuthUrlForWebView, signIn } from '@/lib/auth';
+import { signIn } from '@/lib/auth';
 import { parseURLParameters } from '@/lib/auth-utils';
 import { mapAuthError } from '@/lib/auth-errors';
 
@@ -41,7 +41,7 @@ export default function AuthModalScreen(): React.ReactElement {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [authStarted, setAuthStarted] = useState(false);
+  const authStartedRef = useRef(false);
   const [webviewUrl, setWebviewUrl] = useState<string | null>(null);
   const [authProcessActive] = useState(false);
 
@@ -61,10 +61,11 @@ export default function AuthModalScreen(): React.ReactElement {
     let mounted = true;
 
     async function startAuth(): Promise<void> {
-      if (authStarted) return;
+      // Use ref to avoid re-triggering effect when auth starts
+      if (authStartedRef.current) return;
+      authStartedRef.current = true;
       
       try {
-        setAuthStarted(true);
         setIsLoading(true);
         setError(null);
         
@@ -75,14 +76,26 @@ export default function AuthModalScreen(): React.ReactElement {
         }
 
         if (Platform.OS === 'android') {
+          // Android: Use in-app WebView instead of external browser
+          // This mirrors the DiscourseMobile approach for reliable auth handling
+          logger.info('AuthModal: Building WebView auth URL for Android...');
+          const { buildAuthUrlForWebView } = require('@/lib/auth');
           const url = await buildAuthUrlForWebView();
-          if (!mounted) return;
+          logger.info('AuthModal: WebView URL built, setting state...', { 
+            urlLength: url?.length,
+            mounted,
+          });
+          if (!mounted) {
+            logger.warn('AuthModal: Component unmounted before URL could be set');
+            return;
+          }
           setWebviewUrl(url);
+          logger.info('AuthModal: WebView URL state set, component should re-render now');
           setIsLoading(false);
           return;
         }
 
-        // iOS: Use unified signIn() from lib/auth.ts
+        // iOS: Use ASWebAuthenticationSession via signIn()
         const success = await signIn();
 
         if (!mounted) return;
@@ -96,14 +109,9 @@ export default function AuthModalScreen(): React.ReactElement {
             logger.info('AuthModal: Navigating to returnTo', { returnTo });
             router.replace(decodeURIComponent(returnTo) as any);
           } else {
-            // Reset navigation stack to prevent going back to auth screens
-            const rootNavigation = navigation.getParent() || navigation;
-            rootNavigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: '/(tabs)' }],
-              })
-            );
+            // Navigate to tabs - Expo Router handles the stack management
+            logger.info('AuthModal: Navigating to tabs');
+            router.replace('/(tabs)' as any);
           }
         } else {
           throw new Error('Sign-in failed. Please try again.');
@@ -130,7 +138,7 @@ export default function AuthModalScreen(): React.ReactElement {
     return () => {
       mounted = false;
     };
-  }, [authStarted, baseUrl, params.returnTo]);
+  }, [baseUrl, params.returnTo]);
 
   // Handle close button
   const handleClose = useCallback(() => {
@@ -142,24 +150,31 @@ export default function AuthModalScreen(): React.ReactElement {
   const handleRetry = useCallback(() => {
     setError(null);
     setIsLoading(true);
-    setAuthStarted(false);
+    authStartedRef.current = false;
+    // Re-trigger auth flow by forcing a re-render
+    setWebviewUrl(null);
   }, []);
 
   const handleWebViewNavigation = useCallback(
     (request: { url?: string }) => {
       const url = request?.url || '';
+      
+      // Log ALL navigation events for debugging
+      logger.info('AuthModal: WebView navigation event', {
+        url: url ? url.substring(0, 300) : 'empty',
+        platform: Platform.OS,
+      });
+      
       if (!url) return true;
 
       const isAuthRedirect = url.startsWith('fomio://') || url.includes('auth_redirect');
       const hasPayload = url.includes('payload=');
 
-      if (Platform.OS === 'android') {
-        logger.info('AuthModal: WebView navigation', {
-          url: url.substring(0, 200),
-          isAuthRedirect,
-          hasPayload,
-        });
-      }
+      logger.info('AuthModal: WebView navigation analysis', {
+        isAuthRedirect,
+        hasPayload,
+        urlStart: url.substring(0, 50),
+      });
 
       // Handle custom scheme redirect (Discourse auth callback)
       if (isAuthRedirect) {
@@ -200,6 +215,39 @@ export default function AuthModalScreen(): React.ReactElement {
       return false;
     },
     [baseUrl, params.returnTo]
+  );
+
+  const handleWebViewMessage = useCallback(
+    (event: { nativeEvent?: { data?: string } }) => {
+      const data = event?.nativeEvent?.data;
+      
+      // Log all messages for debugging
+      logger.info('AuthModal: WebView message received', {
+        hasData: !!data,
+        dataPreview: data ? data.substring(0, 200) : 'none',
+      });
+      
+      if (!data) return;
+
+      const message = String(data);
+      if (!message.includes('payload=')) {
+        logger.info('AuthModal: Message does not contain payload, ignoring');
+        return;
+      }
+
+      logger.info('AuthModal: Payload detected in message, extracting...');
+      const urlParams = parseURLParameters(message);
+      const payload = urlParams.payload;
+      if (!payload) {
+        logger.warn('AuthModal: Failed to extract payload from message');
+        return;
+      }
+
+      logger.info('AuthModal: Payload extracted successfully, navigating to callback');
+      const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
+      router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
+    },
+    [params.returnTo]
   );
 
   useEffect(() => {
@@ -261,7 +309,17 @@ export default function AuthModalScreen(): React.ReactElement {
     );
   }
 
+  // Debug: Log render state
+  logger.info('AuthModal: Render check', {
+    platform: Platform.OS,
+    hasWebviewUrl: !!webviewUrl,
+    webviewUrlLength: webviewUrl?.length,
+    hasError: !!error,
+    isLoading,
+  });
+
   if (Platform.OS === 'android' && webviewUrl) {
+    logger.info('AuthModal: Rendering WebView for Android');
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.header}>
@@ -298,10 +356,42 @@ export default function AuthModalScreen(): React.ReactElement {
           style={styles.webview}
           originWhitelist={['*']}
           startInLoadingState
-          onLoadStart={() => setIsLoading(true)}
-          onLoadEnd={() => setIsLoading(false)}
+          javaScriptEnabled
+          injectedJavaScript={
+            Platform.OS === 'android'
+              ? `
+                (function() {
+                  function probe() {
+                    try {
+                      var href = window.location && window.location.href;
+                      if (href && href.indexOf('payload=') !== -1) {
+                        window.ReactNativeWebView.postMessage(href);
+                      }
+                    } catch (e) {}
+                  }
+                  setInterval(probe, 500);
+                })();
+              `
+              : undefined
+          }
+          onLoadStart={() => {
+            logger.info('AuthModal: WebView load started');
+            setIsLoading(true);
+          }}
+          onLoadEnd={() => {
+            logger.info('AuthModal: WebView load ended');
+            setIsLoading(false);
+          }}
+          onError={(syntheticEvent) => {
+            const { nativeEvent } = syntheticEvent;
+            logger.error('AuthModal: WebView error', {
+              description: nativeEvent.description,
+              url: nativeEvent.url,
+            });
+          }}
           onShouldStartLoadWithRequest={handleWebViewNavigation}
           onNavigationStateChange={handleWebViewNavigation}
+          onMessage={handleWebViewMessage}
           sharedCookiesEnabled
           thirdPartyCookiesEnabled
         />

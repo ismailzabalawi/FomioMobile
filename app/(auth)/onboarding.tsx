@@ -141,7 +141,7 @@ export default function OnboardingScreen() {
           ref={pagerRef}
           style={[styles.pager, { width }]}
           initialPage={0}
-          onPageSelected={(e) => setCurrentStep(e.nativeEvent.position)}
+          onPageSelected={(e: { nativeEvent: { position: number } }) => setCurrentStep(e.nativeEvent.position)}
         >
           {onboardingSteps.map((step) => (
             <View key={step.title} style={[styles.page, { width }]}>

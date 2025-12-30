@@ -18,24 +18,11 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "autoVerify": true,
+          "autoVerify": false,
           "data": [
             {
               "scheme": "fomio",
-              "host": "auth",
-              "pathPrefix": "/callback"
-            },
-            {
-              "scheme": "fomio",
               "host": "auth_redirect"
-            },
-            {
-              "scheme": "fomio",
-              "pathPattern": ".*auth.*callback.*"
-            },
-            {
-              "scheme": "fomio",
-              "pathPattern": ".*auth_redirect.*"
             }
           ],
           "category": [

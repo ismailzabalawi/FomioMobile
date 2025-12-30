@@ -17,7 +17,7 @@ import { attachIntentReplay } from '@/shared/intent-replay';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
 import * as Linking from 'expo-linking';
-import { Platform, View, StyleSheet, AppState, AppStateStatus } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderProvider, GlobalHeader } from '@/components/ui/header';
 import { useHeader } from '@/components/ui/header';
@@ -142,6 +142,7 @@ function RootLayoutNav(): React.ReactElement {
   const isInitializedRef = useRef(false);
 
   // Set up deep link listener for Android auth redirects
+  // This is a fallback for edge cases - primary auth flow uses WebView
   // Uses global flag + ref to prevent duplicate initialization on foldable screen changes
   useEffect(() => {
     // Skip if already initialized globally (prevents conflicts on foldable remounts)
@@ -155,127 +156,46 @@ function RootLayoutNav(): React.ReactElement {
       isInitializedRef.current = true;
       
       // Handle deep links while app is running
+      // Expo Router handles fomio://auth_redirect via app/auth_redirect.tsx
+      // This listener is for additional logging/debugging
       const subscription = Linking.addEventListener('url', ({ url }) => {
         logger.info('Deep link received via Linking listener', { 
           url, 
           platform: Platform.OS,
-          urlLength: url.length,
           hasPayload: url.includes('payload='),
         });
         
-        // Check if this is an auth callback deep link
-        // Support both fomio://auth/callback and fomio://auth_redirect formats (Discourse's official pattern)
-        if (
-          url.includes('fomio://auth/callback') || 
-          url.includes('fomio:///auth/callback') ||
-          url.includes('fomio://auth_redirect') ||
-          url.includes('fomio:///auth_redirect')
-        ) {
-          logger.info('Auth callback deep link detected, extracting payload and navigating', { url });
-          
-          // Extract payload directly from the URL
+        // Expo Router will handle routing to auth_redirect.tsx automatically
+        // We only need to handle edge cases here
+        if (url.includes('fomio://auth_redirect') && url.includes('payload=')) {
+          logger.info('Auth redirect deep link detected, Expo Router will handle routing');
+          // Expo Router should handle this via app/auth_redirect.tsx
+          // Force navigate if Expo Router doesn't pick it up
           const urlParams = new URLSearchParams(url.split('?')[1] || '');
           const payload = urlParams.get('payload');
-          
           if (payload) {
-            // Navigate with payload as direct param
-            logger.info('Payload extracted from deep link, navigating to callback screen', {
-              payloadLength: payload.length,
-              hasPayload: true,
-            });
-            router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}` as any);
-          } else {
-            // Fallback: pass full URL
-            logger.warn('No payload found in deep link, passing full URL', { url });
-            router.replace(`/auth/callback?url=${encodeURIComponent(url)}` as any);
+            router.replace(`/auth_redirect?payload=${encodeURIComponent(payload)}` as any);
           }
-        } else {
-          logger.info('Deep link received but not an auth callback, ignoring', { url });
         }
       });
 
-      // Handle initial URL (cold start) - only on first mount
+      // Handle initial URL (cold start)
       Linking.getInitialURL().then((url) => {
-        if (url) {
-          logger.info('Initial deep link URL detected', { url, platform: Platform.OS });
-          // Support both fomio://auth/callback and fomio://auth_redirect formats (Discourse's official pattern)
-          if (
-            url.includes('fomio://auth/callback') || 
-            url.includes('fomio:///auth/callback') ||
-            url.includes('fomio://auth_redirect') ||
-            url.includes('fomio:///auth_redirect')
-          ) {
-            logger.info('Initial auth callback deep link detected', { url });
-            
-            // Extract payload directly from the URL
-            const urlParams = new URLSearchParams(url.split('?')[1] || '');
-            const payload = urlParams.get('payload');
-            
-            if (payload) {
-              logger.info('Payload extracted from initial deep link, navigating to callback screen', {
-                payloadLength: payload.length,
-                hasPayload: true,
-              });
-              router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}` as any);
-            } else {
-              logger.warn('No payload found in initial deep link, passing full URL', { url });
-              router.replace(`/auth/callback?url=${encodeURIComponent(url)}` as any);
-            }
-          } else {
-            logger.info('Initial deep link is not an auth callback, ignoring', { url });
+        if (url && url.includes('fomio://auth_redirect')) {
+          logger.info('Initial auth redirect deep link detected', { url });
+          const urlParams = new URLSearchParams(url.split('?')[1] || '');
+          const payload = urlParams.get('payload');
+          if (payload) {
+            // Navigate to auth_redirect which will then go to callback
+            router.replace(`/auth_redirect?payload=${encodeURIComponent(payload)}` as any);
           }
-        } else {
-          logger.info('No initial deep link URL found');
         }
       }).catch((error) => {
         logger.error('Error getting initial URL', error);
       });
 
-      // Handle app state changes - when app comes back to foreground after authorization
-      const appStateSubscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
-        if (nextAppState === 'active') {
-          // When app becomes active, check for pending deep links
-          logger.info('App became active, checking for pending deep links...');
-          try {
-            const url = await Linking.getInitialURL();
-            if (url) {
-              logger.info('Found pending deep link when app became active', { url });
-              // Handle the deep link
-              if (
-                url.includes('fomio://auth/callback') || 
-                url.includes('fomio:///auth/callback') ||
-                url.includes('fomio://auth_redirect') ||
-                url.includes('fomio:///auth_redirect')
-              ) {
-                logger.info('Auth callback deep link found on app state change', { url });
-                const urlParams = new URLSearchParams(url.split('?')[1] || '');
-                const payload = urlParams.get('payload');
-                
-                if (payload) {
-                  logger.info('Payload extracted from app state change deep link', {
-                    payloadLength: payload.length,
-                    hasPayload: true,
-                  });
-                  router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}` as any);
-                } else {
-                  logger.warn('No payload found in app state change deep link, passing full URL', { url });
-                  router.replace(`/auth/callback?url=${encodeURIComponent(url)}` as any);
-                }
-              } else {
-                logger.info('Deep link found on app state change but not an auth callback', { url });
-              }
-            } else {
-              logger.info('No pending deep link found when app became active');
-            }
-          } catch (error) {
-            logger.error('Error checking for deep links on app state change', error);
-          }
-        }
-      });
-
       return () => {
         subscription.remove();
-        appStateSubscription.remove();
         // Don't reset global flag on cleanup - prevents re-initialization on foldable changes
       };
     }
@@ -443,6 +363,8 @@ function RootLayoutContent({ insets }: { insets: { top: number } }): React.React
           <Stack.Screen name="(protected)" />
           <Stack.Screen name="(profile)" />
           <Stack.Screen name="feed" />
+          <Stack.Screen name="auth/callback" />
+          <Stack.Screen name="auth_redirect" />
           <Stack.Screen
             name="compose"
             options={{ presentation: 'modal' }}

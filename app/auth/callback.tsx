@@ -15,6 +15,10 @@ import { setOnboardingCompleted } from '../../shared/onboardingStorage';
 
 const config = Constants.expoConfig?.extra || {};
 
+// Global flag to prevent double-processing across component remounts
+let globalCallbackProcessing = false;
+let globalCallbackProcessed = false;
+
 /**
  * Auth callback handler
  * This screen handles the deep link callback from Discourse after authorization
@@ -26,8 +30,19 @@ const config = Constants.expoConfig?.extra || {};
  */
 export default function AuthCallbackScreen() {
   const { setAuthenticatedUser, isAuthenticated } = useAuth();
+  const navigation = useNavigation();
   const hasProcessedRef = useRef(false);
   const params = useLocalSearchParams();
+  
+  // If already authenticated, skip processing entirely
+  if (isAuthenticated && !globalCallbackProcessing) {
+    logger.info('AuthCallbackScreen: Already authenticated, redirecting to tabs');
+    // Use setTimeout to avoid navigation during render
+    setTimeout(() => router.replace('/(tabs)'), 0);
+    return null;
+  }
+
+  const normalizePayload = (value: string): string => value.replace(/ /g, '+');
 
   useEffect(() => {
     logger.info('AuthCallbackScreen: Component mounted', {
@@ -38,15 +53,31 @@ export default function AuthCallbackScreen() {
       hasPayload: !!params.payload,
       urlValue: typeof params.url === 'string' ? params.url.substring(0, 200) : params.url,
       payloadValue: typeof params.payload === 'string' ? params.payload.substring(0, 100) : params.payload,
+      globalCallbackProcessing,
+      globalCallbackProcessed,
     });
-    // Prevent multiple callback processing using ref (more reliable than state)
-    if (hasProcessedRef.current) {
+    
+    // Prevent multiple callback processing using both ref and global flag
+    if (hasProcessedRef.current || globalCallbackProcessing || globalCallbackProcessed) {
+      logger.info('AuthCallbackScreen: Skipping - already processed or processing', {
+        hasProcessedRef: hasProcessedRef.current,
+        globalCallbackProcessing,
+        globalCallbackProcessed,
+      });
       return;
     }
     
     hasProcessedRef.current = true;
+    globalCallbackProcessing = true;
     
     async function handleCallback() {
+      // Double-check we haven't already processed (race condition protection)
+      if (globalCallbackProcessed) {
+        logger.info('AuthCallbackScreen: Already processed, skipping handleCallback');
+        router.replace('/(tabs)');
+        return;
+      }
+      
       // Set flag to prevent 401/403 from parallel requests clearing the API key
       setAuthInProgress(true);
       
@@ -78,14 +109,17 @@ export default function AuthCallbackScreen() {
         
         // Try direct payload parameter first
         if (typeof params.payload === 'string') {
-          payload = decodeURIComponent(params.payload);
+          payload = normalizePayload(decodeURIComponent(params.payload));
           logger.info('AuthCallbackScreen: Found payload in direct param');
-        } 
+        } else if (Array.isArray(params.payload) && typeof params.payload[0] === 'string') {
+          payload = normalizePayload(decodeURIComponent(params.payload[0]));
+          logger.info('AuthCallbackScreen: Found payload in direct param array');
+        }
         // Try extracting from URL string using utility function
         else if (typeof params.url === 'string') {
           const urlString = params.url;
           const urlParams = parseURLParameters(urlString);
-          payload = urlParams.payload || null;
+          payload = urlParams.payload ? normalizePayload(urlParams.payload) : null;
           if (payload) {
             logger.info('AuthCallbackScreen: Found payload in URL string');
           }
@@ -212,6 +246,9 @@ export default function AuthCallbackScreen() {
           await setAuthenticatedUser(appUser);
           logger.info('AuthCallbackScreen: User authenticated successfully');
           await setOnboardingCompleted();
+          
+          // Mark as successfully processed to prevent any re-processing
+          globalCallbackProcessed = true;
 
           // Android: warm browser cookies with OTP if available
           if (Platform.OS === 'android') {
@@ -254,20 +291,30 @@ export default function AuthCallbackScreen() {
           router.replace('/(auth)/signin');
         }
       } catch (error: any) {
-        logger.error('AuthCallbackScreen: Error processing callback', error);
-        
-        // Clear potentially invalid API key on error
-        try {
-          await SecureStore.deleteItemAsync("fomio_user_api_key");
-          await SecureStore.deleteItemAsync("fomio_user_api_username");
-          await UserApiKeyManager.clearApiKey();
-        } catch (clearError) {
-          logger.warn('AuthCallbackScreen: Failed to clear API key on error', clearError);
+        // Only log as error if we haven't already successfully processed
+        // Otherwise this is just noise from a re-mount attempt
+        if (!globalCallbackProcessed) {
+          logger.error('AuthCallbackScreen: Error processing callback', {
+            error: error?.message || (error === null ? 'null error' : String(error)),
+          });
+          
+          try {
+            await SecureStore.deleteItemAsync("fomio_user_api_key");
+            await SecureStore.deleteItemAsync("fomio_user_api_username");
+            await UserApiKeyManager.clearApiKey();
+          } catch (clearError) {
+            logger.warn('AuthCallbackScreen: Failed to clear API key on error', clearError);
+          }
+          
+          router.replace('/(auth)/signin');
+        } else {
+          // Already processed successfully, this is just a re-mount - ignore silently
+          logger.debug('AuthCallbackScreen: Ignoring error on re-mount (already processed)');
+          router.replace('/(tabs)');
         }
-        
-        router.replace('/(auth)/signin');
       } finally {
         // Always clear the auth-in-progress flag when done
+        globalCallbackProcessing = false;
         setAuthInProgress(false);
       }
     }

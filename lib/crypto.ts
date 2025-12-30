@@ -57,7 +57,8 @@ export function derivePublicKeyFromPrivate(privateKeyPem: string): string {
 }
 
 /**
- * Decrypt base64-encoded payload using RSA PKCS#1 v1.5
+ * Decrypt base64-encoded payload using RSA-OAEP with SHA-256
+ * Discourse encrypts User API Key payloads using RSA-OAEP, not PKCS#1 v1.5
  * @param base64 Base64-encoded encrypted payload
  * @param privateKeyPem PEM-formatted private key
  * @returns Decrypted UTF-8 string
@@ -73,12 +74,41 @@ export function decryptPayloadBase64ToUtf8(base64: string, privateKeyPem: string
     const privateKey = forgeLib.pki.privateKeyFromPem(privateKeyPem);
     const encryptedBytes = forgeLib.util.decode64(base64);
     
-    // Decrypt using RSAES-PKCS1-V1_5
-    const decryptedBytes = privateKey.decrypt(encryptedBytes, 'RSAES-PKCS1-V1_5');
+    // Try RSA-OAEP with SHA-256/SHA-256 first (Discourse standard)
+    try {
+      const decryptedBytes = privateKey.decrypt(encryptedBytes, 'RSA-OAEP', {
+        md: forgeLib.md.sha256.create(),
+        mgf1: {
+          md: forgeLib.md.sha256.create()
+        }
+      });
+      return forgeLib.util.decodeUtf8(decryptedBytes);
+    } catch (sha256Error) {
+      console.log('SHA-256/SHA-256 decryption failed, trying SHA-256/SHA-1...');
+    }
     
-    return forgeLib.util.decodeUtf8(decryptedBytes);
-  } catch (error) {
-    console.error('Decryption error:', error);
-    throw new Error('Failed to decrypt payload. Invalid key or corrupted data.');
+    // Fallback: Try RSA-OAEP with SHA-256 and MGF1-SHA-1 (some implementations use this)
+    try {
+      const decryptedBytes = privateKey.decrypt(encryptedBytes, 'RSA-OAEP', {
+        md: forgeLib.md.sha256.create(),
+        mgf1: {
+          md: forgeLib.md.sha1.create()
+        }
+      });
+      return forgeLib.util.decodeUtf8(decryptedBytes);
+    } catch (sha1Error) {
+      console.log('SHA-256/SHA-1 decryption failed, trying PKCS#1 v1.5...');
+    }
+    
+    // Last fallback: Try PKCS#1 v1.5 (legacy Discourse versions)
+    try {
+      const decryptedBytes = privateKey.decrypt(encryptedBytes);
+      return forgeLib.util.decodeUtf8(decryptedBytes);
+    } catch (pkcsError) {
+      throw new Error('All decryption schemes failed. Key mismatch or corrupted data.');
+    }
+  } catch (error: any) {
+    console.error('Decryption error:', error?.message || error);
+    throw new Error(`Failed to decrypt payload: ${error?.message || 'Invalid key or corrupted data'}`);
   }
 }

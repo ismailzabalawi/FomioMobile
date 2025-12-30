@@ -21,12 +21,14 @@ const STORAGE_KEY = 'disc_user_api_key';
 const CLIENT_ID_KEY = 'disc_client_id';
 
 /**
- * Build redirect URI using expo-auth-session's makeRedirectUri
- * This follows the official Discourse Mobile app pattern
- * Forces fomio:// scheme even in Expo Go development
+ * Build redirect URI using Discourse's official pattern
  * 
- * Respects EXPO_PUBLIC_AUTH_REDIRECT_SCHEME environment variable if set,
- * otherwise uses makeRedirectUri with fomio://auth/callback
+ * iOS: Uses makeRedirectUri for proper ASWebAuthenticationSession compatibility
+ * Android: Uses fixed URI that matches intent filter in app.json
+ * 
+ * The redirect URI must match:
+ * 1. The intent filter in app.json (scheme: fomio, host: auth_redirect)
+ * 2. What Discourse sends back after authorization
  */
 function getRedirectUri(): string {
   // Check if environment variable is set (allows configuration via .env)
@@ -36,20 +38,19 @@ function getRedirectUri(): string {
     return envRedirect;
   }
   
-  // Use makeRedirectUri to ensure proper scheme handling
-  // Following Discourse's official pattern: discourse://auth_redirect -> fomio://auth_redirect
-  const baseUri = makeRedirectUri({
-    preferLocalhost: false,
-    native: 'fomio://auth_redirect',
-  });
-  
-  // makeRedirectUri might return with or without path, ensure we have the correct format
-  if (baseUri.includes('fomio://')) {
-    // If it already has the correct scheme, use it
-    return baseUri;
+  // iOS: Use makeRedirectUri for proper ASWebAuthenticationSession compatibility
+  // This ensures the redirect is properly intercepted by the WebBrowser API
+  if (Platform.OS === 'ios') {
+    const redirectUri = makeRedirectUri({
+      preferLocalhost: false,
+      native: 'fomio://auth_redirect',
+    });
+    logger.info('iOS: Using makeRedirectUri', { redirectUri });
+    return redirectUri;
   }
   
-  // Fallback: use Discourse's official pattern
+  // Android: Use fixed URI that matches intent filter in app.json
+  // DO NOT use path segments like /callback - Android handles host-based schemes better
   return 'fomio://auth_redirect';
 }
 
@@ -87,13 +88,28 @@ async function getRsaKeypair(): Promise<{ publicKey: string; privateKey: string 
  */
 async function decryptPayload(encryptedPayload: string, privateKey: string): Promise<{ key: string; one_time_password?: string; nonce?: string }> {
   try {
+    logger.info('Decrypting payload...', { 
+      payloadLength: encryptedPayload?.length,
+      hasPrivateKey: !!privateKey,
+      privateKeyLength: privateKey?.length,
+    });
+    
     // Store private key temporarily for decryption
     await UserApiKeyManager.storePrivateKey(privateKey);
+    logger.info('Private key stored, attempting decryption...');
+    
     const decrypted = await UserApiKeyManager.decryptPayload(encryptedPayload);
+    logger.info('Decryption successful', { hasKey: !!decrypted?.key });
     return decrypted;
-  } catch (error) {
-    logger.error('Failed to decrypt payload', error);
-    throw new Error('Failed to decrypt authorization data. Please try again.');
+  } catch (error: any) {
+    // Handle null errors gracefully - crypto libraries sometimes throw null
+    const errorMessage = error?.message || (error === null ? 'Null error from crypto operation' : String(error));
+    logger.error('Failed to decrypt payload', { 
+      errorMessage,
+      errorType: error === null ? 'null' : typeof error,
+      error,
+    });
+    throw new Error(`Failed to decrypt authorization data: ${errorMessage}. Please try again.`);
   }
 }
 
@@ -102,11 +118,16 @@ async function decryptPayload(encryptedPayload: string, privateKey: string): Pro
  * Ensures RSA keys + nonce are ready and private key is stored for callback decryption.
  */
 export async function buildAuthUrlForWebView(): Promise<string> {
-  // Generate RSA keypair
-  const { publicKey, privateKey } = await getRsaKeypair();
+  // ALWAYS generate fresh RSA keypair for each auth attempt
+  // This prevents key mismatch issues from stale/corrupted stored keys
+  logger.info('Generating fresh RSA keypair for WebView auth...');
+  const keyPair = await UserApiKeyManager.generateKeyPair();
+  const publicKey = keyPair.publicKey;
+  const privateKey = keyPair.privateKey;
 
   // Persist private key so callback can decrypt payload
   await UserApiKeyManager.storePrivateKey(privateKey);
+  await UserApiKeyManager.storePublicKey(publicKey);
 
   // Generate or get client ID
   const clientId = await UserApiKeyManager.getOrGenerateClientId();
@@ -116,11 +137,9 @@ export async function buildAuthUrlForWebView(): Promise<string> {
 
   // Build authorization URL
   const scopes = 'read,write,notifications,session_info,one_time_password';
-  let nonce = await UserApiKeyManager.getNonce();
-  if (!nonce) {
-    nonce = await UserApiKeyManager.generateNonce();
-    await UserApiKeyManager.storeNonce(nonce);
-  }
+  // ALWAYS generate fresh nonce for each auth attempt
+  const nonce = await UserApiKeyManager.generateNonce();
+  await UserApiKeyManager.storeNonce(nonce);
 
   const params = new URLSearchParams({
     application_name: 'Fomio',
@@ -138,9 +157,11 @@ export async function buildAuthUrlForWebView(): Promise<string> {
   const authUrl = `${SITE}/user-api-key/new?${params.toString()}`;
 
   logger.info('Built WebView auth URL', {
-    url: authUrl.replace(publicKey, '[PUBLIC_KEY]'),
+    url: authUrl.substring(0, 200),
     redirectUri,
     platform: Platform.OS,
+    noncePreview: nonce.substring(0, 20),
+    publicKeyPreview: publicKey.substring(0, 50),
   });
 
   return authUrl;

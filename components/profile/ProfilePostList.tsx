@@ -138,7 +138,7 @@ export function ProfilePostList({
     <ResolvedListComponent
       data={posts}
       renderItem={renderItem}
-      keyExtractor={(item, index) => {
+      keyExtractor={(item: PostItem, index: number) => {
         // Generate unique key: postId for replies, id-index for topics
         return item.postId 
           ? `post-${item.postId}` 

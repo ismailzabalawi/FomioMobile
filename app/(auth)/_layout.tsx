@@ -30,13 +30,16 @@ function isOnboardingRoute(pathname: string): boolean {
 }
 
 /**
- * Helper to check if pathname is an explicit auth screen (signin/signup/auth-modal).
+ * Helper to check if pathname is an explicit auth screen (signin/signup/auth-modal/callback).
  */
 function isExplicitAuthScreen(pathname: string): boolean {
   return (
     pathname.includes('/signin') ||
     pathname.includes('/signup') ||
-    pathname.includes('/auth-modal')
+    pathname.includes('/auth-modal') ||
+    pathname.includes('/auth/callback') ||
+    pathname.includes('/callback') ||
+    pathname.includes('/auth_redirect')
   );
 }
 
@@ -137,7 +140,7 @@ export default function AuthLayout(): React.ReactElement {
 
   if (redirectTo) {
     console.log('🧭 Redirecting auth route:', { redirectTo });
-    return <Redirect href={redirectTo} />;
+    return <Redirect href={redirectTo as any} />;
   }
 
   return (
