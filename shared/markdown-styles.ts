@@ -169,6 +169,8 @@ export function getMarkdownStyles(mode: 'light' | 'dark' | 'darkAmoled' = 'light
     link: {
       color: tokens.colors.accent,
       textDecorationLine: 'underline' as const,
+      textDecorationColor: tokens.colors.accent + '40', // Lighter underline for better readability
+      fontWeight: '500' as const, // Slightly bolder for better visibility
     },
     
     // Images

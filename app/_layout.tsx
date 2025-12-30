@@ -443,6 +443,10 @@ function RootLayoutContent({ insets }: { insets: { top: number } }): React.React
           <Stack.Screen name="(protected)" />
           <Stack.Screen name="(profile)" />
           <Stack.Screen name="feed" />
+          <Stack.Screen
+            name="compose"
+            options={{ presentation: 'modal' }}
+          />
         </Stack>
       </View>
     </View>

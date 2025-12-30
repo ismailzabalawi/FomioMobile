@@ -45,6 +45,11 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const { showError } = useToast();
+
+  const getRateLimitMessage = useCallback((error: unknown, fallback: string): string => {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.toLowerCase().includes('rate limited') ? message : fallback;
+  }, []);
   
   // Extract bookmark functions using selectors (avoids dependency issues)
   const toggleBookmarkInStore = useBookmarkStore(state => state.toggleBookmark);
@@ -220,12 +225,12 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
       logger.error('Failed to toggle like', error);
       showError(
         'Failed to update like',
-        'Please try again later.'
+        getRateLimitMessage(error, 'Please try again later.')
       );
     } finally {
       setLoadingLike(false);
     }
-  }, [byte.id, isLiked, likeCount, loadingLike, requireAuth, getFirstPostId, showError, loadInitialStates]);
+  }, [byte.id, isLiked, likeCount, loadingLike, requireAuth, getFirstPostId, showError, loadInitialStates, getRateLimitMessage]);
   
   /**
    * Toggle bookmark with store sync
@@ -275,12 +280,12 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
       logger.error('Failed to toggle bookmark', error);
       showError(
         'Failed to update bookmark',
-        'Please try again later.'
+        getRateLimitMessage(error, 'Please try again later.')
       );
     } finally {
       setLoadingBookmark(false);
     }
-  }, [byte.id, isBookmarked, loadingBookmark, requireAuth, toggleBookmarkInStore, showError, loadInitialStates]);
+  }, [byte.id, isBookmarked, loadingBookmark, requireAuth, toggleBookmarkInStore, showError, loadInitialStates, getRateLimitMessage]);
   
   /**
    * Navigate to comment view
@@ -362,4 +367,3 @@ export function useByteCardActions(byte: Byte): UseByteCardActionsReturn {
     onSharePress,
   ]);
 }
-

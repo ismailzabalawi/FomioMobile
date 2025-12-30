@@ -9,12 +9,14 @@ import { UserApiKeyManager } from '../shared/userApiKeyManager';
 import { emitAuthEvent } from '../shared/auth-events';
 import { logger } from '../shared/logger';
 import { parseURLParameters } from './auth-utils';
+import { setOnboardingCompleted } from '../shared/onboardingStorage';
 
 // Complete auth session when browser closes
 WebBrowser.maybeCompleteAuthSession();
 
 const config = Constants.expoConfig?.extra || {};
 const SITE = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.fomio.app';
+const PUSH_URL = config.DISCOURSE_PUSH_URL || process.env.EXPO_PUBLIC_DISCOURSE_PUSH_URL;
 const STORAGE_KEY = 'disc_user_api_key';
 const CLIENT_ID_KEY = 'disc_client_id';
 
@@ -127,7 +129,11 @@ export async function buildAuthUrlForWebView(): Promise<string> {
     public_key: publicKey,
     auth_redirect: redirectUri,
     nonce,
+    discourse_app: '1',
   });
+  if (PUSH_URL) {
+    params.append('push_url', PUSH_URL);
+  }
 
   const authUrl = `${SITE}/user-api-key/new?${params.toString()}`;
 
@@ -180,7 +186,11 @@ export async function signIn(): Promise<boolean> {
       public_key: publicKey,
       auth_redirect: redirectUri,
       nonce,
+      discourse_app: '1',
     });
+    if (PUSH_URL) {
+      params.append('push_url', PUSH_URL);
+    }
     
     const authUrl = `${SITE}/user-api-key/new?${params.toString()}`;
     
@@ -288,6 +298,7 @@ export async function signIn(): Promise<boolean> {
       }
 
       emitAuthEvent('auth:signed-in');
+      await setOnboardingCompleted();
 
       return true;
     } else {
@@ -338,6 +349,7 @@ export async function authHeaders(): Promise<Record<string, string>> {
     // Api-Username is required for write operations, but GET requests work with just User-Api-Key
     const headers: Record<string, string> = {
       "User-Api-Key": credentials.key,
+      ...(credentials.clientId ? { "User-Api-Client-Id": credentials.clientId } : {}),
       "Accept": "application/json",
       "Content-Type": "application/json",
     };

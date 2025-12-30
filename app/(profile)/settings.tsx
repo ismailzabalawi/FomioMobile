@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
   Linking,
   Platform,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Moon,
-  Bell,
   Shield,
   Question,
   SignIn,
@@ -25,7 +27,6 @@ import {
   Globe,
   Star,
   Bookmark,
-  Notification,
   Monitor,
 } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
@@ -35,18 +36,25 @@ import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { SettingItem, SettingSection } from '@/components/settings';
 import { useAuth } from '@/shared/auth-context';
-import { revokeKey } from '../../lib/discourse';
 import { clearAll } from '../../lib/store';
 import { router } from 'expo-router';
 import { useSettingsStorage } from '../../shared/useSettingsStorage';
 import { getThemeColors } from '@/shared/theme-constants';
+import { discourseApi } from '@/shared/discourseApi';
+import { offlineManager } from '@/shared/offline-support';
+import { clearQueryCache } from '@/shared/query-client';
 
 export default function SettingsScreen(): React.ReactElement {
   const { themeMode, setThemeMode, isDark } = useTheme();
-  const { isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated, signOut, user } = useAuth();
   const { settings, updateSettings, loading: settingsLoading } = useSettingsStorage();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [busyAction, setBusyAction] = useState<null | 'signOut' | 'revoke' | 'delete'>(null);
+  const [showDeletePrompt, setShowDeletePrompt] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isClearingCache, setIsClearingCache] = useState(false);
+  const [cacheStats, setCacheStats] = useState<{ count: number; totalSize: number } | null>(null);
+  const [cacheStatsLoading, setCacheStatsLoading] = useState(false);
 
   // Configure header
   useScreenHeader({
@@ -163,7 +171,7 @@ export default function SettingsScreen(): React.ReactElement {
           onPress: async () => {
             try {
               setBusyAction('revoke');
-              await revokeKey();
+              await signOut();
               // Clear all AsyncStorage
               try {
                 await AsyncStorage.clear();
@@ -187,7 +195,7 @@ export default function SettingsScreen(): React.ReactElement {
         },
       ]
     );
-  }, [busyAction]);
+  }, [busyAction, signOut]);
 
   const handleDeleteAccount = useCallback(() => {
     if (busyAction) return;
@@ -211,21 +219,10 @@ export default function SettingsScreen(): React.ReactElement {
                 {
                   text: 'Delete Forever',
                   style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      setBusyAction('delete');
-                      // Clear all local data
-                      await AsyncStorage.clear();
-                      await clearAll();
-                      // TODO: Implement API call to delete account
-                      console.log('Account deletion requested');
-                      router.replace('/(auth)/signin');
-                    } catch (error) {
-                      console.error('Delete account failed:', error);
-                      Alert.alert('Error', 'Failed to delete account. Please try again.');
-                    } finally {
-                      setBusyAction(null);
-                    }
+                  onPress: () => {
+                    setDeletePassword('');
+                    setDeleteError(null);
+                    setShowDeletePrompt(true);
                   },
                 },
               ]
@@ -257,30 +254,7 @@ export default function SettingsScreen(): React.ReactElement {
     safeOpenURL(url);
   }, [safeOpenURL]);
 
-  const handleClearCache = useCallback(() => {
-    Alert.alert('Clear Cache', 'This will free up storage space. Continue?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear',
-        onPress: () => {
-          console.log('Cache cleared');
-          // TODO: Implement actual cache clearing
-        },
-      },
-    ]);
-  }, []);
-
   // Settings handlers with persistence
-  const handleNotificationsToggle = useCallback(
-    async (value: boolean) => {
-      setNotificationsEnabled(value);
-      // This is a local preference, not persisted to useSettingsStorage
-      // as it might be synced with Discourse settings
-      console.log('Notifications enabled:', value);
-    },
-    []
-  );
-
   const handleOfflineModeToggle = useCallback(
     async (value: boolean) => {
       await updateSettings({ offlineMode: value });
@@ -294,6 +268,127 @@ export default function SettingsScreen(): React.ReactElement {
     },
     [updateSettings]
   );
+
+  const handleConfirmDeleteAccount = useCallback(async () => {
+    if (busyAction) return;
+    if (!user?.username) {
+      setDeleteError('Account info unavailable. Please sign in again.');
+      return;
+    }
+    if (!deletePassword.trim()) {
+      setDeleteError('Please enter your password to delete your account.');
+      return;
+    }
+
+    try {
+      setBusyAction('delete');
+      setDeleteError(null);
+      const response = await discourseApi.deleteAccount(user.username, deletePassword);
+      if (!response.success) {
+        const message = response.error || response.errors?.join(', ') || 'Failed to delete account.';
+        setDeleteError(message);
+        return;
+      }
+
+      await signOut();
+      try {
+        await AsyncStorage.clear();
+      } catch (error) {
+        console.error('Failed to clear AsyncStorage:', error);
+      }
+      try {
+        await clearAll();
+      } catch (error) {
+        console.error('Failed to clear SecureStore:', error);
+      }
+      setShowDeletePrompt(false);
+      setDeletePassword('');
+      router.replace('/(auth)/signin');
+    } catch (error) {
+      console.error('Delete account failed:', error);
+      setDeleteError('Failed to delete account. Please try again.');
+    } finally {
+      setBusyAction(null);
+    }
+  }, [busyAction, deletePassword, signOut, user?.username]);
+
+  const handleCancelDeletePrompt = useCallback(() => {
+    if (busyAction) return;
+    setShowDeletePrompt(false);
+    setDeletePassword('');
+    setDeleteError(null);
+  }, [busyAction]);
+
+  const refreshCacheStats = useCallback(async () => {
+    setCacheStatsLoading(true);
+    try {
+      const stats = await offlineManager.getCacheStats();
+      setCacheStats(stats);
+    } catch (error) {
+      console.error('Failed to get cache stats:', error);
+    } finally {
+      setCacheStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCacheStats();
+  }, [refreshCacheStats]);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    return `${mb.toFixed(1)} MB`;
+  };
+
+  const cacheSubtitle = cacheStats
+    ? `Free up storage space (${cacheStats.count} items, ${formatBytes(cacheStats.totalSize)})`
+    : cacheStatsLoading
+      ? 'Free up storage space (calculating...)'
+      : 'Free up storage space';
+
+  const handleClearCache = useCallback(() => {
+    if (isClearingCache) return;
+    Alert.alert('Clear Cache', 'This will free up storage space. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        onPress: async () => {
+          try {
+            setIsClearingCache(true);
+            await offlineManager.clearAll();
+            clearQueryCache();
+            discourseApi.clearCache();
+            try {
+              await AsyncStorage.removeItem('fomio-query-cache');
+              await AsyncStorage.removeItem('compose_draft_meta_v1');
+            } catch (storageError) {
+              console.error('Failed to clear cache storage:', storageError);
+            }
+            await refreshCacheStats();
+            Alert.alert('Cache Cleared', 'Cached data has been removed.');
+          } catch (error) {
+            console.error('Cache clear failed:', error);
+            Alert.alert('Error', 'Failed to clear cache. Please try again.');
+          } finally {
+            setIsClearingCache(false);
+          }
+        },
+      },
+    ]);
+  }, [isClearingCache, refreshCacheStats]);
+
+  const getBusyIndicator = (action: 'signOut' | 'revoke' | 'delete') => {
+    if (busyAction !== action) return undefined;
+    return (
+      <View style={styles.busyIndicator}>
+        <ActivityIndicator color={colors.destructive} size="small" />
+        <Text style={[styles.busyLabel, { color: colors.secondary }]}>Working...</Text>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -333,34 +428,6 @@ export default function SettingsScreen(): React.ReactElement {
               subtitle={themeMode === 'dark' ? 'Dark (AMOLED)' : 'Light'}
               icon={<Moon size={24} color={colors.accent} weight="regular" />}
               onPress={handleThemeSelect}
-            />
-          )}
-        </SettingSection>
-
-        {/* Notifications */}
-        <SettingSection title="Notifications">
-          <SettingItem
-            title="Push Notifications"
-            subtitle="Receive notifications for new activity"
-            icon={<Bell size={24} color={colors.accent} weight="fill" />}
-            rightElement={
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={handleNotificationsToggle}
-                trackColor={{ false: colors.border, true: colors.accent }}
-                thumbColor="#ffffff"
-                disabled={settingsLoading}
-              />
-            }
-            showChevron={false}
-          />
-
-          {isAuthenticated && (
-            <SettingItem
-              title="Notification Preferences"
-              subtitle="Customize what you're notified about"
-              icon={<Notification size={24} color={colors.accent} weight="regular" />}
-              onPress={() => router.push('/(profile)/notification-settings')}
             />
           )}
         </SettingSection>
@@ -424,9 +491,15 @@ export default function SettingsScreen(): React.ReactElement {
 
           <SettingItem
             title="Clear Cache"
-            subtitle="Free up storage space"
+            subtitle={cacheSubtitle}
             icon={<Trash size={24} color={colors.accent} weight="regular" />}
             onPress={handleClearCache}
+            rightElement={
+              isClearingCache ? (
+                <ActivityIndicator color={colors.accent} size="small" />
+              ) : undefined
+            }
+            disabled={isClearingCache}
           />
         </SettingSection>
 
@@ -469,14 +542,18 @@ export default function SettingsScreen(): React.ReactElement {
               subtitle="Revoke your API key and sign out"
               icon={<Lock size={24} color={colors.destructive} weight="regular" />}
               onPress={handleRevokeKey}
+              rightElement={getBusyIndicator('revoke')}
               isDestructive={true}
+              disabled={!!busyAction}
             />
             <SettingItem
               title="Sign Out"
               subtitle="Sign out of your account"
               icon={<SignOut size={24} color={colors.destructive} weight="regular" />}
               onPress={handleSignOut}
+              rightElement={getBusyIndicator('signOut')}
               isDestructive={true}
+              disabled={!!busyAction}
             />
 
             <SettingItem
@@ -484,7 +561,9 @@ export default function SettingsScreen(): React.ReactElement {
               subtitle="Permanently delete your account"
               icon={<Trash size={24} color={colors.destructive} weight="regular" />}
               onPress={handleDeleteAccount}
+              rightElement={getBusyIndicator('delete')}
               isDestructive={true}
+              disabled={!!busyAction}
             />
           </SettingSection>
         ) : (
@@ -506,6 +585,71 @@ export default function SettingsScreen(): React.ReactElement {
           </Text>
         </View>
       </ScrollView>
+
+      <Modal visible={showDeletePrompt} transparent animationType="fade" onRequestClose={handleCancelDeletePrompt}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Confirm deletion</Text>
+            <Text style={[styles.modalSubtitle, { color: colors.secondary }]}>
+              Enter your password to delete your account permanently.
+            </Text>
+            <TextInput
+              value={deletePassword}
+              onChangeText={(value) => {
+                setDeletePassword(value);
+                if (deleteError) {
+                  setDeleteError(null);
+                }
+              }}
+              placeholder="Password"
+              placeholderTextColor={colors.secondary}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!busyAction}
+              style={[
+                styles.modalInput,
+                { borderColor: colors.border, color: colors.foreground },
+              ]}
+            />
+            {deleteError ? (
+              <Text style={[styles.modalError, { color: colors.destructive }]}>
+                {deleteError}
+              </Text>
+            ) : null}
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={handleCancelDeletePrompt}
+                disabled={!!busyAction}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.modalCancel,
+                  { borderColor: colors.border },
+                  { opacity: pressed || busyAction ? 0.7 : 1 },
+                ]}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.secondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmDeleteAccount}
+                disabled={!!busyAction || !deletePassword.trim()}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.modalDelete,
+                  { borderColor: colors.destructive },
+                  { opacity: pressed || busyAction || !deletePassword.trim() ? 0.7 : 1 },
+                ]}
+              >
+                {busyAction === 'delete' ? (
+                  <ActivityIndicator color={colors.destructive} size="small" />
+                ) : (
+                  <Text style={[styles.modalButtonText, { color: colors.destructive }]}>Delete</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -545,5 +689,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '400',
     textAlign: 'center',
+  },
+  busyIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  busyLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalError: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: -8,
+    marginBottom: 12,
+  },
+  modalButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    minWidth: 88,
+    alignItems: 'center',
+  },
+  modalCancel: {
+    backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  modalDelete: {
+    backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  modalButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -13,6 +13,7 @@ export interface SettingItemProps {
   rightElement?: React.ReactNode;
   showChevron?: boolean;
   isDestructive?: boolean;
+  disabled?: boolean;
 }
 
 export const SettingItem = memo(function SettingItem({
@@ -23,12 +24,15 @@ export const SettingItem = memo(function SettingItem({
   rightElement,
   showChevron = true,
   isDestructive = false,
+  disabled = false,
 }: SettingItemProps) {
   const { themeMode, isDark } = useTheme();
   const colors = getThemeColors(themeMode, isDark);
 
+  const isPressable = !!onPress && !disabled;
+
   const handlePress = () => {
-    if (onPress) {
+    if (isPressable && onPress) {
       // Add haptic feedback
       Haptics.selectionAsync().catch(() => {});
       onPress();
@@ -42,6 +46,7 @@ export const SettingItem = memo(function SettingItem({
         {
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
+          opacity: disabled ? 0.6 : 1,
         },
       ]}
     >
@@ -65,7 +70,7 @@ export const SettingItem = memo(function SettingItem({
       </View>
       <View style={styles.settingRight}>
         {rightElement}
-        {showChevron && onPress && (
+        {showChevron && isPressable && (
           <View style={styles.chevron}>
             <CaretRight size={18} color={colors.secondary} weight="regular" />
           </View>
@@ -78,11 +83,12 @@ export const SettingItem = memo(function SettingItem({
     return (
       <Pressable
         onPress={handlePress}
-        disabled={!onPress}
+        disabled={!isPressable}
         accessible
         accessibilityRole="button"
         accessibilityLabel={title}
         accessibilityHint={subtitle}
+        accessibilityState={{ disabled: !isPressable }}
         android_ripple={{
           color: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
           borderless: true,
@@ -98,11 +104,12 @@ export const SettingItem = memo(function SettingItem({
   return (
     <TouchableOpacity
       onPress={handlePress}
-      disabled={!onPress}
+      disabled={!isPressable}
       accessible
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityHint={subtitle}
+      accessibilityState={{ disabled: !isPressable }}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       activeOpacity={0.7}
     >
@@ -156,4 +163,3 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
-

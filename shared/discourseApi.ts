@@ -582,6 +582,19 @@ class DiscourseApiService {
             return this.makeRequest<T>(endpoint, options, retries - 1);
           }
           
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            const retrySeconds = retryAfter ? parseInt(retryAfter, 10) : null;
+            return {
+              success: false,
+              error: retrySeconds
+                ? `Rate limited. Please try again in ${retrySeconds}s.`
+                : 'Rate limited. Please try again shortly.',
+              errors: errorData.errors,
+              status: response.status,
+            };
+          }
+          
           // Retry on 5xx errors (server errors)
           if (response.status >= 500 && retries > 0) {
             console.log(`🔄 Retrying due to server error (${response.status})`);
@@ -1918,7 +1931,7 @@ class DiscourseApiService {
       groupsCount: response.data?.groups?.length || 0,
     });
     
-    // Map the response if successful
+    // Map the response if successful - use only what search API provides
     if (response.success && response.data) {
       return {
         success: true,
@@ -1956,9 +1969,84 @@ class DiscourseApiService {
       }
     });
     
-    // Map topics to bytes - enrich with category and author data if missing
+    // Create a user lookup map to enrich topic author data
+    // Search API returns users separately, we need to match them to topics
+    const userLookupById = new Map<number, any>();
+    const userLookupByUsername = new Map<string, any>();
+    users.forEach((user: any) => {
+      if (user.id) {
+        userLookupById.set(user.id, user);
+      }
+      if (user.username) {
+        userLookupByUsername.set(user.username.toLowerCase(), user);
+      }
+    });
+    
+    if (__DEV__) {
+      console.log('🔍 mapSearchResults: User lookup maps created', {
+        usersCount: users.length,
+        userLookupByIdSize: userLookupById.size,
+        userLookupByUsernameSize: userLookupByUsername.size,
+      });
+      
+      // Log raw search API data structure for debugging
+      if (topics.length > 0) {
+        console.log('🔍 mapSearchResults: Raw search API data', {
+          topicsCount: topics.length,
+          usersCount: users.length,
+          sampleTopic: {
+            id: topics[0].id,
+            title: topics[0].title,
+            hasBlurb: !!topics[0].blurb,
+            hasExcerpt: !!topics[0].excerpt,
+            categoryId: topics[0].category_id,
+            postersCount: topics[0].posters?.length || 0,
+            firstPosterUserId: topics[0].posters?.[0]?.user_id,
+            firstPosterUsername: topics[0].posters?.[0]?.username,
+            topicKeys: Object.keys(topics[0]),
+          },
+          sampleUser: users[0] ? {
+            id: users[0].id,
+            username: users[0].username,
+            name: users[0].name,
+            hasAvatarTemplate: !!users[0].avatar_template,
+          } : null,
+        });
+      }
+    }
+    
+    // Map topics to bytes - enrich with category, author, and excerpt/blurb data
     const bytes: Byte[] = topics.map((topic: any) => {
       try {
+        // Debug: Log topic structure for first topic to understand what fields are available
+        if (__DEV__ && topics.indexOf(topic) === 0) {
+          console.log('🔍 mapSearchResults: Sample topic structure', {
+            topicId: topic.id,
+            topicTitle: topic.title,
+            hasBlurb: !!topic.blurb,
+            hasExcerpt: !!topic.excerpt,
+            hasUserId: !!topic.user_id,
+            hasUsername: !!topic.username,
+            hasPosters: !!(topic.posters && topic.posters.length > 0),
+            hasDetails: !!topic.details,
+            hasCreatedBy: !!topic.details?.created_by,
+            hasLastPoster: !!topic.last_poster,
+            topicKeys: Object.keys(topic),
+          });
+        }
+        
+        // Extract blurb/excerpt from search results (Discourse search API includes these)
+        // Search API returns 'blurb' field when include_blurbs=true
+        if (topic.blurb && !topic.excerpt) {
+          topic.excerpt = topic.blurb;
+          if (__DEV__) {
+            console.log(`📝 mapSearchResults: Extracted blurb as excerpt for topic ${topic.id}`, {
+              blurbLength: topic.blurb.length,
+              blurbPreview: topic.blurb.substring(0, 100),
+            });
+          }
+        }
+        
         // Enrich topic with category data if category name is missing
         if (topic.category_id && (!topic.category || !topic.category.name)) {
           const categoryInfo = categoryLookup.get(topic.category_id);
@@ -1973,25 +2061,131 @@ class DiscourseApiService {
           }
         }
         
-        // Enrich topic with author data if missing
-        // Search results might have author in posters array or other fields
+        // Enrich topic with author data from users array if missing
+        // Discourse search API: topics have posters array with user_id references, users are separate
+        
+        // Match author from users array in search response (no extra API calls)
+        // Discourse search API: topics have posters array with user_id references, users are separate
         if (!topic.details?.created_by && !topic.last_poster) {
-          // Try to get author from posters array (first poster is usually the author)
+          let authorUser: any = null;
+          
+          // PRIORITY 1: Check posters array first (most reliable in search results)
+          // The first poster is typically the original author
           if (topic.posters && topic.posters.length > 0) {
             const firstPoster = topic.posters[0];
-            if (firstPoster.user) {
-              topic.details = topic.details || {};
-              topic.details.created_by = firstPoster.user;
+            
+            // Always log first topic for debugging (not just in __DEV__)
+            if (topics.indexOf(topic) === 0) {
+              console.log('🔍 mapSearchResults: First poster structure', {
+                topicId: topic.id,
+                firstPoster: JSON.stringify(firstPoster, null, 2),
+                hasUserId: !!firstPoster.user_id,
+                hasUsername: !!firstPoster.username,
+                hasUser: !!firstPoster.user,
+                posterKeys: Object.keys(firstPoster),
+                userLookupByIdSize: userLookupById.size,
+                userLookupByUsernameSize: userLookupByUsername.size,
+              });
+            }
+            
+            // Try user_id first (most common in search API)
+            if (firstPoster.user_id) {
+              authorUser = userLookupById.get(firstPoster.user_id);
+              if (authorUser) {
+                console.log(`✅ mapSearchResults: Matched author by poster.user_id for topic ${topic.id}`, {
+                  posterUserId: firstPoster.user_id,
+                  matchedUserId: authorUser.id,
+                  username: authorUser.username,
+                });
+              } else if (topics.indexOf(topic) === 0) {
+                console.warn(`⚠️ mapSearchResults: poster.user_id ${firstPoster.user_id} not found in userLookupById`, {
+                  availableUserIds: Array.from(userLookupById.keys()).slice(0, 10),
+                });
+              }
+            }
+            
+            // If not found by user_id, try username
+            if (!authorUser && firstPoster.username) {
+              authorUser = userLookupByUsername.get(firstPoster.username.toLowerCase());
+              if (authorUser) {
+                console.log(`✅ mapSearchResults: Matched author by poster.username for topic ${topic.id}`, {
+                  posterUsername: firstPoster.username,
+                  matchedUserId: authorUser.id,
+                });
+              } else if (topics.indexOf(topic) === 0) {
+                console.warn(`⚠️ mapSearchResults: poster.username "${firstPoster.username}" not found in userLookupByUsername`, {
+                  availableUsernames: Array.from(userLookupByUsername.keys()).slice(0, 10),
+                });
+              }
+            }
+            
+            // If poster has full user object, use it directly
+            if (!authorUser && firstPoster.user) {
+              authorUser = firstPoster.user;
+              console.log(`✅ mapSearchResults: Using poster.user object for topic ${topic.id}`);
             }
           }
-          // Fallback to last_poster if available
-          if (!topic.details?.created_by && topic.last_poster_username) {
-            topic.last_poster = {
-              id: 0, // Search results might not have user ID
-              username: topic.last_poster_username,
-              name: topic.last_poster_username,
-              avatar_template: topic.last_poster_avatar_template || '',
-            };
+          
+          // PRIORITY 2: Check topic-level fields (less common in search API)
+          if (!authorUser && topic.user_id) {
+            authorUser = userLookupById.get(topic.user_id);
+            if (authorUser) {
+              console.log(`✅ mapSearchResults: Matched author by topic.user_id for topic ${topic.id}`);
+            }
+          }
+          
+          if (!authorUser && topic.username) {
+            authorUser = userLookupByUsername.get(topic.username.toLowerCase());
+            if (authorUser) {
+              console.log(`✅ mapSearchResults: Matched author by topic.username for topic ${topic.id}`);
+            }
+          }
+          
+          // PRIORITY 3: Fallback to last_poster
+          if (!authorUser && topic.last_poster_username) {
+            const lastPosterUser = userLookupByUsername.get(topic.last_poster_username.toLowerCase());
+            if (lastPosterUser) {
+              authorUser = lastPosterUser;
+              if (__DEV__) {
+                console.log(`✅ mapSearchResults: Using last_poster from users array for topic ${topic.id}`);
+              }
+            } else {
+              // Create minimal user object from last_poster_username
+              authorUser = {
+                id: 0,
+                username: topic.last_poster_username,
+                name: topic.last_poster_username,
+                avatar_template: topic.last_poster_avatar_template || '',
+              };
+              if (__DEV__) {
+                console.warn(`⚠️ mapSearchResults: Using fallback last_poster for topic ${topic.id} (not in users array)`);
+              }
+            }
+          }
+          
+          // Set the author if we found one
+          if (authorUser) {
+            topic.details = topic.details || {};
+            topic.details.created_by = authorUser;
+            console.log(`👤 mapSearchResults: Final author set for topic ${topic.id}`, {
+              authorId: authorUser.id,
+              username: authorUser.username,
+              name: authorUser.name,
+              hasAvatarTemplate: !!authorUser.avatar_template,
+            });
+          } else {
+            // Always log warnings for missing authors (not just in __DEV__)
+            console.warn(`⚠️ mapSearchResults: Could not find author for topic ${topic.id}`, {
+              hasPosters: !!(topic.posters && topic.posters.length > 0),
+              postersCount: topic.posters?.length || 0,
+              firstPosterUserId: topic.posters?.[0]?.user_id,
+              firstPosterUsername: topic.posters?.[0]?.username,
+              hasUserId: !!topic.user_id,
+              hasUsername: !!topic.username,
+              hasLastPosterUsername: !!topic.last_poster_username,
+              usersArraySize: userLookupById.size,
+              sampleUserIds: Array.from(userLookupById.keys()).slice(0, 5),
+            });
           }
         }
         
@@ -2012,15 +2206,44 @@ class DiscourseApiService {
       }
     }).filter((hub: Hub | null): hub is Hub => hub !== null);
     
-    // Map users
+    // Map users - Discourse search API returns users with minimal data
     const appUsers: AppUser[] = users.map((user: any) => {
       try {
+        // Debug: Log raw user data from search API
+        if (__DEV__ && users.indexOf(user) === 0) {
+          console.log('🔍 mapSearchResults: Sample user structure from search API', {
+            userId: user.id,
+            username: user.username,
+            name: user.name,
+            hasAvatarTemplate: !!user.avatar_template,
+            hasBioRaw: !!user.bio_raw,
+            hasPostCount: !!user.post_count,
+            hasCreatedAt: !!user.created_at,
+            userKeys: Object.keys(user),
+          });
+        }
+        
         return this.mapDiscourseUserToAppUser(user);
       } catch (error) {
         console.error('Error mapping user:', error, user);
         return null;
       }
     }).filter((user: AppUser | null): user is AppUser => user !== null);
+    
+    if (__DEV__) {
+      console.log('✅ mapSearchResults: Mapped users', {
+        inputUsersCount: users.length,
+        outputAppUsersCount: appUsers.length,
+        sampleUser: appUsers[0] ? {
+          id: appUsers[0].id,
+          username: appUsers[0].username,
+          name: appUsers[0].name,
+          hasAvatar: !!appUsers[0].avatar,
+          hasBio: !!appUsers[0].bio,
+          joinedDate: appUsers[0].joinedDate,
+        } : null,
+      });
+    }
     
     // Map posts (excluding first post of each topic) to comments
     // Note: Search API posts might not have is_first_post flag, so we'll filter by post_number === 1
@@ -2123,6 +2346,22 @@ class DiscourseApiService {
   mapTopicToByte(topic: any): Byte {
     // Detect if this is a summary (no post_stream) or full topic
     const isSummary = !topic.post_stream;
+    
+    // Debug: Log what author data we have before mapping (always log for search results)
+    const isSearchResult = !topic.post_stream && topic.category_id; // Search results are summaries
+    if (isSearchResult) {
+      console.log('🔍 mapTopicToByte: Author data check for search result', {
+        topicId: topic.id,
+        hasDetails: !!topic.details,
+        hasCreatedBy: !!topic.details?.created_by,
+        createdById: topic.details?.created_by?.id,
+        createdByUsername: topic.details?.created_by?.username,
+        hasPosters: !!(topic.posters && topic.posters.length > 0),
+        hasLastPoster: !!topic.last_poster,
+        lastPosterId: topic.last_poster?.id,
+        lastPosterUsername: topic.last_poster?.username,
+      });
+    }
     
     // Extract original poster - prefer created_by, then original poster from posters array, fallback to last_poster
     let authorUser = topic.details?.created_by;
@@ -2259,16 +2498,31 @@ class DiscourseApiService {
       };
     }
 
+    // Handle avatar: Discourse search API might return avatar_template or direct avatar URL
+    let avatarUrl = '';
+    if (discourseUser.avatar_template) {
+      avatarUrl = this.getAvatarUrl(discourseUser.avatar_template, 120);
+    } else if (discourseUser.avatar) {
+      // If avatar is already an absolute URL, use it; otherwise normalize it
+      const avatar = discourseUser.avatar;
+      if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+        avatarUrl = avatar;
+      } else {
+        // Relative URL, make it absolute
+        avatarUrl = `${this.config.baseUrl}${avatar.startsWith('/') ? avatar : `/${avatar}`}`;
+      }
+    }
+    
     const appUser = {
       id: userId ? userId.toString() : '0',
       name: name || username || 'Unknown User',
       username: username || 'unknown',
       email: email || '',
-      avatar: this.getAvatarUrl(discourseUser.avatar_template, 120),
-      bio: discourseUser.bio_raw || '',
+      avatar: avatarUrl,
+      bio: discourseUser.bio_raw || discourseUser.bio || '',
       followers: 0, // Not available in Discourse
       following: 0, // Not available in Discourse
-      bytes: discourseUser.post_count || 0,
+      bytes: discourseUser.post_count || discourseUser.topic_count || 0,
       comments: discourseUser.post_count || 0,
       joinedDate: discourseUser.created_at ? 
         `Joined ${new Date(discourseUser.created_at).toLocaleDateString('en-US', { 

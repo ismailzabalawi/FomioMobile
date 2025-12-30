@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Alert, FlatList } from 'react-native';
+import { Alert, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Comment } from '../CommentItem';
@@ -18,7 +18,7 @@ interface UseByteBlogCommentsParams {
   createComment: (content: string, replyToPostNumber?: number) => Promise<boolean>;
   actionsError: string | undefined;
   scrollOffsetRef: React.MutableRefObject<number>;
-  flatListRef: React.RefObject<FlatList>;
+  scrollViewRef: React.RefObject<ScrollView | null>;
   initialCommentsVisible?: boolean;
 }
 
@@ -35,7 +35,7 @@ export function useByteBlogComments({
   createComment,
   actionsError,
   scrollOffsetRef,
-  flatListRef,
+  scrollViewRef,
   initialCommentsVisible = false,
 }: UseByteBlogCommentsParams) {
   const [replyTo, setReplyTo] = useState<{ postNumber: number; username: string } | null>(null);
@@ -152,9 +152,9 @@ export function useByteBlogComments({
         // ✅ FIXED: Use refetch to always reload topic data (not retry, which only works on errors)
         await refetch();
         
-        // Restore scroll position after a brief delay to let the list update
+        // Restore scroll position after a brief delay to let the content update
         setTimeout(() => {
-          flatListRef.current?.scrollToOffset({ offset: storedScrollOffset, animated: false });
+          scrollViewRef.current?.scrollTo({ y: storedScrollOffset, animated: false });
         }, 200);
         
         // Success haptic feedback
@@ -243,7 +243,7 @@ export function useByteBlogComments({
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     }
-  }, [createComment, refetch, user, actionsError, scrollOffsetRef, flatListRef]);
+  }, [createComment, refetch, user, actionsError, scrollOffsetRef, scrollViewRef]);
 
   // Handle liking individual comments
   const handleLikeComment = useCallback(async (commentId: string) => {

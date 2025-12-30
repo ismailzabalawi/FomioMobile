@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import { Tabs, router, useFocusEffect } from 'expo-router';
-import { House, MagnifyingGlass, Plus, Bell, User, ArrowUp, CheckCircle, PencilSimple } from 'phosphor-react-native';
+import { House, MagnifyingGlass, Plus, Bell, User, ArrowUp, CheckCircle, Gear } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
 import { View, StyleSheet, Pressable, Text, Platform, Alert, AppState, AppStateStatus } from 'react-native';
@@ -45,7 +45,6 @@ import {
   BUD_BRIDGE_MIN,
   BUD_BRIDGE_MAX,
   ICON_SIZE,
-  COMPOSE_ICON_SIZE,
   TAB_ITEM_ICON_SIZE,
   BADGE_TOP,
   BADGE_RIGHT,
@@ -64,7 +63,7 @@ import {
 // SCREEN TYPES FOR CONTEXT-AWARE NAVIGATION
 // ============================================================================
 type ScreenType = 'feed' | 'search' | 'notifications' | 'profile';
-type RightActionType = 'scroll-to-top' | 'mark-all-read' | 'edit-profile' | 'none';
+type RightActionType = 'scroll-to-top' | 'mark-all-read' | 'manage-profile' | 'none';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
@@ -78,7 +77,7 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
  * Implements a three-part floating tab bar with:
  * - Compose button (left): Merges into bar on scroll down, reappears on scroll up
  * - Main tab bar (center): Expands/contracts based on compose and action button visibility
- * - Right action button: Buds from bar on scroll (scroll-to-top, mark-all-read, or edit-profile)
+ * - Right action button: Buds from bar on scroll (scroll-to-top, mark-all-read, or manage-profile)
  * 
  * Uses fluid dynamics physics for smooth liquid bridge animations between elements.
  * Context-aware right action adapts based on current screen (feed/search/notifications/profile).
@@ -190,7 +189,7 @@ function CustomTabBar({
       case 'notifications':
         return 'mark-all-read';
       case 'profile':
-        return isViewingOwnProfile ? 'edit-profile' : 'none';
+        return isViewingOwnProfile ? 'manage-profile' : 'none';
       default:
         return 'scroll-to-top';
     }
@@ -198,7 +197,7 @@ function CustomTabBar({
 
   // Adjust bud thresholds per action (edit profile should appear sooner)
   useEffect(() => {
-    if (rightActionType === 'edit-profile') {
+    if (rightActionType === 'manage-profile') {
       budStart.value = 0;
       budEnd.value = 90;
       isProfileEditAction.value = 1;
@@ -243,10 +242,10 @@ function CustomTabBar({
     }
   }, [hasUnreadNotifications, markAllAsRead]);
   
-  // Edit profile handler (profile)
-  const handleEditProfile = useCallback(() => {
+  // Manage profile handler (profile)
+  const handleManageProfile = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    router.push('/(profile)/edit-profile');
+    router.push('/(profile)/manage');
   }, []);
   
   // Determine if the right action is disabled
@@ -255,7 +254,7 @@ function CustomTabBar({
       case 'mark-all-read':
         // Disable "Mark all read" when there are no unread notifications
         return !hasUnreadNotifications;
-      case 'edit-profile':
+      case 'manage-profile':
         // Disable "Edit Profile" when not authenticated
         return !isAuthenticated;
       default:
@@ -278,12 +277,12 @@ function CustomTabBar({
         return handleScrollToTop;
       case 'mark-all-read':
         return handleMarkAllRead;
-      case 'edit-profile':
-        return handleEditProfile;
+      case 'manage-profile':
+        return handleManageProfile;
       default:
         return () => {};
     }
-  }, [rightActionType, isRightActionDisabled, handleScrollToTop, handleMarkAllRead, handleEditProfile]);
+  }, [rightActionType, isRightActionDisabled, handleScrollToTop, handleMarkAllRead, handleManageProfile]);
   
   // Get the appropriate icon for the right action
   const getRightActionIcon = useCallback((activeColor: string, inactiveColor: string) => {
@@ -295,8 +294,8 @@ function CustomTabBar({
         return <ArrowUp color={color} size={22} weight="fill" />;
       case 'mark-all-read':
         return <CheckCircle color={color} size={22} weight={hasUnreadNotifications ? 'fill' : 'regular'} />;
-      case 'edit-profile':
-        return <PencilSimple color={color} size={22} weight="fill" />;
+      case 'manage-profile':
+        return <Gear color={color} size={22} weight="fill" />;
       default:
         return null;
     }
@@ -309,8 +308,8 @@ function CustomTabBar({
         return 'Scroll to top';
       case 'mark-all-read':
         return 'Mark all notifications as read';
-      case 'edit-profile':
-        return 'Customize profile';
+      case 'manage-profile':
+        return 'Manage profile';
       default:
         return '';
     }
@@ -662,7 +661,7 @@ function CustomTabBar({
             accessibilityLabel="Create Byte"
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-              navigation.navigate('compose');
+              router.push('/compose');
             }}
             style={styles.fullHitbox}
             hitSlop={TAB_HIT_SLOP}
@@ -878,6 +877,8 @@ export default function TabLayout(): React.ReactElement {
     <FluidNavProvider>
       <Tabs
         screenOptions={screenOptions}
+        backBehavior="initialRoute"
+        initialRouteName="index"
         tabBar={(props) => (
           <CustomTabBar
             {...props}
@@ -917,15 +918,6 @@ export default function TabLayout(): React.ReactElement {
           }}
         />
         <Tabs.Screen
-          name="compose"
-          options={{
-            tabBarItemStyle: styles.composeSlot,
-            tabBarIcon: () => (
-              <Plus color="#ffffff" size={COMPOSE_ICON_SIZE} weight="bold" />
-            ),
-          }}
-        />
-        <Tabs.Screen
           name="notifications"
           options={{
             tabBarItemStyle: styles.tabBarItem,
@@ -961,12 +953,6 @@ const styles = StyleSheet.create({
   // TAB BAR ITEM STYLES (for Expo Router)
   // ============================================================================
   tabBarItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 0,
-  },
-  composeSlot: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',

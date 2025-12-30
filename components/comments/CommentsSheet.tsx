@@ -20,7 +20,7 @@ interface CommentsSheetProps {
     username: string;
   } | null;
   isAuthenticated?: boolean; // Pass through for NewCommentInput when used in BottomSheetModal
-  inputRef?: React.RefObject<NewCommentInputRef>; // Ref for programmatic focus control
+  inputRef?: React.RefObject<NewCommentInputRef | null>; // Ref for programmatic focus control
   onRefresh?: () => Promise<void>; // Pull-to-refresh callback
   onClose?: () => void; // Callback when sheet is dismissed/closed
 }

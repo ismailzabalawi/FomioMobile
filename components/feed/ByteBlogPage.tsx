@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
+import { getTokens } from '@/shared/design/tokens';
 import { Heart, ChatCircle, BookmarkSimple } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTopic, TopicData } from '../../shared/useTopic';
@@ -38,9 +39,11 @@ export function ByteBlogPage({
   const { isDark, isAmoled } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const { topic, isLoading, hasError, errorMessage, retry, refetch } = useTopic(topicId);
+  const mode = isDark ? (isAmoled ? 'darkAmoled' : 'dark') : 'light';
+  const tokens = useMemo(() => getTokens(mode), [mode]);
   
-  // FlatList ref for scrolling
-  const flatListRef = React.useRef<FlatList>(null);
+  // ScrollView ref for scrolling
+  const scrollViewRef = React.useRef<ScrollView>(null);
   const scrollOffsetRef = React.useRef<number>(0);
   
   // Extract first post ID for like/bookmark actions
@@ -85,7 +88,7 @@ export function ByteBlogPage({
     createComment,
     actionsError,
     scrollOffsetRef,
-    flatListRef,
+    scrollViewRef,
     initialCommentsVisible,
   });
   
@@ -185,10 +188,6 @@ export function ByteBlogPage({
 
   useScreenBackBehavior({}, []);
 
-
-  // FlatList data - no comments in list anymore (they're in the sheet)
-  const flatListData = useMemo(() => [], []);
-
   // Handle empty avatar URLs
   const avatarSource = useMemo(() => {
     if (!topic || !topic.author.avatar || topic.author.avatar.trim() === '') {
@@ -207,20 +206,11 @@ export function ByteBlogPage({
         isDark={isDark}
         isAmoled={isAmoled}
         formatTimeAgo={formatTimeAgo}
-        flatListRef={flatListRef}
       />
     );
-  }, [topic, avatarSource, isDark, isAmoled, formatTimeAgo, flatListRef]);
+  }, [topic, avatarSource, isDark, isAmoled, formatTimeAgo]);
 
-  // Key extractor for FlatList
-  const keyExtractor = useCallback((item: any, index: number) => {
-    return item.id || `item-${index}`;
-  }, []);
-
-  // Render item for FlatList - empty since comments are in sheet
-  const renderItem = useCallback(() => null, []);
-
-  // Simplified footer - just the action bar (input is outside FlatList now)
+  // Simplified footer - just the action bar
   const renderFooter = useMemo(() => {
     return (
       <StickyActionBar
@@ -262,34 +252,21 @@ export function ByteBlogPage({
           className={`flex-1 ${isAmoled ? 'bg-fomio-bg-dark' : isDark ? 'bg-fomio-bg-dark' : 'bg-fomio-bg'}`}
           edges={['bottom']}
         >
-          <FlatList
-            ref={flatListRef}
-            ListHeaderComponent={renderHeaderSection}
-            ListFooterComponent={renderFooter}
-            ListEmptyComponent={undefined}
-            data={flatListData}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
+          <ScrollView
+            ref={scrollViewRef}
             onScroll={handleScrollWithTracking}
             scrollEventThrottle={16}
-            onScrollToIndexFailed={(info) => {
-              // Handle scrollToIndex failures safely
-              const offset = info.index * info.averageItemLength;
-              setTimeout(() => {
-                flatListRef.current?.scrollToOffset({
-                  offset: Math.max(0, offset),
-                  animated: true,
-                });
-              }, 100);
-            }}
-            contentContainerStyle={{ 
-              paddingBottom: 12,
-              backgroundColor: isAmoled ? '#000000' : (isDark ? '#000000' : '#F7F7F8')
-            }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="always"
             keyboardDismissMode="on-drag"
-          />
+            contentContainerStyle={{ 
+              paddingBottom: 12,
+              backgroundColor: tokens.colors.background
+            }}
+          >
+            {renderHeaderSection}
+            {renderFooter}
+          </ScrollView>
         </SafeAreaView>
       </KeyboardAvoidingView>
 

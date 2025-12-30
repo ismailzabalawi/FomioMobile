@@ -1,6 +1,7 @@
 // Tab component for "Replies" activity
 
 import React from 'react';
+import { ScrollView } from 'react-native';
 import { useUserReplies } from '@/shared/useUserReplies';
 import { ProfilePostList } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
@@ -18,12 +19,12 @@ export function ProfileActivityRepliesTab({
 
   if (isLoading && replies.length === 0) {
     return (
-      <Tabs.ScrollView
+      <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
         showsVerticalScrollIndicator={false}
       >
         <PostSkeletonEnhanced />
-      </Tabs.ScrollView>
+      </ScrollView>
     );
   }
 

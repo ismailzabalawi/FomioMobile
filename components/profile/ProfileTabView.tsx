@@ -16,7 +16,7 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { DiscourseUser } from '@/shared/discourseApi';
-import { ProfileHeader, ProfileBio, ProfileStats, ProfileActions } from './';
+import { ProfileHeader, ProfileBio, ProfileStats } from './';
 import { getTokens } from '@/shared/design/tokens';
 import { ProfileActivityTopicsTab } from './tabs/ProfileActivityTopicsTab';
 import { ProfileActivityRepliesTab } from './tabs/ProfileActivityRepliesTab';
@@ -27,8 +27,6 @@ export interface ProfileTabViewProps {
   user: DiscourseUser | null;
   isOwnProfile: boolean;
   isAuthenticated: boolean;
-  onReport?: () => void;
-  onBlock?: () => void;
 }
 
 export interface TabItem {
@@ -63,8 +61,6 @@ export function ProfileTabView({
   user,
   isOwnProfile,
   isAuthenticated,
-  onReport,
-  onBlock,
 }: ProfileTabViewProps) {
   const { isDark } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -81,7 +77,8 @@ export function ProfileTabView({
   const headerContainerStyle = useMemo(
     () => ({
       width: '100%' as const,
-      marginTop: -4,
+      marginTop: 0,
+      paddingBottom: 4,
       backgroundColor: pageBackground,
     }),
     [pageBackground]
@@ -97,7 +94,6 @@ export function ProfileTabView({
       >
         <ProfileHeader
           user={user}
-          isPublic={!isOwnProfile}
         />
         <ProfileBio bio={user.bio_raw} isOwnProfile={isOwnProfile} />
         {isWide ? (
@@ -113,32 +109,19 @@ export function ProfileTabView({
           >
             <ProfileStats
               user={user}
+              isPublic={!isOwnProfile}
               containerStyle={{ marginTop: 0, paddingHorizontal: 0, flex: 1 }}
               textAlign="left"
-            />
-            <ProfileActions
-              mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
-              username={user.username}
-              onReport={onReport}
-              onBlock={onBlock}
-              layout="inline"
-              containerStyle={{ width: 'auto' }}
             />
           </View>
         ) : (
           <>
-            <ProfileStats user={user} />
-            <ProfileActions
-              mode={isOwnProfile ? 'myProfile' : 'publicProfile'}
-              username={user.username}
-              onReport={onReport}
-              onBlock={onBlock}
-            />
+            <ProfileStats user={user} isPublic={!isOwnProfile} />
           </>
         )}
       </View>
     );
-  }, [user, isOwnProfile, onReport, onBlock, headerContainerStyle, isWide]);
+  }, [user, isOwnProfile, isAuthenticated, headerContainerStyle, isWide]);
 
   if (!user) {
     return null;

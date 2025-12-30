@@ -39,6 +39,14 @@ interface FeedPageData {
 
 /**
  * Fetch feed page from API
+ * 
+ * IMPORTANT: Backend (Discourse) is the source of truth for permissions.
+ * - Authenticated requests include User-Api-Key header (via makeRequest)
+ * - Discourse automatically filters topics based on:
+ *   - User authentication status
+ *   - User permissions (admin, moderator, regular user)
+ *   - Category permissions (read_restricted, etc.)
+ * - We do NOT perform client-side filtering - we trust the backend response
  */
 async function fetchFeedPage(
   page: number,
@@ -46,6 +54,7 @@ async function fetchFeedPage(
 ): Promise<FeedPageData> {
   let topics: any[] = [];
   let categories: any[] = [];
+  let users: any[] = [];
 
   if (filters.hubId) {
     // For category, use getCategoryTopics
@@ -59,6 +68,8 @@ async function fetchFeedPage(
     }
     topics = categoryResponse.data.topic_list.topics;
     categories = categoryResponse.data.topic_list.categories || categoryResponse.data.categories || [];
+    // Users array is at root level, not inside topic_list
+    users = categoryResponse.data?.users || [];
 
     // If no categories in response, fetch them separately
     if (categories.length === 0) {
@@ -81,6 +92,8 @@ async function fetchFeedPage(
     }
     topics = rawResponse.data.topic_list.topics;
     categories = rawResponse.data.topic_list.categories || rawResponse.data.categories || [];
+    // Users array is at root level, not inside topic_list
+    users = rawResponse.data?.users || [];
 
     // If no categories in response, fetch them separately
     if (categories.length === 0) {
@@ -95,6 +108,14 @@ async function fetchFeedPage(
     }
   }
 
+  // Build user map for username lookup (user_id -> user object)
+  const usersMap = new Map();
+  users.forEach((user: any) => {
+    if (user.id) {
+      usersMap.set(user.id, user);
+    }
+  });
+
   // Build category map
   const categoryMap = new Map();
   categories.forEach((cat: any) => {
@@ -106,7 +127,7 @@ async function fetchFeedPage(
     });
   });
 
-  // Enrich topics with category data
+  // Enrich topics with category data and users map
   const enrichedTopics = topics.map((topic: any) => {
     const category = topic.category_id != null
       ? categoryMap.get(topic.category_id) || null
@@ -121,6 +142,7 @@ async function fetchFeedPage(
       ...topic,
       category,
       parentHub,
+      usersMap, // Pass users map for username lookup
     };
   });
 
@@ -188,11 +210,18 @@ export function useFeed(filters: FeedFilters = {}) {
   const items: FeedByte[] = data?.pages.flatMap((page) => page.bytes) ?? [];
 
   // Subscribe to auth events for auto-refresh
+  // When auth state changes, we need to refetch because backend filters content
+  // based on user permissions (admin-only posts, read-restricted categories, etc.)
   useEffect(() => {
     const unsubscribe = onAuthEvent((e) => {
-      if (e === 'auth:signed-in' || e === 'auth:refreshed') {
-        // Invalidate feed queries to refetch with new auth state
-        queryClient.invalidateQueries({ queryKey: feedQueryKey });
+      if (e === 'auth:signed-in' || e === 'auth:refreshed' || e === 'auth:signed-out') {
+        // Invalidate ALL feed queries (both authenticated and unauthenticated)
+        // This ensures we refetch with the correct permissions from backend
+        // Use exact: false to invalidate all queries that start with feedQueryKey
+        queryClient.invalidateQueries({ 
+          queryKey: feedQueryKey,
+          exact: false
+        });
       }
     });
     return () => {
@@ -224,7 +253,10 @@ export function useFeed(filters: FeedFilters = {}) {
   const isRefreshing = isFetching && items.length > 0 && !isFetchingNextPage;
 
   // Error message extraction
-  const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
+  const rawErrorMessage = error instanceof Error ? error.message : error ? String(error) : null;
+  const errorMessage = rawErrorMessage && rawErrorMessage.toLowerCase().includes('429') && !rawErrorMessage.toLowerCase().includes('rate limited')
+    ? 'Rate limited. Please try again shortly.'
+    : rawErrorMessage;
 
   return {
     // Feed data

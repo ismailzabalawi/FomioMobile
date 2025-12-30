@@ -19,13 +19,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/components/theme';
-import { useTerets, Teret } from '../../shared/useTerets';
+import { useTerets, Teret } from '@/shared/useTerets';
 import { useAuth } from '@/shared/auth-context';
-import { useDiscourseSettings } from '../../shared/useDiscourseSettings';
-import { createTopic } from '../../lib/discourse';
+import { useDiscourseSettings } from '@/shared/useDiscourseSettings';
+import { createTopic } from '@/lib/discourse';
 import { discourseApi } from '@/shared/discourseApi';
-import { useSettingsStorage } from '../../shared/useSettingsStorage';
-import { SignIn, Check, Warning, Question } from 'phosphor-react-native';
+import { useSettingsStorage } from '@/shared/useSettingsStorage';
+import { SignIn, Check, Warning, Question, X } from 'phosphor-react-native';
 import { 
   ComposeEditor,
   MediaGrid,
@@ -72,6 +72,8 @@ export default function ComposeScreen(): React.ReactElement {
 
   // UI state
   const [isCreating, setIsCreating] = useState(false);
+  const [allowBack, setAllowBack] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [isTeretSheetOpen, setIsTeretSheetOpen] = useState(false);
@@ -142,6 +144,19 @@ export default function ComposeScreen(): React.ReactElement {
     }
   }, [successMessage]);
 
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setIsKeyboardVisible(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   // DEBUG: Log Terets state for picker
   useEffect(() => {
     console.log('🔍 [ComposeScreen] Terets state for picker:', {
@@ -192,8 +207,8 @@ export default function ComposeScreen(): React.ReactElement {
         
         // Handle case where draft doesn't exist (500 or 404)
         if (!response.success) {
-          // If it's a 500 on drafts endpoint, treat as no draft exists
-          if (response.status === 500) {
+          // If it's a 500 or 404 on drafts endpoint, treat as no draft exists
+          if (response.status === 500 || response.status === 404) {
             console.log('📝 No draft found - starting fresh');
             setDraftKey(key);
             setDraftSequence(0);
@@ -456,7 +471,8 @@ export default function ComposeScreen(): React.ReactElement {
     if (autoSave) {
       void saveDraftIfNeeded('cancel');
     }
-    safeBack();
+    setAllowBack(true);
+    requestAnimationFrame(() => safeBack());
   }, [safeBack, saveDraftIfNeeded, autoSave]);
 
   const handleModeChange = useCallback((mode: 'write' | 'preview') => {
@@ -541,10 +557,44 @@ export default function ComposeScreen(): React.ReactElement {
     return actions;
   }, [handleModeChange, editorMode, isDark, showHelpTip, autoSave, saveDraftIfNeeded, isSavingDraft]);
 
+  const renderComposeTopBar = useCallback((showActions: boolean) => {
+    const iconColor = isDark ? '#e4e4e7' : '#1e293b';
+    return (
+      <View
+        className="px-4 py-2 flex-row items-center justify-between border-b border-fomio-border dark:border-fomio-border-dark bg-fomio-card dark:bg-fomio-card-dark"
+        style={{ zIndex: 10 }}
+      >
+        <Pressable
+          onPress={handleCancel}
+          hitSlop={DEFAULT_HIT_SLOP}
+          className="flex-row items-center gap-2 py-1 px-2 rounded-full active:opacity-70"
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Close compose"
+          accessibilityHint="Discard or save this draft and return to the previous screen"
+        >
+          <X size={18} color={iconColor} weight="bold" />
+          <Text className="text-caption font-semibold text-fomio-muted dark:text-fomio-muted-dark">
+            Close
+          </Text>
+        </Pressable>
+
+        <Text className="text-body font-semibold" style={{ color: iconColor }}>
+          Create Byte
+        </Text>
+
+        <View className="flex-row items-center gap-2">
+          {showActions ? headerActions : null}
+        </View>
+      </View>
+    );
+  }, [handleCancel, headerActions, isDark]);
+
   // Configure header with help icon and mode toggle
   useComposeHeader({
+    title: '',
     rightActions: headerActions,
-    onCancel: handleCancel,
+    onCancel: allowBack ? undefined : handleCancel,
   });
 
   const handlePost = useCallback(async (): Promise<void> => {
@@ -643,7 +693,8 @@ export default function ComposeScreen(): React.ReactElement {
         setSelectedTeret(null);
         setImages([]);
         setSuccessMessage('');
-        safeBack();
+        setAllowBack(true);
+        requestAnimationFrame(() => safeBack());
       }, 1500);
     } catch (error: any) {
       const errorMsg = error?.message || 'Failed to create post. Please try again.';
@@ -782,6 +833,7 @@ export default function ComposeScreen(): React.ReactElement {
   if (teretsLoading) {
     return (
       <ScreenContainer variant="card">
+        {renderComposeTopBar(false)}
         <View className="flex-1 justify-center items-center">
           <Text className="text-body text-fomio-muted dark:text-fomio-muted-dark">
             Loading terets...
@@ -795,6 +847,7 @@ export default function ComposeScreen(): React.ReactElement {
   if (teretsError) {
     return (
       <ScreenContainer variant="card">
+        {renderComposeTopBar(false)}
         <View className="flex-1 justify-center items-center px-4">
           <Warning size={48} color="#EF4444" weight="regular" />
           <Text className="text-title font-semibold text-fomio-danger dark:text-fomio-danger-dark mt-4 mb-2 text-center">
@@ -815,6 +868,7 @@ export default function ComposeScreen(): React.ReactElement {
   if (!isAuthLoading && !isAuthenticated) {
     return (
       <ScreenContainer variant="card">
+        {renderComposeTopBar(false)}
         <View className="flex-1 justify-center items-center px-8">
           <SignIn size={64} color={isDark ? '#26A69A' : '#009688'} weight="regular" />
           <Text className="text-title font-semibold text-fomio-primary dark:text-fomio-primary-dark mt-6 mb-2 text-center">
@@ -837,7 +891,6 @@ export default function ComposeScreen(): React.ReactElement {
 
   return (
     <ScreenContainer variant="card">
-
       <KeyboardAvoidingView 
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -847,8 +900,13 @@ export default function ComposeScreen(): React.ReactElement {
           className="flex-1"
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 64 }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingBottom: insets.bottom + (isKeyboardVisible ? 24 : 96),
+          }}
+          stickyHeaderIndices={[0]}
         >
+          {renderComposeTopBar(true)}
           {/* Help tip - moved from subHeader to screen body */}
           {showHelpTip && (
             <View className="mx-4 mt-2 p-3 rounded-fomio-card bg-fomio-muted/20 dark:bg-fomio-muted-dark/20">
@@ -941,8 +999,8 @@ export default function ComposeScreen(): React.ReactElement {
 
         </ScrollView>
         <View
-          className="px-4 pb-4 pt-2 border-t border-fomio-border-soft dark:border-fomio-border-soft-dark bg-fomio-bg dark:bg-fomio-bg-dark"
-          style={{ marginBottom: insets.bottom + 12 }}
+          className="px-4 pb-4 pt-2 border-t border-fomio-border-soft dark:border-fomio-border-soft-dark bg-transparent"
+          style={{ marginBottom: insets.bottom + (isKeyboardVisible ? 12 : 32) }}
         >
           <Button
             testID="post-button"

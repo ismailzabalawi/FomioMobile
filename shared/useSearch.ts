@@ -69,7 +69,7 @@ export function useSearch() {
   } = useQuery({
     queryKey: searchQueryKey,
     queryFn: () => fetchSearchResults(currentQuery, currentFilters),
-    enabled: currentQuery.trim().length >= 2, // Only search with 2+ characters
+    enabled: currentQuery.trim().length >= 3, // Only search with 3+ characters
     staleTime: 5 * 60 * 1000, // 5 minutes - search results are stable
     gcTime: 15 * 60 * 1000, // 15 minutes
     refetchOnMount: false, // Don't refetch on mount for search

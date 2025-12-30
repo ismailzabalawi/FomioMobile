@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, FlatList } from 'react-native';
+import { View, Text } from 'react-native';
 import { Image, ImageSource } from 'expo-image';
 import { TopicData } from '@/shared/useTopic';
 import { MarkdownContent } from './MarkdownContent';
@@ -10,7 +10,6 @@ interface ByteBlogPageHeaderProps {
   isDark: boolean;
   isAmoled: boolean;
   formatTimeAgo: (dateString: string) => string;
-  flatListRef?: React.RefObject<FlatList>;
 }
 
 /**
@@ -33,17 +32,58 @@ export function ByteBlogPageHeader({
   isDark,
   isAmoled,
   formatTimeAgo,
-  flatListRef,
 }: ByteBlogPageHeaderProps) {
-  // Calculate reading time
+  // Calculate if cover image exists (handle undefined, null, empty string, whitespace)
+  const hasCoverImage = useMemo(() => {
+    return topic.coverImage && topic.coverImage.trim().length > 0;
+  }, [topic.coverImage]);
+
+  // Calculate reading time with media consideration
   const readingTime = useMemo(() => {
     if (!topic.content) return 0;
+    
+    // Base word count
     const wordCount = topic.content.replace(/<[^>]*>/g, '').split(/\s+/).length;
-    return Math.max(1, Math.ceil(wordCount / 200));
-  }, [topic.content]);
+    const baseMinutes = wordCount / 200; // 200 words per minute
+    
+    // Count images (12 seconds per image)
+    const imageMatches = topic.content.match(/<img[^>]*>/gi);
+    const imageCount = imageMatches ? imageMatches.length : 0;
+    const imageTime = (imageCount * 12) / 60; // Convert to minutes
+    
+    // Count videos/embeds (estimate 2 minutes per video)
+    const videoMatches = topic.content.match(/(youtube|vimeo|video-onebox|iframe)/gi);
+    const videoCount = videoMatches ? videoMatches.length : 0;
+    const videoTime = videoCount * 2;
+    
+    // Account for cover image if present
+    const coverImageTime = hasCoverImage ? 12 / 60 : 0; // 12 seconds for cover image
+    
+    // Total reading time
+    const totalMinutes = baseMinutes + imageTime + videoTime + coverImageTime;
+    
+    return Math.max(1, Math.ceil(totalMinutes));
+  }, [topic.content, hasCoverImage]);
 
   return (
     <View className={`px-4 pt-0.5 ${isAmoled ? 'bg-fomio-bg-dark' : isDark ? 'bg-fomio-bg-dark' : 'bg-fomio-bg'}`}> 
+      {/* 0. Cover Image */}
+      {hasCoverImage && (
+        <Image
+          source={{ uri: topic.coverImage }}
+          style={{
+            width: '100%',
+            aspectRatio: 21 / 9, // Wide format for cover images
+            borderRadius: 12,
+            marginBottom: 20,
+            marginHorizontal: -16, // Extend to edges (negative margin to offset px-4)
+          }}
+          contentFit="cover"
+          transition={200}
+          accessibilityLabel="Cover image"
+        />
+      )}
+      
       {/* 1. Title */}
       <Text 
         className="text-title font-bold mb-5 text-fomio-foreground dark:text-fomio-foreground-dark"

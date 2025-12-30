@@ -4,7 +4,7 @@ This document describes how to customize your Discourse instance to provide a na
 
 ## Overview
 
-When the Fomio app opens the User API Key authorization page in a WebView, it appends `?fomio=1` to the URL. Your Discourse theme should detect this parameter and apply minimal, mobile-optimized styling.
+When the Fomio app opens the User API Key authorization page in a WebView, it appends `?fomio=1` to the URL. Your Discourse theme should detect this parameter and apply minimal, mobile-optimized styling. The signup page may also include `return_to=fomio://auth_redirect` to offer a “Return to App” button.
 
 ## Goals
 
@@ -24,7 +24,7 @@ In your Discourse Admin panel:
 
 ### Step 2: Add JavaScript (Header section)
 
-This script detects the `fomio=1` URL parameter and sets a data attribute on the HTML element:
+This script detects the `fomio=1` URL parameter and sets a data attribute on the HTML element. If `return_to` is provided, it also adds a “Return to App” button.
 
 ```html
 <script type="text/discourse-plugin" version="0.8">
@@ -37,6 +37,17 @@ This script detects the `fomio=1` URL parameter and sets a data attribute on the
     document.addEventListener('DOMContentLoaded', function() {
       document.body.classList.add('fomio-webview');
     });
+
+    const returnTo = params.get('return_to');
+    if (returnTo) {
+      document.addEventListener('DOMContentLoaded', function() {
+        const button = document.createElement('a');
+        button.href = returnTo;
+        button.textContent = 'Return to App';
+        button.className = 'fomio-return-to-app';
+        document.body.appendChild(button);
+      });
+    }
   }
 </script>
 ```
@@ -83,6 +94,20 @@ html[data-fomio="1"] #main-outlet {
 html[data-fomio="1"] .wrap {
   max-width: 100% !important;
   padding: 0 16px !important;
+}
+
+/* Return to App button */
+html[data-fomio="1"] .fomio-return-to-app {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 16px auto 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #2F6BFF;
+  color: #FFFFFF !important;
+  font-weight: 600;
+  text-decoration: none !important;
 }
 
 /* ===========================================
@@ -324,4 +349,3 @@ The `?fomio=1` parameter is purely cosmetic and does not affect the security of 
 - `app/(auth)/auth-modal.tsx` - The WebView component that loads these pages
 - `shared/design/tokens.ts` - Fomio's design token definitions
 - `tailwind.config.js` - Fomio's Tailwind configuration with color palette
-

@@ -30,13 +30,12 @@ function isOnboardingRoute(pathname: string): boolean {
 }
 
 /**
- * Helper to check if pathname is an explicit auth screen (signin/signup/authorize/auth-modal).
+ * Helper to check if pathname is an explicit auth screen (signin/signup/auth-modal).
  */
 function isExplicitAuthScreen(pathname: string): boolean {
   return (
     pathname.includes('/signin') ||
     pathname.includes('/signup') ||
-    pathname.includes('/authorize') ||
     pathname.includes('/auth-modal')
   );
 }
@@ -118,38 +117,27 @@ export default function AuthLayout(): React.ReactElement {
     );
   }
 
-  // Redirect authenticated users to main app
+  const isAuthIndex = isAuthIndexRoute(pathname);
+  const isOnboarding = isOnboardingRoute(pathname);
+  const isExplicitAuth = isExplicitAuthScreen(pathname);
+
+  let redirectTo: string | null = null;
+
   if (isAuthenticated) {
-    console.log('🧭 Redirecting authenticated user to /(tabs)');
-    return <Redirect href="/(tabs)" />;
+    redirectTo = '/(tabs)';
+  } else if (!hasCompletedOnboarding) {
+    redirectTo = isOnboarding ? null : '/(auth)/onboarding';
+  } else if (isOnboarding || isAuthIndex) {
+    redirectTo = '/(auth)/signin';
+  } else if (isExplicitAuth) {
+    redirectTo = null;
+  } else {
+    redirectTo = '/(auth)/signin';
   }
 
-  // Gate: first-time users must complete onboarding first.
-  if (!hasCompletedOnboarding) {
-    // If they try to access other auth routes directly, force onboarding.
-    if (!isOnboardingRoute(pathname)) {
-      console.log('🧭 Onboarding not completed, redirecting to onboarding');
-      return <Redirect href="/(auth)/onboarding" />;
-    }
-    // User is on onboarding, let them continue
-    console.log('🧭 User on onboarding screen, rendering Stack');
-  } else {
-    // Onboarding is already completed:
-    // - never show onboarding again by default
-    // - if user explicitly lands on onboarding, send them to sign-in
-    if (isOnboardingRoute(pathname)) {
-      console.log('🧭 Onboarding already completed, redirecting to signin');
-      return <Redirect href="/(auth)/signin" />;
-    }
-
-    // If user enters `/(auth)` root/index, route to sign-in by default.
-    if (isAuthIndexRoute(pathname)) {
-      console.log('🧭 At auth index with completed onboarding, redirecting to signin');
-      return <Redirect href="/(auth)/signin" />;
-    }
-
-    // User is on an explicit auth screen (signin/signup/authorize), let them continue
-    console.log('🧭 User on explicit auth screen, rendering Stack');
+  if (redirectTo) {
+    console.log('🧭 Redirecting auth route:', { redirectTo });
+    return <Redirect href={redirectTo} />;
   }
 
   return (
@@ -158,7 +146,6 @@ export default function AuthLayout(): React.ReactElement {
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="signin" />
       <Stack.Screen name="signup" />
-      <Stack.Screen name="authorize" />
       <Stack.Screen 
         name="auth-modal" 
         options={{ 

@@ -579,6 +579,11 @@ class OfflineManager {
     await this.actionQueueManager.clear();
     logger.info('All offline data cleared');
   }
+
+  // Get cache stats for UI display
+  async getCacheStats(): Promise<{ count: number; totalSize: number }> {
+    return await this.cacheManager.getStats();
+  }
 }
 
 // =============================================================================
@@ -695,4 +700,3 @@ export function useQueuedAction() {
 
 // React import for hooks
 import React from 'react';
-

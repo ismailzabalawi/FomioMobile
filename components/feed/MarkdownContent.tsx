@@ -79,6 +79,134 @@ function LazyVideoEmbed({
   );
 }
 
+// Onebox renderer component for Discourse link previews
+function OneboxRenderer({ 
+  tnode, 
+  TNodeChildrenRenderer,
+  tokens,
+  renderLink,
+  linkMetadata,
+  oneboxContainerStyle
+}: { 
+  tnode: any; 
+  TNodeChildrenRenderer: any;
+  tokens: any;
+  renderLink: { onPress: (event: any, href: string) => Promise<void> };
+  linkMetadata?: Record<string, {
+    title?: string;
+    description?: string;
+    image?: string;
+    favicon?: string;
+    siteName?: string;
+    publishedAt?: string;
+    type?: 'article' | 'video' | 'post' | 'generic';
+  }>;
+  oneboxContainerStyle: any;
+}) {
+  // Extract URL from data-url attribute or find first href
+  const url = extractOneboxUrl(tnode);
+  
+  // Extract metadata if available
+  const metadata = url ? linkMetadata?.[url] : undefined;
+  
+  // Extract title for accessibility
+  const title = metadata?.title || extractOneboxTitle(tnode) || url || 'Link preview';
+  
+  // Handle press - open link in browser
+  const handlePress = () => {
+    if (url) {
+      renderLink.onPress(undefined, url);
+    }
+  };
+  
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      activeOpacity={0.85} // Slightly more visible press state
+      style={[oneboxContainerStyle]}
+      accessible
+      accessibilityRole="link"
+      accessibilityLabel={title}
+      accessibilityHint="Opens link in browser"
+    >
+      <TNodeChildrenRenderer tnode={tnode} />
+    </TouchableOpacity>
+  );
+}
+
+// Details/Spoiler component for Discourse [spoiler] and [details] blocks
+function DetailsRenderer({ 
+  tnode, 
+  TNodeChildrenRenderer,
+  tokens 
+}: { 
+  tnode: any; 
+  TNodeChildrenRenderer: any;
+  tokens: any;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  // Extract summary text from details element
+  const summaryText = findSummaryText(tnode);
+  const hasSummary = !!summaryText;
+  
+  return (
+    <View
+      style={{
+        marginVertical: 12,
+        borderWidth: 1,
+        borderColor: tokens.colors.border,
+        borderRadius: 8,
+        overflow: 'hidden',
+        backgroundColor: tokens.colors.surfaceMuted,
+      }}
+    >
+      {hasSummary && (
+        <TouchableOpacity
+          onPress={() => setIsOpen(!isOpen)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 12,
+            backgroundColor: tokens.colors.surfaceMuted,
+          }}
+          activeOpacity={0.7}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={isOpen ? 'Collapse' : 'Expand'}
+          accessibilityState={{ expanded: isOpen }}
+        >
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: tokens.colors.text,
+              flex: 1,
+            }}
+          >
+            {summaryText}
+          </Text>
+          <Text
+            style={{
+              fontSize: 16,
+              color: tokens.colors.muted,
+              marginLeft: 8,
+            }}
+          >
+            {isOpen ? '▼' : '▶'}
+          </Text>
+        </TouchableOpacity>
+      )}
+      {isOpen && (
+        <View style={{ padding: 12, paddingTop: hasSummary ? 0 : 12 }}>
+          <TNodeChildrenRenderer tnode={tnode} />
+        </View>
+      )}
+    </View>
+  );
+}
+
 // UI Spec: MarkdownContent — Renders Discourse cooked HTML or raw markdown with full fidelity
 // - Supports headings, paragraphs, lists, code, quotes, links, images, tables, HRs
 // - Themed with Fomio semantic tokens
@@ -87,7 +215,7 @@ function LazyVideoEmbed({
 function MarkdownContentComponent({
   content,
   isRawMarkdown = false,
-  linkMetadata: _linkMetadata,
+  linkMetadata,
   lazyLoadVideos = true,
 }: MarkdownContentProps) {
   const { isDark, isAmoled } = useTheme();
@@ -101,18 +229,21 @@ function MarkdownContentComponent({
 
   const oneboxContainerStyle = useMemo(
     () => ({
-      marginVertical: 10,
-      padding: 12,
-      borderRadius: 14,
+      marginVertical: 16, // Increased from 10 for better separation
+      padding: 0, // Remove padding, add to inner content instead
+      borderRadius: 12, // Slightly smaller for modern look
       borderWidth: 1,
       borderColor: tokens.colors.border,
       backgroundColor: tokens.colors.surfaceMuted,
-      shadowColor: '#000',
-      shadowOpacity: 0.05,
-      shadowRadius: 6,
-      shadowOffset: { width: 0, height: 3 },
+      overflow: 'hidden', // Important for image corners
+      // Enhanced shadow for depth
+      shadowColor: tokens.colors.shadow || '#000',
+      shadowOpacity: isDark ? 0.15 : 0.08, // More visible in dark mode
+      shadowRadius: 8, // Increased from 6
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2, // Android shadow
     }),
-    [tokens.colors.border, tokens.colors.surfaceMuted]
+    [tokens.colors.border, tokens.colors.surfaceMuted, tokens.colors.shadow, isDark]
   );
 
   const classesStyles = useMemo(
@@ -120,37 +251,57 @@ function MarkdownContentComponent({
       onebox: {
         marginVertical: 0,
       },
+      'onebox-body': {
+        padding: 16, // Add padding here instead of container
+        paddingTop: 12, // Less top padding if image exists
+      },
       source: {
         color: tokens.colors.muted,
-        fontSize: 12,
-        marginBottom: 6,
-      },
-      'onebox-body': {
-        marginTop: 4,
+        fontSize: 11, // Slightly smaller
+        fontWeight: '500',
+        marginBottom: 8,
+        textTransform: 'uppercase', // Make it look like a label
+        letterSpacing: 0.5,
       },
       'onebox-title': {
         color: baseTextColor,
-        fontSize: 16,
+        fontSize: 17, // Slightly larger
         fontWeight: '700',
-        lineHeight: 22,
-        marginBottom: 6,
+        lineHeight: 24, // Better line height
+        marginBottom: 8, // Increased spacing
+        marginTop: 4,
+        letterSpacing: -0.2, // Tighter for headlines
+      },
+      'onebox-description': {
+        color: tokens.colors.muted,
+        fontSize: 14,
+        lineHeight: 20,
+        marginTop: 4,
+        marginBottom: 12,
       },
       'onebox-site-name': {
         color: tokens.colors.accent,
-        fontSize: 12,
+        fontSize: 13, // Slightly larger
         fontWeight: '600',
+        marginTop: 8,
+        letterSpacing: 0.3, // Slightly spaced for readability
       },
       'onebox-image': {
-        borderRadius: 10,
+        width: '100%',
+        aspectRatio: 16 / 9, // Consistent aspect ratio
+        borderRadius: 0, // Remove border radius, container handles it
         overflow: 'hidden',
-        marginTop: 8,
+        marginTop: 0, // No margin, image is at top
+        backgroundColor: tokens.colors.surfaceMuted, // Loading placeholder
       },
       'onebox-avatar': {
-        borderRadius: 8,
+        borderRadius: 6, // Slightly smaller
         overflow: 'hidden',
+        width: 20,
+        height: 20,
       },
     }),
-    [baseTextColor, tokens.colors.accent, tokens.colors.muted]
+    [baseTextColor, tokens.colors.accent, tokens.colors.muted, tokens.colors.surfaceMuted]
   );
 
   // Renderer for links (shared across HTML and markdown paths)
@@ -177,12 +328,134 @@ function MarkdownContentComponent({
       aside: (props: any) => {
         const { tnode, TDefaultRenderer, TNodeChildrenRenderer } = props;
         const className = tnode?.attributes?.class || '';
-        const isOnebox = className.split(' ').includes('onebox');
-        if (!isOnebox) {
-          return <TDefaultRenderer {...props} />;
+        const classList = className.split(' ');
+        const isOnebox = classList.includes('onebox');
+        const isQuote = classList.includes('quote');
+        
+        // Handle oneboxes (link previews)
+        if (isOnebox) {
+          return (
+            <OneboxRenderer
+              tnode={tnode}
+              TNodeChildrenRenderer={TNodeChildrenRenderer}
+              tokens={tokens}
+              renderLink={renderLink}
+              linkMetadata={linkMetadata}
+              oneboxContainerStyle={oneboxContainerStyle}
+            />
+          );
         }
+        
+        // Handle Discourse quote blocks [quote="user"] or [quote]
+        if (isQuote) {
+          const dataUsername = tnode?.attributes?.['data-username'];
+          const dataPost = tnode?.attributes?.['data-post'];
+          const dataTopic = tnode?.attributes?.['data-topic'];
+          const title = tnode?.attributes?.title;
+          
+          // Extract quote title from title attribute or data attributes
+          let quoteTitle: string | null = null;
+          if (dataUsername) {
+            quoteTitle = `@${dataUsername}`;
+            if (dataPost) {
+              quoteTitle += ` (post ${dataPost})`;
+            } else if (dataTopic) {
+              quoteTitle += ` (topic ${dataTopic})`;
+            }
+          } else if (title) {
+            quoteTitle = title;
+          }
+          
+          return (
+            <View
+              style={[
+                {
+                  backgroundColor: tokens.colors.surfaceMuted,
+                  borderLeftWidth: 4,
+                  borderLeftColor: tokens.colors.accent,
+                  paddingLeft: 16,
+                  paddingRight: 16,
+                  paddingTop: 12,
+                  paddingBottom: 12,
+                  marginTop: 12,
+                  marginBottom: 16,
+                  borderRadius: 8,
+                },
+                props.style,
+              ]}
+            >
+              {quoteTitle && (
+                <View style={{ marginBottom: 8 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: '600',
+                      color: tokens.colors.accent,
+                    }}
+                  >
+                    {quoteTitle}
+                  </Text>
+                </View>
+              )}
+              <TNodeChildrenRenderer tnode={tnode} />
+            </View>
+          );
+        }
+        
+        return <TDefaultRenderer {...props} />;
+      },
+      a: (props: any) => {
+        const { tnode, TDefaultRenderer, TNodeChildrenRenderer } = props;
+        const href = tnode?.attributes?.href;
+        if (!href) return <TDefaultRenderer {...props} />;
+        
+        const metadata = href ? linkMetadata?.[href] : undefined;
+        const linkText = extractTextContent(tnode);
+        
+        // Check if link text is just the URL (not custom text)
+        // This indicates it's a plain URL that could be replaced with title (inline onebox)
+        const isPlainUrl = linkText === href || 
+                           linkText === href.replace(/^https?:\/\//, '') ||
+                           linkText.trim() === '' ||
+                           linkText === href.replace(/^https?:\/\/www\./, '');
+        
+        // Inline onebox: Show title instead of URL if available (Discourse behavior)
+        if (metadata?.title && isPlainUrl) {
+          return (
+            <TouchableOpacity
+              onPress={() => renderLink.onPress(undefined, href)}
+              activeOpacity={0.7}
+              style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' }}
+            >
+              {metadata.favicon && (
+                <Image
+                  source={{ uri: metadata.favicon }}
+                  style={{ 
+                    width: 14, 
+                    height: 14, 
+                    marginRight: 6,
+                    borderRadius: 2,
+                  }}
+                  contentFit="cover"
+                />
+              )}
+              <Text
+                style={{
+                  color: tokens.colors.accent,
+                  fontWeight: '500',
+                  textDecorationLine: 'underline',
+                  textDecorationColor: tokens.colors.accent + '40',
+                }}
+              >
+                {metadata.title}
+              </Text>
+            </TouchableOpacity>
+          );
+        }
+        
+        // Regular link with enhanced styling - use default renderer but with better styles
         return (
-          <TDefaultRenderer {...props} style={[props.style, oneboxContainerStyle]}>
+          <TDefaultRenderer {...props}>
             <TNodeChildrenRenderer tnode={tnode} />
           </TDefaultRenderer>
         );
@@ -315,8 +588,23 @@ function MarkdownContentComponent({
           </View>
         );
       },
+      details: (props: any) => {
+        const { tnode, TNodeChildrenRenderer } = props;
+        return (
+          <DetailsRenderer 
+            tnode={tnode} 
+            TNodeChildrenRenderer={TNodeChildrenRenderer}
+            tokens={tokens}
+          />
+        );
+      },
+      summary: () => {
+        // Summary content is extracted and rendered in details renderer
+        // This prevents double-rendering of summary text
+        return null;
+      },
     }),
-    [baseTextColor, codeFont, isDark, oneboxContainerStyle, renderLink, tokens.colors.border, tokens.colors.surfaceMuted]
+    [baseTextColor, codeFont, isDark, oneboxContainerStyle, renderLink, tokens, linkMetadata]
   );
 
   // Styles for HTML tags (cooked content)
@@ -331,7 +619,8 @@ function MarkdownContentComponent({
         backgroundColor: 'transparent',
       },
       span: {
-        color: baseTextColor,
+        // Don't override color - allow inline styles to work
+        // backgroundColor will be handled by inline styles if present
         backgroundColor: 'transparent',
       },
       p: markdownStyles.paragraph,
@@ -342,7 +631,8 @@ function MarkdownContentComponent({
       h5: markdownStyles.heading5,
       h6: markdownStyles.heading6,
       font: {
-        color: baseTextColor,
+        // Don't override color - allow inline styles to work
+        // Inline color styles from Discourse will be preserved
       },
       ul: markdownStyles.listUnordered,
       ol: markdownStyles.listOrdered,
@@ -350,7 +640,10 @@ function MarkdownContentComponent({
       code: markdownStyles.code_inline,
       pre: markdownStyles.code_block,
       blockquote: markdownStyles.blockquote,
-      a: markdownStyles.link,
+      a: {
+        ...markdownStyles.link,
+        fontWeight: '500' as const, // Ensure consistent weight
+      },
       strong: markdownStyles.strong,
       em: markdownStyles.em,
       hr: markdownStyles.hr,
@@ -431,25 +724,24 @@ function MarkdownContentComponent({
     <RenderHTML
       contentWidth={contentWidth}
       source={{ html: content || '' }}
-      enableCSSInlineProcessing={false} // Ignore inline CSS completely; use app theme styles
+      enableCSSInlineProcessing={true} // Enable inline CSS for colored text support
       baseStyle={{
-        color: baseTextColor,
+        color: baseTextColor, // Default color, can be overridden by inline styles
         lineHeight: 24,
         fontSize: 16,
       }}
-      // Ensure Discourse inline styles don't override app theming
+      // Allow color and backgroundColor from inline styles, but control other styles
       ignoredStyles={[
-        'color',
-        'backgroundColor',
-        'fontFamily',
-        'fontSize',
-        'fontWeight',
-        'fontStyle',
-        'textAlign',
-        'lineHeight',
-        'letterSpacing',
+        // Removed 'color' and 'backgroundColor' to allow colored text
+        'fontFamily', // Keep app font family
+        'fontSize', // Keep consistent sizing (or allow if needed)
+        'fontWeight', // Keep consistent weight (or allow if needed)
+        'fontStyle', // Keep consistent style (or allow if needed)
+        'textAlign', // Keep consistent alignment (or allow if needed)
+        'lineHeight', // Keep consistent line height
+        'letterSpacing', // Keep consistent letter spacing
       ]}
-      // Force all text nodes to use app theme colors (RN Text doesn't inherit from View)
+      // Default text props - inline styles will override this color
       defaultTextProps={{ selectable: false, style: { color: baseTextColor } }}
       tagsStyles={tagsStyles}
       classesStyles={classesStyles as any}
@@ -459,10 +751,21 @@ function MarkdownContentComponent({
           onPress: (_event: any, href: string) => renderLink.onPress?.(_event, href),
         },
       }}
+      // Note: Custom 'a' renderer handles onPress internally, but renderersProps
+      // is kept for fallback cases
       customHTMLElementModels={{
         // Ensure pre stays block-level with inline children (code)
         pre: HTMLElementModel.fromCustomModel({
           tagName: 'pre',
+          contentModel: HTMLContentModel.block,
+        }),
+        // Support Discourse spoilers/details (BBCode [spoiler] and [details])
+        details: HTMLElementModel.fromCustomModel({
+          tagName: 'details',
+          contentModel: HTMLContentModel.block,
+        }),
+        summary: HTMLElementModel.fromCustomModel({
+          tagName: 'summary',
           contentModel: HTMLContentModel.block,
         }),
       }}
@@ -576,5 +879,149 @@ function findFirstHref(tnode: any): string | null {
     const found = findFirstHref(child);
     if (found) return found;
   }
+  return null;
+}
+
+/**
+ * Helper to extract summary text from details element
+ * Used for rendering Discourse spoilers and details blocks
+ */
+function findSummaryText(tnode: any): string | null {
+  if (!tnode || !tnode.children) return null;
+  
+  // Search for summary element in children
+  const children = Array.isArray(tnode.children) ? tnode.children : [];
+  for (const child of children) {
+    if (child.tagName === 'summary') {
+      // Extract text content from summary
+      return extractTextContent(child);
+    }
+    // Recursively search in nested children
+    const found = findSummaryText(child);
+    if (found) return found;
+  }
+  
+  return null;
+}
+
+/**
+ * Extract text content from a tree node
+ * Handles both text nodes and nested elements
+ */
+function extractTextContent(tnode: any): string {
+  if (!tnode) return '';
+  
+  // If it's a text node, return the text
+  if (tnode.type === 'text' && tnode.data) {
+    return tnode.data.trim();
+  }
+  
+  // If it has textContent, use that
+  if (tnode.textContent) {
+    return tnode.textContent.trim();
+  }
+  
+  // Recursively extract from children
+  if (tnode.children && Array.isArray(tnode.children)) {
+    return tnode.children
+      .map((child: any) => extractTextContent(child))
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }
+  
+  return '';
+}
+
+/**
+ * Extract onebox URL from tree node
+ * Checks data-url attribute first, then falls back to finding first href
+ */
+function extractOneboxUrl(tnode: any): string | null {
+  if (!tnode) return null;
+  
+  // Check for data-url attribute (Discourse onebox standard)
+  const attrs = tnode.attributes || {};
+  if (attrs['data-url']) {
+    return attrs['data-url'];
+  }
+  
+  // Fallback to finding first href in children
+  return findFirstHref(tnode);
+}
+
+/**
+ * Extract onebox title from tree node
+ * Finds .onebox-title element and extracts text content
+ */
+function extractOneboxTitle(tnode: any): string | null {
+  if (!tnode || !tnode.children) return null;
+  
+  const children = Array.isArray(tnode.children) ? tnode.children : [];
+  
+  // Search for element with onebox-title class
+  for (const child of children) {
+    const className = child.attributes?.class || '';
+    if (className.split(' ').includes('onebox-title')) {
+      return extractTextContent(child);
+    }
+    // Recursively search in nested children
+    const found = extractOneboxTitle(child);
+    if (found) return found;
+  }
+  
+  return null;
+}
+
+/**
+ * Extract onebox image URL from tree node
+ * Finds .onebox-image img element and gets src
+ */
+function extractOneboxImage(tnode: any): string | null {
+  if (!tnode || !tnode.children) return null;
+  
+  const children = Array.isArray(tnode.children) ? tnode.children : [];
+  
+  // Search for element with onebox-image class
+  for (const child of children) {
+    const className = child.attributes?.class || '';
+    if (className.split(' ').includes('onebox-image')) {
+      // Look for img tag within onebox-image
+      if (child.children) {
+        for (const imgChild of child.children) {
+          if (imgChild.tagName === 'img' && imgChild.attributes?.src) {
+            return imgChild.attributes.src;
+          }
+        }
+      }
+    }
+    // Recursively search in nested children
+    const found = extractOneboxImage(child);
+    if (found) return found;
+  }
+  
+  return null;
+}
+
+/**
+ * Extract onebox site name from tree node
+ * Finds .onebox-site-name element and extracts text content
+ */
+function extractOneboxSiteName(tnode: any): string | null {
+  if (!tnode || !tnode.children) return null;
+  
+  const children = Array.isArray(tnode.children) ? tnode.children : [];
+  
+  // Search for element with onebox-site-name class
+  for (const child of children) {
+    const className = child.attributes?.class || '';
+    if (className.split(' ').includes('onebox-site-name')) {
+      return extractTextContent(child);
+    }
+    // Recursively search in nested children
+    const found = extractOneboxSiteName(child);
+    if (found) return found;
+  }
+  
   return null;
 }

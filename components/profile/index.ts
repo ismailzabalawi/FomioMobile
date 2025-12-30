@@ -7,8 +7,6 @@ export { ProfileStats } from './ProfileStats';
 export type { ProfileStatsProps } from './ProfileStats';
 export { ProfileSectionTitle } from './ProfileSectionTitle';
 export type { ProfileSectionTitleProps } from './ProfileSectionTitle';
-export { ProfileActions } from './ProfileActions';
-export type { ProfileActionsProps } from './ProfileActions';
 export { ProfileBadgeStrip } from './ProfileBadgeStrip';
 export { ProfileDangerActions } from './ProfileDangerActions';
 export type { ProfileDangerActionsProps } from './ProfileDangerActions';
@@ -20,4 +18,3 @@ export { ProfileTabView } from './ProfileTabView';
 export type { ProfileTabViewProps, TabItem } from './ProfileTabView';
 export { ProfileMessageCard } from './ProfileMessageCard';
 export type { ProfileMessageCardProps } from './ProfileMessageCard';
-

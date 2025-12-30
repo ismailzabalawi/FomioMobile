@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
 import { useAuth } from '@/shared/auth-context';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
+import { useScreenBackBehavior } from '@/shared/hooks/useScreenBackBehavior';
 import { getTokens } from '@/shared/design/tokens';
 
 const config = Constants.expoConfig?.extra || {};
@@ -80,19 +81,28 @@ export default function SignInScreen(): React.ReactElement {
 
   // Handle back navigation
   const handleBack = useCallback(() => {
-    router.back();
+    if (router.canGoBack()) {
+      router.back();
+    }
   }, []);
 
   // Configure header
+  const canGoBack = router.canGoBack();
+
   useScreenHeader({
     title: 'Sign In',
-    canGoBack: true,
+    canGoBack,
     onBackPress: handleBack,
     withSafeTop: false,
     tone: 'bg',
     compact: true,
     titleFontSize: 20,
   }, [isDark]);
+
+  useScreenBackBehavior({
+    canGoBack,
+    onBackPress: handleBack,
+  }, [canGoBack, handleBack]);
 
   // Show loading while checking auth status
   if (isAuthLoading || isCheckingAuth) {

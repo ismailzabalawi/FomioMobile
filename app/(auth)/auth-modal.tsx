@@ -21,6 +21,7 @@ import { getTokens } from '@/shared/design/tokens';
 import { logger } from '@/shared/logger';
 import { buildAuthUrlForWebView, signIn } from '@/lib/auth';
 import { parseURLParameters } from '@/lib/auth-utils';
+import { mapAuthError } from '@/lib/auth-errors';
 
 /**
  * Auth Modal - UI wrapper for sign-in flow
@@ -112,23 +113,13 @@ export default function AuthModalScreen(): React.ReactElement {
         
         if (!mounted) return;
         
-        // Provide user-friendly error messages
-        let displayError = 'Sign-in failed. Please try again.';
-        
-        const errorMessage = err?.message || '';
-        if (errorMessage.toLowerCase().includes('cancel') || errorMessage.toLowerCase().includes('cancelled')) {
-          displayError = 'Sign-in was cancelled. Please try again when ready.';
+        const displayError = mapAuthError(err);
+        if (displayError.toLowerCase().includes('cancel')) {
           // On cancel, close the modal instead of showing error
           router.back();
           return;
-        } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('connection')) {
-          displayError = 'Network error. Please check your internet connection and try again.';
-        } else if (errorMessage.toLowerCase().includes('decrypt') || errorMessage.toLowerCase().includes('payload')) {
-          displayError = 'Failed to process authorization response. Please try again.';
-        } else if (errorMessage) {
-          displayError = errorMessage;
         }
-        
+
         setError(displayError);
         setIsLoading(false);
       }
@@ -159,21 +150,39 @@ export default function AuthModalScreen(): React.ReactElement {
       const url = request?.url || '';
       if (!url) return true;
 
+      const isAuthRedirect = url.startsWith('fomio://') || url.includes('auth_redirect');
+      const hasPayload = url.includes('payload=');
+
+      if (Platform.OS === 'android') {
+        logger.info('AuthModal: WebView navigation', {
+          url: url.substring(0, 200),
+          isAuthRedirect,
+          hasPayload,
+        });
+      }
+
       // Handle custom scheme redirect (Discourse auth callback)
-      if (url.startsWith('fomio://')) {
+      if (isAuthRedirect) {
         const urlParams = parseURLParameters(url);
         const payload = urlParams.payload;
         if (payload) {
           const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
           router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
-        } else {
-          setError('Authorization completed, but no payload was returned. Please try again.');
+          return false;
         }
+
+        // Fallback: let Android's intent system handle the custom scheme
+        if (Platform.OS === 'android') {
+          Linking.openURL(url).catch(() => {});
+          return false;
+        }
+
+        setError('Authorization completed, but no payload was returned. Please try again.');
         return false;
       }
 
       // Some WebViews surface the callback as a normal URL; detect payload in query
-      if (url.includes('payload=')) {
+      if (hasPayload) {
         const urlParams = parseURLParameters(url);
         const payload = urlParams.payload;
         if (payload) {

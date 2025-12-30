@@ -60,7 +60,7 @@ export default function HomeScreen(): React.ReactElement {
     centerTitle: true,
   });
   
-  const handleBytePress = useCallback((byteId: number): void => {
+  const handleBytePress = useCallback((byteId: number | string): void => {
     router.push(`/feed/${byteId}` as any);
   }, []);
 

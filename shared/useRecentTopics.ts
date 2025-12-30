@@ -56,6 +56,17 @@ export function useRecentTopics() {
         throw new Error(response.error || 'Failed to load recent topics');
       }
 
+      // Extract users array from root level (not inside topic_list)
+      const users = response.data?.users || [];
+
+      // Build user map for username lookup (user_id -> user object)
+      const usersMap = new Map();
+      users.forEach((user: any) => {
+        if (user.id) {
+          usersMap.set(user.id, user);
+        }
+      });
+
       // Get categories for better category information
       let categoriesMap = new Map();
       try {
@@ -89,20 +100,40 @@ export function useRecentTopics() {
           slug: 'uncategorized',
         };
 
+        // Extract author info - try creator.user first, then lookup from usersMap
+        let username = 'unknown';
+        let name = 'Unknown User';
+        let avatarTemplate = '';
+
+        if (creator?.user) {
+          // Full user object exists in poster
+          username = creator.user.username || 'unknown';
+          name = creator.user.name || creator.user.username || 'Unknown User';
+          avatarTemplate = creator.user.avatar_template || '';
+        } else if (creator?.user_id && usersMap) {
+          // Look up from users map using user_id
+          const user = usersMap.get(creator.user_id);
+          if (user) {
+            username = user.username || 'unknown';
+            name = user.name || user.username || 'Unknown User';
+            avatarTemplate = user.avatar_template || '';
+          }
+        }
+
+        const avatar = avatarTemplate 
+          ? discourseApi.getAvatarUrl(avatarTemplate, 40)
+          : '';
+
         return {
           id: topic.id,
           title: topic.title,
           excerpt: topic.excerpt || '',
           slug: topic.slug,
           category: categoryInfo,
-          author: creator?.user ? {
-            username: creator.user.username,
-            name: creator.user.name || creator.user.username,
-            avatar: discourseApi.getAvatarUrl(creator.user.avatar_template || '', 40),
-          } : {
-            username: 'unknown',
-            name: 'Unknown User',
-            avatar: '',
+          author: {
+            username,
+            name,
+            avatar,
           },
           tags: topic.tags || [],
           createdAt: topic.created_at,

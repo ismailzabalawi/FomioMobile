@@ -265,7 +265,14 @@ class Logger {
 
         // Ensure we always have a valid string to log (never null)
         const finalLogMessage = (logLine || fallbackLine || `[ERROR] ${safeMessage || 'Unknown error'}`);
-        console.error(finalLogMessage);
+        const output = String(finalLogMessage || `[ERROR] ${safeMessage || 'Unknown error'}`);
+        const trimmed = output.trim();
+        const lower = trimmed.toLowerCase();
+        if (!trimmed || lower === 'null' || lower === 'undefined') {
+          console.error(`[ERROR] ${safeMessage || 'Unknown error'}`);
+        } else {
+          console.error(trimmed);
+        }
       } catch (logError) {
         // Ultimate fallback: use the simplest possible logging
         const errorMsg = String(errorInfo?.message || errorInfo || 'Unknown error');

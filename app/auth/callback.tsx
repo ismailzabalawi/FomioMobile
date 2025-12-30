@@ -11,6 +11,7 @@ import { UserApiKeyManager } from '../../shared/userApiKeyManager';
 import { hasUserApiKey } from '../../lib/auth';
 import { parseURLParameters } from '../../lib/auth-utils';
 import Constants from 'expo-constants';
+import { setOnboardingCompleted } from '../../shared/onboardingStorage';
 
 const config = Constants.expoConfig?.extra || {};
 
@@ -145,6 +146,28 @@ export default function AuthCallbackScreen() {
               await UserApiKeyManager.storeOneTimePassword(decrypted.one_time_password);
             }
 
+            // Android: mirror iOS by persisting complete auth data when payload arrives
+            if (Platform.OS === 'android') {
+              let username: string | undefined;
+              try {
+                const userResponse = await discourseApi.getCurrentUser();
+                if (userResponse.success && userResponse.data?.username) {
+                  username = userResponse.data.username;
+                  logger.info('AuthCallbackScreen: Username retrieved during Android callback', { username });
+                }
+              } catch (error) {
+                logger.warn('AuthCallbackScreen: Failed to fetch username during Android callback (non-critical)', error);
+              }
+
+              const clientId = await UserApiKeyManager.getOrGenerateClientId();
+              await UserApiKeyManager.storeCompleteAuth(
+                decrypted.key,
+                username,
+                clientId,
+                decrypted.one_time_password
+              );
+            }
+
             logger.info('AuthCallbackScreen: API key stored successfully');
           } catch (decryptError: any) {
             logger.error('AuthCallbackScreen: Failed to decrypt payload', decryptError);
@@ -188,6 +211,21 @@ export default function AuthCallbackScreen() {
 
           await setAuthenticatedUser(appUser);
           logger.info('AuthCallbackScreen: User authenticated successfully');
+          await setOnboardingCompleted();
+
+          // Android: warm browser cookies with OTP if available
+          if (Platform.OS === 'android') {
+            try {
+              const otp = await UserApiKeyManager.getOneTimePassword();
+              if (otp) {
+                const otpUrl = `${DISCOURSE_URL}/session/otp/${otp}`;
+                logger.info('AuthCallbackScreen: Warming browser cookies with OTP (Android)...');
+                await Linking.openURL(otpUrl);
+              }
+            } catch (otpError) {
+              logger.warn('AuthCallbackScreen: OTP cookie warming failed on Android (non-critical)', otpError);
+            }
+          }
 
           // Reset navigation stack to prevent going back to auth screens
           const rootNavigation = navigation.getParent() || navigation;

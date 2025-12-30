@@ -1,26 +1,29 @@
 import React, { useEffect } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
-import { parseURLParameters } from '@/lib/auth-utils';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
-export default function AuthRedirectScreen(): React.ReactElement | null {
-  const params = useLocalSearchParams();
-
+export default function AuthRedirectScreen(): React.ReactElement {
   useEffect(() => {
-    const payloadParam = typeof params.payload === 'string' ? params.payload : null;
-    const urlParam = typeof params.url === 'string' ? params.url : null;
+    router.replace('/(auth)/signin');
+  }, []);
 
-    let payload = payloadParam;
-    if (!payload && urlParam) {
-      const parsed = parseURLParameters(urlParam);
-      payload = parsed.payload || null;
-    }
-
-    if (payload) {
-      router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}`);
-    } else {
-      router.replace('/(auth)/signin');
-    }
-  }, [params.payload, params.url]);
-
-  return null;
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" />
+      </View>
+    </SafeAreaView>
+  );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

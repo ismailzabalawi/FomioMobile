@@ -155,9 +155,17 @@ export default function PublicProfileScreen(): React.ReactElement {
     <TouchableOpacity
       onPress={() => {
         Alert.alert(
-          'Options',
-          `Options for ${user?.username || 'user'}`,
+          'Actions',
+          undefined,
           [
+            {
+              text: 'Message (coming soon)',
+              onPress: () => {},
+            },
+            {
+              text: 'Share (coming soon)',
+              onPress: () => {},
+            },
             {
               text: 'Report',
               style: 'destructive',
@@ -266,8 +274,6 @@ export default function PublicProfileScreen(): React.ReactElement {
         user={user}
         isOwnProfile={isOwnProfile}
         isAuthenticated={isAuthenticated}
-        onReport={handleReport}
-        onBlock={handleBlock}
       />
     </ScreenContainer>
   );

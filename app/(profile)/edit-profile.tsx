@@ -30,6 +30,7 @@ import { Button } from '../../components/ui/button';
 import { Camera, X, Check, NotePencil } from 'phosphor-react-native';
 import { EditProfileSkeleton } from '@/components/profile/EditProfileSkeleton';
 import { discourseApi } from '../../shared/discourseApi';
+import { emitAuthEvent } from '@/shared/auth-events';
 import { useToast, validationRules, formValidationManager } from '@/shared/form-validation';
 import { getTokens } from '@/shared/design/tokens';
 
@@ -410,6 +411,8 @@ export default function EditProfileScreen(): React.ReactElement {
           website,
         });
         setHasChanges(false);
+        await refreshUser();
+        emitAuthEvent('auth:refreshed');
         safeBack();
       } else {
         const errorMessage = error || 'Failed to update profile. Please try again.';
@@ -1012,6 +1015,7 @@ const styles = StyleSheet.create({
   previewBio: {
     fontSize: 13,
     lineHeight: 18,
+    paddingLeft: 52,
   },
   sectionHeader: {
     marginBottom: 8,

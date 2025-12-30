@@ -23,6 +23,7 @@ export function ProfileBio({ bio, isOwnProfile = false }: ProfileBioProps) {
   const mode = isDark ? 'dark' : 'light';
   const tokens = useMemo(() => getTokens(mode), [mode]);
   const [isExpanded, setIsExpanded] = useState(false);
+  const contentInset = 16 + 72 + 12;
 
   const handleAddBio = useCallback(async () => {
     try {
@@ -42,10 +43,13 @@ export function ProfileBio({ bio, isOwnProfile = false }: ProfileBioProps) {
     const containerBackground = mode === 'dark' ? '#000000' : '#f8fafc';
     
     return (
-      <View 
-        className="px-4 pb-4" 
-        style={{ 
+      <View
+        style={{
           width: '100%',
+          paddingTop: 8,
+          paddingBottom: 8,
+          paddingLeft: contentInset,
+          paddingRight: 16,
           backgroundColor: containerBackground,
         }}
       >
@@ -60,7 +64,7 @@ export function ProfileBio({ bio, isOwnProfile = false }: ProfileBioProps) {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 8,
-            paddingVertical: 8,
+            paddingVertical: 6,
           }}
         >
           <PencilSimple
@@ -84,10 +88,13 @@ export function ProfileBio({ bio, isOwnProfile = false }: ProfileBioProps) {
   const containerBackground = mode === 'dark' ? '#000000' : '#f8fafc';
 
   return (
-    <View 
-      className="px-4 pb-2"
-      style={{ 
+    <View
+      style={{
         width: '100%',
+        paddingTop: 8,
+        paddingBottom: 8,
+        paddingLeft: contentInset,
+        paddingRight: 16,
         backgroundColor: containerBackground,
       }}
     >

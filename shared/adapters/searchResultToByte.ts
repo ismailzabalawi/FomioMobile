@@ -48,9 +48,13 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
   // Extract data based on structure
   const topicId = result?.id;
   const title = result?.title || '';
-  const excerpt = result?.excerpt || '';
-  const content = result?.content || excerpt || FALLBACK_HTML;
+  // Search results might have 'blurb' instead of 'excerpt' (Discourse search API)
+  const excerpt = result?.excerpt || result?.blurb || '';
+  const content = result?.content || excerpt || (result?.title ? `<p>${result.title}</p>` : FALLBACK_HTML);
   const rawContent = result?.rawContent || '';
+  
+  // Get base URL for normalizing relative URLs
+  const baseUrl = discourseApi.getBaseUrl();
   
   // Author data - DiscourseByte has AppUser, raw topic has different structure
   let authorId = 0;
@@ -64,7 +68,23 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
     authorId = parseInt(appUser.id || '0', 10);
     username = appUser.username || 'unknown';
     name = appUser.name || appUser.username || 'Unknown User';
-    avatar = appUser.avatar || ''; // Already processed by getAvatarUrl
+    // Avatar should already be absolute from getAvatarUrl, but normalize just in case
+    const avatarUrl = appUser.avatar || '';
+    avatar = avatarUrl && !avatarUrl.startsWith('http') && baseUrl
+      ? `${baseUrl}${avatarUrl.startsWith('/') ? avatarUrl : `/${avatarUrl}`}`
+      : avatarUrl;
+    
+    // Debug logging for author extraction
+    if (__DEV__) {
+      console.log(`👤 searchResultToByte: Using AppUser author for topic ${topicId}`, {
+        authorId,
+        username,
+        name,
+        hasAvatar: !!avatar,
+        avatarIsAbsolute: avatar.startsWith('http'),
+        avatarPreview: avatar.substring(0, 60),
+      });
+    }
   } else if (result.author) {
     // Raw topic structure
     const author = result.author;
@@ -124,6 +144,16 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
       : '';
     if (__DEV__) {
       console.warn(`⚠️ searchResultToByte: Using last_poster as fallback for result ${result.id || 'unknown'}`);
+    }
+  }
+
+  // Final fallback: use top-level username/name if available
+  if (username === 'unknown' && (result?.username || result?.user?.username)) {
+    username = result?.username || result?.user?.username || 'unknown';
+    name = result?.name || result?.user?.name || username;
+    const avatarTemplate = result?.avatar_template || result?.user?.avatar_template || '';
+    if (!avatar && avatarTemplate) {
+      avatar = discourseApi.getAvatarUrl(avatarTemplate, 120);
     }
   }
   
@@ -235,10 +265,43 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
   }
   
   // Use content/excerpt for search results (shows context, unlike home feed summaries)
-  const cooked = content || excerpt || FALLBACK_HTML;
+  // Convert plain text excerpt to HTML if needed (similar to topicSummaryToByte)
+  let cooked = content || excerpt || FALLBACK_HTML;
+  
+  // If we're using excerpt and it's plain text (no HTML tags), convert it to HTML
+  if (excerpt && !content && !excerpt.trim().match(/<[^>]+>/)) {
+    // Plain text excerpt: convert \n\n to paragraph breaks and \n to <br>
+    const paragraphs = excerpt.split(/\n\n+/).filter((p: string) => p.trim());
+    if (paragraphs.length > 0) {
+      cooked = paragraphs
+        .map((p: string) => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)
+        .join('');
+    } else {
+      // Single paragraph with line breaks
+      cooked = `<p>${excerpt.trim().replace(/\n/g, '<br>')}</p>`;
+    }
+    
+    if (__DEV__) {
+      console.log(`📝 searchResultToByte: Converted plain text excerpt to HTML for topic ${topicId}`, {
+        originalLength: excerpt.length,
+        convertedLength: cooked.length,
+      });
+    }
+  }
   
   // Extract images from content/excerpt
   const media = extractMedia(cooked);
+  
+  // Normalize media URLs (convert relative to absolute)
+  const normalizedMedia = media.map((url: string) => {
+    if (!url) return url;
+    // If already absolute, return as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // If relative, prepend baseUrl
+    return baseUrl ? `${baseUrl}${url.startsWith('/') ? url : `/${url}`}` : url;
+  });
   
   // Engagement state
   const isLiked = result.isLiked || false;
@@ -272,12 +335,12 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
     hub: hub || parentHub, // Show hub if direct hub, or parent hub if teret
     teret, // Show teret if subcategory
     raw: rawContent,
-    cooked, // Show excerpt/content for search context
+    cooked, // Show excerpt/content for search context (converted to HTML if plain text)
     excerpt,
     createdAt,
     updatedAt,
     origin: 'hydrated', // Search results are hydrated (have content)
-    media: media.length > 0 ? media : undefined,
+    media: normalizedMedia.length > 0 ? normalizedMedia : undefined,
     linkPreview: undefined,
     stats: {
       likes: likeCount,

@@ -23,10 +23,24 @@ function ByteCardContentComponent({ byte, isPreview = true }: { byte: Byte; isPr
   const { tokens, colors, spacing } = useByteCardTokens();
   const [isExpanded, setIsExpanded] = useState(false);
   const plainExcerpt = useMemo(() => stripHtmlToText(byte.excerpt || ''), [byte.excerpt]);
-  const shouldUsePlainPreview = isPreview && byte.origin === 'summary' && plainExcerpt.length > 0;
   
   const CONTENT_THRESHOLD = 350; // Characters
   const cookedContent = byte.cooked || '';
+  // Only use plain preview if cooked is empty (fallback for summaries without HTML)
+  // If cooked has content (even for summaries), use MarkdownContent to render HTML properly
+  const shouldUsePlainPreview = isPreview && byte.origin === 'summary' && !cookedContent && plainExcerpt.length > 0;
+  
+  // Debug logging for content rendering
+  if (__DEV__ && byte.origin === 'summary') {
+    console.log(`📄 ByteCardContent: Rendering summary for byte ${byte.id}`, {
+      hasCooked: !!cookedContent,
+      cookedLength: cookedContent.length,
+      hasExcerpt: !!byte.excerpt,
+      excerptLength: byte.excerpt?.length || 0,
+      shouldUsePlainPreview,
+      cookedPreview: cookedContent.substring(0, 100),
+    });
+  }
   const shouldTruncate = isPreview && cookedContent.length > CONTENT_THRESHOLD;
   const displayContent = shouldTruncate && !isExpanded 
     ? cookedContent.substring(0, CONTENT_THRESHOLD).replace(/\s+\S*$/, '') + '...'

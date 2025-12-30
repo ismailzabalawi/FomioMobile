@@ -1,14 +1,12 @@
 // UI Spec: ProfileHeader
 // - Hero band with subtle frosted fill
 // - Overlapped avatar + centered name/bio to reduce wasted space
-// - Joined date formatted as "Joined August 2024"
-// - Last seen (public only): "Online recently" or timestamp
+// - Joined date and last seen are displayed in stats line under bio
 // - Uses tokenized radii/shadows for the fluid look
 
 import React, { useMemo } from 'react';
 import { View, Text, Platform, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { Eye } from 'phosphor-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
 import { useHeader } from '@/components/ui/header';
@@ -17,10 +15,9 @@ import { getTokens } from '@/shared/design/tokens';
 
 export interface ProfileHeaderProps {
   user: DiscourseUser;
-  isPublic?: boolean; // If true, show last seen
 }
 
-export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
+export function ProfileHeader({ user }: ProfileHeaderProps) {
   const { isDark } = useTheme();
   const { header } = useHeader();
   const insets = useSafeAreaInsets();
@@ -50,34 +47,6 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
     (user as any)?.card_background ||
     null;
   
-  // Format joined date: "Joined August 2024"
-  const joinedDate = user.created_at
-    ? new Date(user.created_at).toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      })
-    : null;
-
-  // Format last seen (public only)
-  const lastSeen = isPublic && user.last_seen_at
-    ? (() => {
-        const lastSeenDate = new Date(user.last_seen_at);
-        const now = new Date();
-        const diffMs = now.getTime() - lastSeenDate.getTime();
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
-
-        if (diffMins < 5) return 'Online recently';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return lastSeenDate.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        });
-      })()
-    : null;
 
   const heroHeight = 112;
   const avatarSize = 72;
@@ -114,6 +83,7 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
         style={{
           marginTop: -avatarSize / 2,
           paddingHorizontal: 16,
+          paddingBottom: 0,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -160,7 +130,7 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
             )}
           </View>
 
-          {/* Name, username, meta */}
+          {/* Name, username */}
           <View style={{ flex: 1, gap: 2 }}>
             <Text
               className="text-xl font-semibold"
@@ -176,28 +146,6 @@ export function ProfileHeader({ user, isPublic = false }: ProfileHeaderProps) {
             >
               @{username}
             </Text>
-            {(joinedDate || lastSeen) && (
-              <View className="flex-row items-center gap-2">
-                {joinedDate && (
-                  <Text className="text-xs" style={{ color: tokens.colors.muted }}>
-                    Joined {joinedDate}
-                  </Text>
-                )}
-                {lastSeen && joinedDate && (
-                  <Text className="text-xs" style={{ color: tokens.colors.muted }}>
-                    •
-                  </Text>
-                )}
-                {lastSeen && (
-                  <View className="flex-row items-center gap-1">
-                    <Eye size={14} color={tokens.colors.muted} weight="regular" />
-                    <Text className="text-xs" style={{ color: tokens.colors.muted }}>
-                      {lastSeen}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
           </View>
         </View>
       </View>

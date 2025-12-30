@@ -3,11 +3,9 @@ import {
   View, 
   Text, 
   TouchableOpacity, 
-  FlatList,
   ActivityIndicator,
   Image,
   ListRenderItem,
-  ScrollView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -30,7 +28,6 @@ import { getThemeColors } from '@/shared/theme-constants';
 import { useFluidNav } from '@/shared/navigation/fluidNavContext';
 import * as Haptics from 'expo-haptics';
 import { SearchInput } from '@/components/search/SearchInput';
-import { FluidChip } from '@/shared/ui/FluidChip';
 import { FluidSection } from '@/shared/ui/FluidSection';
 import { getTokens } from '@/shared/design/tokens';
 
@@ -41,10 +38,10 @@ import { getTokens } from '@/shared/design/tokens';
 // - FlatList for optimized rendering
 // - AMOLED dark mode support with true black baseline
 
-type SearchType = 'all' | 'bytes' | 'hubs' | 'users';
+type SearchType = 'bytes' | 'hubs' | 'users';
 
 // Helper to map frontend SearchType to backend type
-function mapSearchTypeToBackendType(frontendType: SearchType): 'topic' | 'category' | 'user' | 'all' {
+function mapSearchTypeToBackendType(frontendType: SearchType): 'topic' | 'category' | 'user' {
   switch (frontendType) {
     case 'bytes':
       return 'topic';
@@ -52,9 +49,8 @@ function mapSearchTypeToBackendType(frontendType: SearchType): 'topic' | 'catego
       return 'category';
     case 'users':
       return 'user';
-    case 'all':
     default:
-      return 'all';
+      return 'topic';
   }
 }
 
@@ -79,9 +75,11 @@ function HubCard({ category, onPress }: { category: any; onPress: () => void }) 
   const { themeMode, isAmoled, isDark } = useTheme();
   const colors = getThemeColors(themeMode, isAmoled);
   const tokens = useMemo(() => getTokens(isDark ? 'dark' : 'light'), [isDark]);
-  const handleBytePress = useCallback((byteId: number | string) => {
-    router.push(`/feed/${byteId}` as any);
-  }, []);
+  const categoryColor = useMemo(() => {
+    const raw = category.color || '';
+    if (!raw) return colors.accent;
+    return raw.startsWith('#') ? raw : `#${raw}`;
+  }, [category.color, colors.accent]);
 
   return (
     <TouchableOpacity
@@ -104,11 +102,11 @@ function HubCard({ category, onPress }: { category: any; onPress: () => void }) 
       <View className="flex-row items-start mb-3">
         <View 
           className="w-10 h-10 rounded-full items-center justify-center mr-3"
-          style={{ backgroundColor: (category.color || colors.accent) + '20' }}
+          style={{ backgroundColor: `${categoryColor}20` }}
         >
           <Text 
             className="text-xl font-semibold"
-            style={{ color: category.color || colors.accent }}
+            style={{ color: categoryColor }}
           >
             {category.name.charAt(0).toUpperCase()}
           </Text>
@@ -124,7 +122,7 @@ function HubCard({ category, onPress }: { category: any; onPress: () => void }) 
             </Text>
             {category.topic_count > 5 && (
               <View className="ml-2">
-                <Fire size={12} color={colors.accent} weight="fill" />
+                <Fire size={12} color={categoryColor} weight="fill" />
               </View>
             )}
           </View>
@@ -149,7 +147,7 @@ function HubCard({ category, onPress }: { category: any; onPress: () => void }) 
   );
 }
 
-function SearchTypeChips({
+function SearchTypeTabs({
   activeType,
   onChange,
 }: {
@@ -157,25 +155,73 @@ function SearchTypeChips({
   onChange: (type: SearchType) => void;
 }) {
   const { isDark } = useTheme();
-
+  const mode = isDark ? 'dark' : 'light';
+  const tokens = useMemo(() => getTokens(mode), [mode]);
   const types: { key: SearchType; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'bytes', label: 'Bytes' },
-    { key: 'hubs', label: 'Hubs' },
-    { key: 'users', label: 'Users' },
+    { key: 'bytes', label: 'Posts' },
+    { key: 'hubs', label: 'Tags' },
+    { key: 'users', label: 'People' },
   ];
 
   return (
-    <View className="flex-row px-4 mb-3 gap-2">
-      {types.map((t) => (
-        <FluidChip
-          key={t.key}
-          label={t.label}
-          selected={activeType === t.key}
-          onPress={() => onChange(t.key)}
-          mode={isDark ? 'dark' : 'light'}
-        />
-      ))}
+    <View
+      style={{
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          backgroundColor: isDark ? '#000000' : tokens.colors.surfaceMuted,
+          borderRadius: 24,
+          padding: 4,
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(255,255,255,0.12)' : tokens.colors.border,
+          shadowColor: '#000',
+          shadowOpacity: isDark ? 0 : 0.08,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+        }}
+      >
+        {types.map((tab) => {
+          const isActive = tab.key === activeType;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              onPress={() => onChange(tab.key)}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 20,
+                backgroundColor: isActive ? (isDark ? '#1a1a1a' : tokens.colors.background) : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: isActive ? 1 : 0,
+                borderColor: isActive ? (isDark ? 'rgba(255,255,255,0.22)' : tokens.colors.border) : 'transparent',
+                shadowColor: isActive ? '#000' : 'transparent',
+                shadowOpacity: isActive && !isDark ? 0.12 : 0,
+                shadowRadius: 6,
+                shadowOffset: { width: 0, height: 2 },
+              }}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={tab.label}
+            >
+              <Text
+                style={{
+                  color: isActive ? tokens.colors.text : tokens.colors.muted,
+                  fontWeight: isActive ? '600' : '500',
+                  fontSize: 13,
+                  letterSpacing: 0.2,
+                }}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -186,6 +232,7 @@ function SearchResults({
   hasError, 
   onRetry, 
   searchQuery,
+  activeType,
   errorMessage,
   scrollHandler,
   onRef
@@ -201,6 +248,7 @@ function SearchResults({
   hasError: boolean;
   onRetry: () => void;
   searchQuery: string;
+  activeType: SearchType;
   errorMessage?: string;
   scrollHandler?: any;
   onRef?: (ref: Animated.FlatList<any> | null) => void;
@@ -208,6 +256,11 @@ function SearchResults({
   const { themeMode, isAmoled, isDark } = useTheme();
   const colors = getThemeColors(themeMode, isAmoled);
   const tokens = useMemo(() => getTokens(isDark ? 'dark' : 'light'), [isDark]);
+
+  // Handle byte press navigation
+  const handleBytePress = useCallback((byteId: number | string) => {
+    router.push(`/feed/${byteId}` as any);
+  }, []);
 
   // Use results directly from backend (server-side filtering)
   const normalizedResults = useMemo(() => ({
@@ -222,26 +275,32 @@ function SearchResults({
   const listData = useMemo<SearchResultItem[]>(() => {
     const items: SearchResultItem[] = [];
     
-    if (normalizedResults.bytes.length > 0) {
+    if (activeType === 'bytes' && normalizedResults.bytes.length > 0) {
       normalizedResults.bytes.forEach((byte) => {
         items.push({ id: `byte-${byte.id}`, type: 'byte', data: byte });
       });
     }
     
-    if (normalizedResults.hubs.length > 0) {
+    if (activeType === 'hubs' && normalizedResults.hubs.length > 0) {
       normalizedResults.hubs.forEach((hub) => {
         items.push({ id: `hub-${hub.id}`, type: 'hub', data: hub });
       });
     }
     
-    if (normalizedResults.users.length > 0) {
+    if (activeType === 'users' && normalizedResults.users.length > 0) {
       normalizedResults.users.forEach((user) => {
         items.push({ id: `user-${user.id}`, type: 'user', data: user });
       });
     }
     
     return items;
-  }, [normalizedResults]);
+  }, [normalizedResults, activeType]);
+  const displayedTotal = listData.length;
+  const emptyStateByType: Record<SearchType, string> = {
+    bytes: 'No posts found',
+    hubs: 'No tags found',
+    users: 'No people found',
+  };
 
   if (isLoading) {
     return (
@@ -299,7 +358,7 @@ function SearchResults({
     );
   }
 
-  if (normalizedResults.totalResults === 0) {
+  if (displayedTotal === 0) {
     return (
       <View className="flex-1 justify-center items-center px-4 py-12">
         <Animated.View entering={FadeInDown.duration(300).springify()}>
@@ -308,7 +367,7 @@ function SearchResults({
             <Text className="text-base mt-4 text-center" style={{ color: colors.secondary }}>
               {searchQuery.length > 0 && searchQuery.length < 3 
                 ? 'Type at least 3 characters to search'
-                : 'No results found'
+                : emptyStateByType[activeType]
               }
             </Text>
           </FluidSection>
@@ -344,7 +403,29 @@ function SearchResults({
     }
 
     if (item.type === 'user') {
-      const username = item.data.author?.username || item.data.username;
+      const user = item.data;
+      // AppUser interface: { id, username, name, email, avatar, bio, followers, following, bytes, comments, joinedDate }
+      const username = user?.username || '';
+      const displayName = user?.name || username || 'Unknown User';
+      const avatar = user?.avatar || '';
+      const bio = user?.bio || '';
+      const joinedDate = user?.joinedDate || '';
+      const bytesCount = user?.bytes || 0;
+      const commentsCount = user?.comments || 0;
+      
+      // Build subtitle: prefer bio, then joined date, then stats
+      let subtitle = '';
+      if (bio) {
+        subtitle = bio;
+      } else if (joinedDate && joinedDate !== 'Unknown') {
+        subtitle = joinedDate;
+      } else if (bytesCount > 0 || commentsCount > 0) {
+        const stats = [];
+        if (bytesCount > 0) stats.push(`${bytesCount} ${bytesCount === 1 ? 'byte' : 'bytes'}`);
+        if (commentsCount > 0) stats.push(`${commentsCount} ${commentsCount === 1 ? 'comment' : 'comments'}`);
+        subtitle = stats.join(' • ');
+      }
+      
       return (
         <Animated.View entering={FadeInDown.delay(staggerDelay).duration(350).springify()}>
           <TouchableOpacity
@@ -361,28 +442,31 @@ function SearchResults({
             ]}
             onPress={() => {
               if (username) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 goToProfile(username);
               } else {
                 console.warn('User result missing username:', item.data);
               }
             }}
+            activeOpacity={0.7}
           >
             <View className="flex-row items-center mb-2">
-              {item.data.author?.avatar ? (
+              {avatar ? (
                 <Image 
-                  source={{ uri: item.data.author.avatar }} 
-                  className="w-8 h-8 rounded-full mr-3"
+                  source={{ uri: avatar }} 
+                  className="w-10 h-10 rounded-full mr-3"
+                  style={{ borderWidth: 1, borderColor: tokens.colors.border }}
                 />
               ) : (
                 <View 
-                  className="w-8 h-8 rounded-full mr-3 justify-center items-center"
+                  className="w-10 h-10 rounded-full mr-3 justify-center items-center"
                   style={{ backgroundColor: colors.secondary }}
                 >
                   <Text 
-                    className="text-xs font-semibold"
+                    className="text-sm font-semibold"
                     style={{ color: tokens.colors.surfaceFrost }}
                   >
-                    {item.data.author?.name?.charAt(0).toUpperCase() || 'U'}
+                    {displayName.charAt(0).toUpperCase()}
                   </Text>
                 </View>
               )}
@@ -390,26 +474,30 @@ function SearchResults({
                 <Text 
                   className="text-base font-bold mb-0.5"
                   style={{ color: colors.foreground }}
+                  numberOfLines={1}
                 >
-                  {item.data.title}
+                  {displayName}
                 </Text>
-                <Text 
-                  className="text-xs font-medium"
-                  style={{ color: colors.secondary }}
-                >
-                  @{item.data.author?.username}
-                </Text>
+                {!!username && (
+                  <Text 
+                    className="text-xs font-medium"
+                    style={{ color: colors.secondary }}
+                    numberOfLines={1}
+                  >
+                    @{username}
+                  </Text>
+                )}
               </View>
             </View>
-            {item.data.content && (
+            {subtitle ? (
               <Text 
-                className="text-sm"
+                className="text-sm mt-1"
                 style={{ color: colors.secondary }}
                 numberOfLines={2}
               >
-                {item.data.content}
+                {subtitle}
               </Text>
-            )}
+            ) : null}
           </TouchableOpacity>
         </Animated.View>
       );
@@ -437,7 +525,7 @@ function SearchResults({
       keyboardShouldPersistTaps="handled"
       scrollEnabled={true}
       ListHeaderComponent={
-        normalizedResults.totalResults > 0 ? (
+        displayedTotal > 0 ? (
           <Animated.View 
             entering={FadeInDown.duration(300).springify()}
             className="mb-4"
@@ -447,7 +535,7 @@ function SearchResults({
                 className="text-lg font-bold"
                 style={{ color: colors.foreground }}
               >
-                {normalizedResults.totalResults} result{normalizedResults.totalResults !== 1 ? 's' : ''}
+                {displayedTotal} result{displayedTotal !== 1 ? 's' : ''}
               </Text>
             </FluidSection>
           </Animated.View>
@@ -467,17 +555,17 @@ function EmptyStateCards() {
     {
       icon: Rocket,
       title: "Search is just waking up 🚀",
-      text: "Start typing to search for bytes, hubs, and users. As Fomio grows, you'll find more content here.",
+      text: "Start typing to search for posts, tags, and people. As Fomio grows, you'll find more content here.",
     },
     {
       icon: Fire,
       title: "Help us start the fire",
-      text: "Create bytes, join hubs, and engage with the community. This page will come alive with your contributions.",
+      text: "Create posts, explore tags, and engage with the community. This page will come alive with your contributions.",
     },
     {
       icon: Hash,
       title: "Explore what's here",
-      text: "Use the search bar above to find topics, categories, or people. Try searching for keywords related to your interests.",
+      text: "Use the search bar above to find posts, tags, or people. Try searching for keywords related to your interests.",
     },
   ];
 
@@ -520,13 +608,14 @@ function EmptyStateCards() {
 export default function SearchScreen(): React.ReactElement {
   const { themeMode, isAmoled } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeType, setActiveType] = useState<SearchType>('all');
+  const [activeType, setActiveType] = useState<SearchType>('bytes');
   const { scrollY, setUpHandler } = useFluidNav();
   const flatListRef = useRef<Animated.FlatList<any>>(null);
   
   const { 
     search, 
     searchWithDebounce,
+    clearSearch,
     results, 
     isLoading: isSearchLoading, 
     hasError: hasSearchError, 
@@ -555,11 +644,14 @@ export default function SearchScreen(): React.ReactElement {
       // Use debounced search with type filter
       const backendType = mapSearchTypeToBackendType(activeType);
       searchWithDebounce(trimmed, { type: backendType }, 500);
+    } else if (trimmed.length > 0) {
+      // Clear previous results for short queries
+      clearSearch();
     } else if (trimmed.length === 0) {
       // Clear results when query is empty
-      setActiveType('all');
+      clearSearch();
     }
-  }, [searchWithDebounce, activeType]);
+  }, [searchWithDebounce, activeType, clearSearch]);
 
   // Handle search type change - trigger new search with type filter
   const handleTypeChange = useCallback((type: SearchType) => {
@@ -580,7 +672,7 @@ export default function SearchScreen(): React.ReactElement {
   // Share scroll position with fluid nav and keep scroll-to-top handler accessible
   useEffect(() => {
     console.log('[Search] Registering scroll-to-top handler');
-    setUpHandler(() => handleScrollToTop);
+    setUpHandler(handleScrollToTop);
     return () => {
       console.log('[Search] Clearing scroll-to-top handler');
       setUpHandler(null);
@@ -609,7 +701,7 @@ export default function SearchScreen(): React.ReactElement {
   }, [searchQuery, activeType, search]);
 
   // Show search results if there's a query
-  if (searchQuery.trim()) {
+  if (searchQuery.trim().length >= 3) {
     return (
       <SafeAreaView 
         className="flex-1"
@@ -621,7 +713,7 @@ export default function SearchScreen(): React.ReactElement {
           onSubmitEditing={handleSearchSubmit}
         />
 
-        <SearchTypeChips
+        <SearchTypeTabs
           activeType={activeType}
           onChange={handleTypeChange}
         />
@@ -638,6 +730,7 @@ export default function SearchScreen(): React.ReactElement {
           hasError={hasSearchError}
           onRetry={retrySearch}
           searchQuery={searchQuery}
+          activeType={activeType}
           errorMessage={searchError || undefined}
           scrollHandler={animatedScrollHandler}
           onRef={(ref) => { flatListRef.current = ref; }}
@@ -656,6 +749,11 @@ export default function SearchScreen(): React.ReactElement {
         value={searchQuery}
         onChangeText={handleSearch}
         onSubmitEditing={handleSearchSubmit}
+      />
+
+      <SearchTypeTabs
+        activeType={activeType}
+        onChange={handleTypeChange}
       />
 
       <EmptyStateCards />

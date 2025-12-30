@@ -16,6 +16,7 @@ export interface ByteCardProps {
   showSeparator?: boolean;
   onPress?: () => void;
   onPressByteId?: (byteId: number | string) => void;
+  hideHeader?: boolean; // Hide author header (useful in profile context)
 }
 
 /**
@@ -36,6 +37,7 @@ function ByteCardComponent({
   showSeparator = true,
   onPress,
   onPressByteId,
+  hideHeader = false,
 }: ByteCardProps) {
   const { tokens, colors, spacing, borderRadius, shadows } = useByteCardTokens();
   const [isTrayOpen, setIsTrayOpen] = useState(false);
@@ -231,7 +233,7 @@ function ByteCardComponent({
         )}
 
         {/* Author row: avatar | name | username */}
-        <ByteCardHeader byte={byte} onHeaderPress={handleHeaderPress} />
+        {!hideHeader && <ByteCardHeader byte={byte} onHeaderPress={handleHeaderPress} />}
         
         {/* Content, media */}
         <View>
@@ -333,6 +335,7 @@ const arePropsEqual = (prev: ByteCardProps, next: ByteCardProps) => {
   if (prev.onPress !== next.onPress) return false;
   if (prev.onPressByteId !== next.onPressByteId) return false;
   if (prev.showSeparator !== next.showSeparator) return false;
+  if (prev.hideHeader !== next.hideHeader) return false;
   
   return true; // All fields match, skip re-render
 };

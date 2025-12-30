@@ -4,13 +4,12 @@
 import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
-  TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
-import { Gear, SignIn } from 'phosphor-react-native';
+import { SignIn } from 'phosphor-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
 import { useHeader } from '@/components/ui/header';
@@ -24,13 +23,13 @@ import { useFluidNav } from '@/shared/navigation/fluidNavContext';
 export default function ProfileScreen(): React.ReactElement {
   const { isDark } = useTheme();
   const mode = isDark ? 'dark' : 'light';
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user: authUser } = useAuth();
   const { user, loading: userLoading, error: userError, refreshUser } =
-    useDiscourseUser();
+    useDiscourseUser(authUser?.username);
   const { scrollY, setUpHandler } = useFluidNav();
   const containerRef = useRef<any>(null);
 
-  const { setHeader, resetHeader, setActions } = useHeader();
+  const { setHeader, resetHeader } = useHeader();
 
   // Memoize design tokens - dark mode always uses AMOLED
   const tokens = useMemo(() => getTokens(mode), [mode]);
@@ -66,32 +65,11 @@ export default function ProfileScreen(): React.ReactElement {
     }, [isAuthenticated, refreshUser, user])
   );
 
-  const handleSettings = useCallback(async () => {
-    await triggerHaptics();
-    // Type-safe route: expo-router will validate this route at compile time
-    router.push('/(profile)/settings');
-  }, [triggerHaptics]);
-
   const handleSignIn = useCallback(async () => {
     await triggerHaptics();
     // Type-safe route: expo-router will validate this route at compile time
     router.push('/(auth)/signin');
   }, [triggerHaptics]);
-
-  // Settings menu button - MUST be memoized to prevent infinite loops
-  const settingsButton = useMemo(() => (
-    <TouchableOpacity
-      onPress={handleSettings}
-      hitSlop={12}
-      className="p-2 rounded-full"
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel="Open settings"
-      accessibilityHint="Navigate to profile settings page"
-    >
-      <Gear size={24} color={tokens.colors.text} weight="regular" />
-    </TouchableOpacity>
-  ), [handleSettings, tokens.colors.text]);
 
   // Configure header - use useFocusEffect to ensure header is set when screen is focused
   useFocusEffect(
@@ -103,12 +81,11 @@ export default function ProfileScreen(): React.ReactElement {
         tone: "bg",
         extendToStatusBar: true,
       });
-      setActions([settingsButton]);
 
       return () => {
         resetHeader();
       };
-    }, [setHeader, resetHeader, setActions, settingsButton])
+    }, [setHeader, resetHeader])
   );
 
   // Fluid nav: Scroll-to-top handler
@@ -150,7 +127,7 @@ export default function ProfileScreen(): React.ReactElement {
   // Share scroll position with fluid nav and keep scroll-to-top handler accessible
   useEffect(() => {
     console.log('[Profile] Registering scroll-to-top handler');
-    setUpHandler(() => handleScrollToTop);
+    setUpHandler(handleScrollToTop);
     return () => {
       console.log('[Profile] Clearing scroll-to-top handler');
       setUpHandler(null);

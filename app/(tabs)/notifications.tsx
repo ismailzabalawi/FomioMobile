@@ -544,7 +544,7 @@ export default function NotificationsScreen(): React.ReactElement {
   // Share scroll position with fluid nav and keep scroll-to-top handler accessible
   useEffect(() => {
     console.log('[Notifications] Registering scroll-to-top handler');
-    setUpHandler(() => handleScrollToTop);
+    setUpHandler(handleScrollToTop);
     return () => {
       console.log('[Notifications] Clearing scroll-to-top handler');
       setUpHandler(null);

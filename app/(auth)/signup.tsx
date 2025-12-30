@@ -49,8 +49,10 @@ export default function SignUpScreen(): React.ReactElement {
     setLoading(true);
 
     try {
-      const signupUrl = `${BASE_URL}/signup`;
-      await WebBrowser.openBrowserAsync(signupUrl);
+      const signupUrl = new URL(`${BASE_URL}/signup`);
+      signupUrl.searchParams.set('fomio', '1');
+      signupUrl.searchParams.set('return_to', 'fomio://auth_redirect');
+      await WebBrowser.openBrowserAsync(signupUrl.toString());
       // User has returned from browser, show continue option
       setHasOpenedSignup(true);
     } catch (err) {

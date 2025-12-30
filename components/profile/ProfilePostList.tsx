@@ -67,8 +67,8 @@ export function ProfilePostList({
   const { isDark } = useTheme();
   const ResolvedListComponent = ListComponent || FlatList;
 
-  const handlePress = useCallback((postId: number) => {
-    router.push(`/feed/${postId}` as any);
+  const handlePress = useCallback((byteId: string | number) => {
+    router.push(`/feed/${byteId}` as any);
   }, []);
 
   const renderPostItem = useCallback(
@@ -87,6 +87,7 @@ export function ProfilePostList({
           key={uniqueKey}
           byte={byte}
           onPressByteId={handlePress}
+          hideHeader={true} // Hide header in profile context - all posts belong to profile owner
         />
       );
     },

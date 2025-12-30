@@ -743,13 +743,14 @@ export class UserApiKeyManager {
    * Get auth credentials for API requests.
    * This is the single source of truth for reading auth data.
    * 
-   * @returns Object with key and optional username, or null if not authenticated
+   * @returns Object with key and optional username/clientId, or null if not authenticated
    */
-  static async getAuthCredentials(): Promise<{ key: string; username?: string } | null> {
+  static async getAuthCredentials(): Promise<{ key: string; username?: string; clientId?: string } | null> {
     try {
       // Try raw key first (fastest path)
       let key = await SecureStore.getItemAsync(FOMIO_USER_API_KEY);
       let username = await SecureStore.getItemAsync(FOMIO_USER_API_USERNAME);
+      let clientId = await SecureStore.getItemAsync(CLIENT_ID_STORAGE_KEY);
       
       // If key looks like JSON (old format), extract the actual key
       if (key && key.startsWith('{')) {
@@ -758,6 +759,9 @@ export class UserApiKeyManager {
           key = parsed.key || key;
           if (!username && parsed.username) {
             username = parsed.username;
+          }
+          if (!clientId && parsed.clientId) {
+            clientId = parsed.clientId;
           }
         } catch {
           // Not JSON, use as-is
@@ -770,6 +774,7 @@ export class UserApiKeyManager {
         if (apiKeyData?.key) {
           key = apiKeyData.key;
           username = username || apiKeyData.username || null;
+          clientId = clientId || apiKeyData.clientId || null;
         }
       }
       
@@ -777,12 +782,15 @@ export class UserApiKeyManager {
       if (!key) {
         key = await SecureStore.getItemAsync(LEGACY_API_KEY);
       }
+      if (!clientId) {
+        clientId = await SecureStore.getItemAsync(LEGACY_CLIENT_ID);
+      }
       
       if (!key) {
         return null;
       }
       
-      return { key, username: username || undefined };
+      return { key, username: username || undefined, clientId: clientId || undefined };
     } catch (error: any) {
       // Don't log null errors from SecureStore
       if (error && String(error) !== 'null' && error?.message !== 'null') {
@@ -865,4 +873,3 @@ export class UserApiKeyManager {
 }
 
 export default UserApiKeyManager;
-

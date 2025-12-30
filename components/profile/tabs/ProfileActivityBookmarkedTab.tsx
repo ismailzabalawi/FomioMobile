@@ -1,7 +1,7 @@
 // Tab component for "Bookmarked" activity - only visible for own profile
 
 import React from 'react';
-import { Text } from 'react-native';
+import { Text, ScrollView } from 'react-native';
 import { useUserBookmarked } from '@/shared/hooks/useUserBookmarked';
 import { ProfilePostList } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
@@ -22,7 +22,7 @@ export function ProfileActivityBookmarkedTab({
   
   if (!isOwnProfile || !isAuthenticated) {
     return (
-      <Tabs.ScrollView
+      <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 48, alignItems: 'center' }}
         showsVerticalScrollIndicator={false}
       >
@@ -32,7 +32,7 @@ export function ProfileActivityBookmarkedTab({
         >
           This section is only visible to you
         </Text>
-      </Tabs.ScrollView>
+      </ScrollView>
     );
   }
 
@@ -40,12 +40,12 @@ export function ProfileActivityBookmarkedTab({
 
   if (isLoading && items.length === 0) {
     return (
-      <Tabs.ScrollView
+      <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
         showsVerticalScrollIndicator={false}
       >
         <PostSkeletonEnhanced />
-      </Tabs.ScrollView>
+      </ScrollView>
     );
   }
 

@@ -1,7 +1,7 @@
 // Tab component for "Likes" activity - only visible for own profile
 
 import React from 'react';
-import { Text } from 'react-native';
+import { Text, ScrollView } from 'react-native';
 import { useUserLikes } from '@/shared/hooks/useUserLikes';
 import { ProfilePostList } from '../ProfilePostList';
 import { PostSkeletonEnhanced } from '@/components/shared/loading.enhanced';
@@ -22,7 +22,7 @@ export function ProfileActivityLikesTab({
   
   if (!isOwnProfile || !isAuthenticated) {
     return (
-      <Tabs.ScrollView
+      <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 48, alignItems: 'center' }}
         showsVerticalScrollIndicator={false}
       >
@@ -32,7 +32,7 @@ export function ProfileActivityLikesTab({
         >
           This section is only visible to you
         </Text>
-      </Tabs.ScrollView>
+      </ScrollView>
     );
   }
 
@@ -40,12 +40,12 @@ export function ProfileActivityLikesTab({
 
   if (isLoading && items.length === 0) {
     return (
-      <Tabs.ScrollView
+      <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
         showsVerticalScrollIndicator={false}
       >
         <PostSkeletonEnhanced />
-      </Tabs.ScrollView>
+      </ScrollView>
     );
   }
 
