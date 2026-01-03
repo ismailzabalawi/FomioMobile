@@ -19,9 +19,10 @@ import Constants from 'expo-constants';
 import { useTheme } from '@/components/theme';
 import { getTokens } from '@/shared/design/tokens';
 import { logger } from '@/shared/logger';
-import { signIn } from '@/lib/auth';
+import { signIn, processAuthPayload } from '@/lib/auth';
 import { parseURLParameters } from '@/lib/auth-utils';
 import { mapAuthError } from '@/lib/auth-errors';
+import { useAuth } from '@/shared/auth-context';
 
 /**
  * Auth Modal - UI wrapper for sign-in flow
@@ -36,14 +37,16 @@ export default function AuthModalScreen(): React.ReactElement {
   const tokens = getTokens(isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light');
   const params = useLocalSearchParams<{ returnTo?: string }>();
   const navigation = useNavigation();
+  const { setAuthenticatedUser } = useAuth();
   const config = Constants.expoConfig?.extra || {};
   const baseUrl = config.DISCOURSE_BASE_URL;
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const authStartedRef = useRef(false);
+  const payloadProcessingRef = useRef(false);
   const [webviewUrl, setWebviewUrl] = useState<string | null>(null);
-  const [authProcessActive] = useState(false);
+  const [authProcessActive, setAuthProcessActive] = useState(false);
 
   const colors = useMemo(() => ({
     background: tokens.colors.background,
@@ -151,9 +154,91 @@ export default function AuthModalScreen(): React.ReactElement {
     setError(null);
     setIsLoading(true);
     authStartedRef.current = false;
+    payloadProcessingRef.current = false;
     // Re-trigger auth flow by forcing a re-render
     setWebviewUrl(null);
   }, []);
+
+  // Process the auth payload directly in the modal
+  // This is more reliable than navigating to a separate callback screen
+  const handleAuthPayload = useCallback(async (payload: string) => {
+    // Prevent double processing
+    if (payloadProcessingRef.current) {
+      logger.info('AuthModal: Payload already being processed, skipping');
+      return;
+    }
+    payloadProcessingRef.current = true;
+    
+    logger.info('AuthModal: Processing auth payload directly...', {
+      payloadLength: payload?.length || 0,
+    });
+    
+    setAuthProcessActive(true);
+    setIsLoading(true);
+    
+    try {
+      const result = await processAuthPayload(payload);
+      
+      if (result.success) {
+        logger.info('AuthModal: Auth payload processed successfully', {
+          username: result.username,
+        });
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        
+        // Verify authentication by fetching user data
+        const { discourseApi } = await import('@/shared/discourseApi');
+        const userResponse = await discourseApi.getCurrentUser();
+        
+        if (userResponse.success && userResponse.data) {
+          // Map Discourse user to AppUser (same as callback screen)
+          const DISCOURSE_URL = baseUrl || 'https://meta.fomio.app';
+          const username = userResponse.data.username || 'unknown';
+          const appUser = {
+            id: userResponse.data.id?.toString() || '0',
+            username: username,
+            name: userResponse.data.name || username || 'Unknown User',
+            email: userResponse.data.email || '',
+            avatar: userResponse.data.avatar_template
+              ? `${DISCOURSE_URL}${userResponse.data.avatar_template.replace('{size}', '120')}`
+              : '',
+            bio: userResponse.data.bio_raw || '',
+            followers: 0,
+            following: 0,
+            bytes: userResponse.data.topic_count || 0,
+            comments: userResponse.data.post_count || 0,
+            joinedDate: userResponse.data.created_at
+              ? new Date(userResponse.data.created_at).toLocaleDateString('en-US', {
+                  month: 'long',
+                  year: 'numeric',
+                })
+              : 'Unknown',
+          };
+          
+          setAuthenticatedUser(appUser);
+          logger.info('AuthModal: User authenticated and context updated', { username: appUser.username });
+        }
+        
+        // Navigate to tabs
+        const returnTo = params.returnTo;
+        if (returnTo) {
+          logger.info('AuthModal: Navigating to returnTo', { returnTo });
+          router.replace(decodeURIComponent(returnTo) as any);
+        } else {
+          logger.info('AuthModal: Navigating to tabs');
+          router.replace('/(tabs)' as any);
+        }
+      } else {
+        throw new Error(result.error || 'Authentication failed');
+      }
+    } catch (err: any) {
+      logger.error('AuthModal: Failed to process auth payload', err);
+      payloadProcessingRef.current = false;
+      setAuthProcessActive(false);
+      setIsLoading(false);
+      setError(mapAuthError(err));
+    }
+  }, [params.returnTo, setAuthenticatedUser]);
 
   const handleWebViewNavigation = useCallback(
     (request: { url?: string }) => {
@@ -167,31 +252,31 @@ export default function AuthModalScreen(): React.ReactElement {
       
       if (!url) return true;
 
-      const isAuthRedirect = url.startsWith('fomio://') || url.includes('auth_redirect');
+      // Only consider it an auth redirect if the URL STARTS with fomio://
+      // Don't match on 'auth_redirect' substring - that would match the authorization page URL
+      // which contains the redirect_uri parameter
+      const isCustomSchemeRedirect = url.startsWith('fomio://');
       const hasPayload = url.includes('payload=');
 
       logger.info('AuthModal: WebView navigation analysis', {
-        isAuthRedirect,
+        isCustomSchemeRedirect,
         hasPayload,
         urlStart: url.substring(0, 50),
       });
 
       // Handle custom scheme redirect (Discourse auth callback)
-      if (isAuthRedirect) {
+      if (isCustomSchemeRedirect) {
         const urlParams = parseURLParameters(url);
         const payload = urlParams.payload;
         if (payload) {
-          const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
-          router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
+          logger.info('AuthModal: Payload found in custom scheme redirect, processing directly');
+          // Process the payload directly instead of navigating to callback screen
+          handleAuthPayload(payload);
           return false;
         }
 
-        // Fallback: let Android's intent system handle the custom scheme
-        if (Platform.OS === 'android') {
-          Linking.openURL(url).catch(() => {});
-          return false;
-        }
-
+        // Custom scheme redirect without payload - this shouldn't happen normally
+        logger.warn('AuthModal: Custom scheme redirect without payload', { url: url.substring(0, 100) });
         setError('Authorization completed, but no payload was returned. Please try again.');
         return false;
       }
@@ -201,20 +286,26 @@ export default function AuthModalScreen(): React.ReactElement {
         const urlParams = parseURLParameters(url);
         const payload = urlParams.payload;
         if (payload) {
-          const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
-          router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
+          logger.info('AuthModal: Payload found in URL query, processing directly');
+          handleAuthPayload(payload);
           return false;
         }
       }
 
+      // Allow Discourse URLs to load in the WebView
       if (baseUrl && url.startsWith(baseUrl)) {
         return true;
       }
 
-      Linking.openURL(url).catch(() => {});
+      // For non-Discourse URLs, open externally (but log it for debugging)
+      // This handles things like "Continue with Google" that redirect to external auth
+      logger.info('AuthModal: Opening external URL', { url: url.substring(0, 100) });
+      Linking.openURL(url).catch((err) => {
+        logger.warn('AuthModal: Failed to open external URL', { error: err?.message });
+      });
       return false;
     },
-    [baseUrl, params.returnTo]
+    [baseUrl, handleAuthPayload]
   );
 
   const handleWebViewMessage = useCallback(
@@ -243,11 +334,10 @@ export default function AuthModalScreen(): React.ReactElement {
         return;
       }
 
-      logger.info('AuthModal: Payload extracted successfully, navigating to callback');
-      const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
-      router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
+      logger.info('AuthModal: Payload extracted from message, processing directly');
+      handleAuthPayload(payload);
     },
-    [params.returnTo]
+    [handleAuthPayload]
   );
 
   useEffect(() => {
@@ -256,15 +346,15 @@ export default function AuthModalScreen(): React.ReactElement {
       const urlParams = parseURLParameters(url);
       const payload = urlParams.payload;
       if (payload) {
-        const returnTo = params.returnTo ? `&returnTo=${encodeURIComponent(params.returnTo)}` : '';
-        router.replace(`/auth/callback?payload=${encodeURIComponent(payload)}${returnTo}`);
+        logger.info('AuthModal: Payload received via deep link, processing directly');
+        handleAuthPayload(payload);
       }
     });
 
     return () => {
       listener.remove();
     };
-  }, [params.returnTo]);
+  }, [handleAuthPayload]);
 
   // Show error state
   if (error) {

@@ -171,35 +171,72 @@ export default function AuthCallbackScreen() {
             // Clear nonce after successful verification (prevents reuse)
             await UserApiKeyManager.clearNonce();
 
-            // Store API key securely - just the raw key, not JSON
-            // authHeaders() expects a raw string at this key
-            await SecureStore.setItemAsync("fomio_user_api_key", decrypted.key);
-
             // Store one-time password if provided
             if (decrypted.one_time_password) {
               await UserApiKeyManager.storeOneTimePassword(decrypted.one_time_password);
             }
 
-            // Android: mirror iOS by persisting complete auth data when payload arrives
-            if (Platform.OS === 'android') {
-              let username: string | undefined;
-              try {
-                const userResponse = await discourseApi.getCurrentUser();
-                if (userResponse.success && userResponse.data?.username) {
-                  username = userResponse.data.username;
-                  logger.info('AuthCallbackScreen: Username retrieved during Android callback', { username });
-                }
-              } catch (error) {
-                logger.warn('AuthCallbackScreen: Failed to fetch username during Android callback (non-critical)', error);
-              }
-
+            // For ALL platforms, fetch username and store complete auth (matches iOS pattern in lib/auth.ts)
+            // This ensures username is available for write operations and prevents race conditions
+            let username: string | undefined;
+            try {
+              // Temporarily store key so API call works (same pattern as iOS in lib/auth.ts)
+              await SecureStore.setItemAsync("fomio_user_api_key", decrypted.key);
+              
+              // CRITICAL FIX: Set memory cache immediately so it's available for any API calls
+              // This prevents race conditions where write operations happen before storeCompleteAuth
               const clientId = await UserApiKeyManager.getOrGenerateClientId();
-              await UserApiKeyManager.storeCompleteAuth(
-                decrypted.key,
-                username,
-                clientId,
-                decrypted.one_time_password
-              );
+              UserApiKeyManager.setMemoryCache(decrypted.key, undefined, clientId);
+              
+              const userResponse = await discourseApi.getCurrentUser();
+              if (userResponse.success && userResponse.data?.username) {
+                username = userResponse.data.username;
+                logger.info('AuthCallbackScreen: Username retrieved during callback', { username });
+              }
+            } catch (error) {
+              logger.warn('AuthCallbackScreen: Failed to fetch username during callback (non-critical)', error);
+              // Don't fail auth if username fetch fails - we can get it later (same as iOS)
+            }
+
+            // Store complete auth using unified storage (matches iOS pattern)
+            const clientId = await UserApiKeyManager.getOrGenerateClientId();
+            await UserApiKeyManager.storeCompleteAuth(
+              decrypted.key,
+              username,
+              clientId,
+              decrypted.one_time_password
+            );
+
+            // CRITICAL: Add a small delay to ensure SecureStore has flushed on Android
+            // SecureStore on Android may not be immediately consistent
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Verify the key was stored correctly before proceeding
+            // This ensures SecureStore has flushed the data
+            try {
+              const verifyCredentials = await UserApiKeyManager.getAuthCredentials();
+              if (!verifyCredentials?.key) {
+                logger.warn('AuthCallbackScreen: Key not immediately available after storage, retrying...', {
+                  storedKey: decrypted.key?.substring(0, 10) + '...',
+                });
+                // Small delay and retry
+                await new Promise(resolve => setTimeout(resolve, 300));
+                const retryCredentials = await UserApiKeyManager.getAuthCredentials();
+                if (!retryCredentials?.key) {
+                  logger.error('AuthCallbackScreen: API key storage verification failed after retry', {
+                    checkedAllLocations: true,
+                  });
+                  throw new Error('API key storage verification failed');
+                }
+                logger.info('AuthCallbackScreen: API key found on retry');
+              } else {
+                logger.info('AuthCallbackScreen: API key storage verified', {
+                  hasUsername: !!verifyCredentials.username,
+                });
+              }
+            } catch (verifyError) {
+              logger.error('AuthCallbackScreen: Failed to verify API key storage', verifyError);
+              // Don't fail auth, but log the issue - the key might still be available
             }
 
             logger.info('AuthCallbackScreen: API key stored successfully');

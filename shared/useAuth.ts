@@ -50,15 +50,30 @@ const useAuthStore = create<AuthStore>((set, get) => ({
       console.log('📱 Loading stored authentication...');
       set({ isLoading: true });
       
-      // CRITICAL FIX: Always try API call first, regardless of hasApiKey() check
-      // This handles both legacy ('disc_user_api_key') and new ('fomio_user_api_key') storage
-      // The authHeaders() function checks both locations, so if API works, we have valid auth
-      // hasApiKey() only checks new storage, but keys might exist in legacy location
+      // CRITICAL: First check if we have a stored User API Key
+      // The session endpoint (/session/current.json) can work via cookies even without User API Key
+      // But all authenticated operations require the User-Api-Key header
+      const credentials = await UserApiKeyManager.getAuthCredentials();
+      const hasStoredApiKey = !!(credentials?.key);
+      
+      console.log('🔐 API Key check:', { hasStoredApiKey, keyLength: credentials?.key?.length || 0 });
+      
+      if (!hasStoredApiKey) {
+        // No API key stored - even if session cookies work, we need to re-authenticate
+        // to get a proper User API Key for authenticated operations
+        console.log('⚠️ No User API Key stored - need to authenticate');
+        set({ isLoading: false, isAuthenticated: false, user: null });
+        isLoadingAuth = false;
+        hasLoadedAuth = true;
+        return;
+      }
+      
+      // We have a stored API key - verify it works with an API call
       let userResponse = await discourseApi.getCurrentUser();
       const hasValidAuth = userResponse.success && !!userResponse.data;
       
       if (hasValidAuth) {
-        console.log('✅ Valid API key found (verified via API call)');
+        console.log('✅ Valid API key found and verified via API call');
         // Try to load user data from storage first
         try {
           const storedData = await SecureStore.getItemAsync(AUTH_STORAGE_KEY);

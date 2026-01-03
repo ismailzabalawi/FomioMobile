@@ -1,5 +1,6 @@
 // Import Constants for Expo config
 import Constants from 'expo-constants';
+import { authHeaders } from '../lib/auth';
 const config = Constants.expoConfig?.extra || {};
 
 // Environment-aware storage import
@@ -387,15 +388,24 @@ class DiscourseApiService {
 
       // Authentication: Use User API Keys (delegated auth with RSA)
       try {
-        const { authHeaders: getAuthHeaders } = require('../lib/auth');
-        const authHeaders = await getAuthHeaders();
+        // #region agent log
+        const logData14 = {location:'discourseApi.ts:390',message:'makeRequest BEFORE authHeaders',data:{method,endpoint,isWriteOperation:method!=='GET'&&method!=='HEAD'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,E'};
+        console.log('🔍 DEBUG:', JSON.stringify(logData14));
+        fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData14)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
+        // #endregion
+        const authHeadersData = await authHeaders();
+        // #region agent log
+        const logData15 = {location:'discourseApi.ts:392',message:'makeRequest AFTER authHeaders',data:{hasApiKey:!!authHeadersData['User-Api-Key'],hasUsername:!!authHeadersData['Api-Username'],method,endpoint,isWriteOperation:method!=='GET'&&method!=='HEAD'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
+        console.log('🔍 DEBUG:', JSON.stringify(logData15));
+        fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData15)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
+        // #endregion
         
-        if (authHeaders['User-Api-Key']) {
-          Object.assign(headers, authHeaders);
+        if (authHeadersData['User-Api-Key']) {
+          Object.assign(headers, authHeadersData);
           
           // Log authentication status for debugging
-          const hasApiKey = !!authHeaders['User-Api-Key'];
-          const hasUsername = !!authHeaders['Api-Username'];
+          const hasApiKey = !!authHeadersData['User-Api-Key'];
+          const hasUsername = !!authHeadersData['Api-Username'];
           const isWriteOperation = method !== 'GET' && method !== 'HEAD';
           
           if (isWriteOperation && !hasUsername) {
@@ -414,24 +424,58 @@ class DiscourseApiService {
           console.log('🔑 Using User API Key for authentication', {
             hasApiKey,
             hasUsername,
-            username: authHeaders['Api-Username'] || 'not set',
+            username: authHeadersData['Api-Username'] || 'not set',
             method,
           });
         } else {
-          // For write operations without API key, return early
+          // For write operations without API key, try refreshing credentials once (handles race conditions)
           const isWriteOperation = method !== 'GET' && method !== 'HEAD';
           if (isWriteOperation) {
-            console.error('❌ Write operation without API key - request will fail', {
-              method,
-              endpoint,
-            });
-            return {
-              success: false,
-              error: 'Authentication required. Please sign in to perform this action.',
-              status: 401,
-            };
+            // #region agent log
+            const logData16 = {location:'discourseApi.ts:423',message:'RETRY for write operation',data:{method,endpoint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'};
+            console.log('🔍 DEBUG:', JSON.stringify(logData16));
+            fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData16)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
+            // #endregion
+            // Small delay to handle race conditions where key was just stored
+            // Increased to 200ms to give SecureStore more time to flush
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Try getting auth headers again
+            try {
+              const retryHeaders = await authHeaders();
+              // #region agent log
+              const logData17 = {location:'discourseApi.ts:430',message:'RETRY result',data:{hasApiKey:!!retryHeaders['User-Api-Key'],hasUsername:!!retryHeaders['Api-Username'],method,endpoint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'};
+              console.log('🔍 DEBUG:', JSON.stringify(logData17));
+              fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData17)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
+              // #endregion
+              if (retryHeaders['User-Api-Key']) {
+                Object.assign(headers, retryHeaders);
+                console.log('🔑 API key found on retry');
+              } else {
+                console.error('❌ Write operation without API key - request will fail', {
+                  method,
+                  endpoint,
+                });
+                return {
+                  success: false,
+                  error: 'Authentication required. Please sign in to perform this action.',
+                  status: 401,
+                };
+              }
+            } catch (retryError) {
+              console.error('❌ Write operation without API key - request will fail', {
+                method,
+                endpoint,
+              });
+              return {
+                success: false,
+                error: 'Authentication required. Please sign in to perform this action.',
+                status: 401,
+              };
+            }
+          } else {
+            console.log('⚠️ User API Key not found, request may fail');
           }
-          console.log('⚠️ User API Key not found, request may fail');
         }
       } catch (error) {
         console.warn('Failed to load auth headers', error);
@@ -502,18 +546,23 @@ class DiscourseApiService {
             ) || errorData.message?.includes('CSRF');
             
             // Check if this is a permissions error (invalid_access) vs invalid key
+            // This includes "not permitted", "permission denied", etc.
             const isPermissionError = errorData.error_type === 'invalid_access' || 
                                     errorData.errors?.some((err: string) => 
                                       typeof err === 'string' && (
                                         err.includes('not permitted') || 
                                         err.includes('permission') ||
-                                        err.includes('invalid_access')
+                                        err.includes('invalid_access') ||
+                                        err.includes('You cannot') ||
+                                        err.includes('forbidden')
                                       )
                                     );
             
-            // Don't clear keys for permission errors on GET requests - these are permissions issues, not invalid keys
-            const isGetRequest = (options.method || 'GET').toUpperCase() === 'GET';
-            const shouldClearKeys = !isCsrfError && !(isPermissionError && isGetRequest);
+            // Don't clear keys for permission errors - these mean the API key is VALID
+            // but the user doesn't have permission for this specific action
+            // Only clear keys for actual authentication failures (401 or 403 without permission message)
+            const isAuthFailure = response.status === 401;
+            const shouldClearKeys = !isCsrfError && !isPermissionError && isAuthFailure;
             
             if (isCsrfError) {
               // CSRF error usually means API key authentication failed
@@ -527,14 +576,21 @@ class DiscourseApiService {
                 hasApiKey: !!headers['User-Api-Key'],
                 hasUsername: !!headers['Api-Username'],
               });
-            } else if (isPermissionError && isGetRequest) {
-              // Permission error on GET request - don't clear keys, just log
-              console.warn('⚠️ Permission error (403) - API key valid but lacks permissions for this resource', {
+            } else if (isPermissionError) {
+              // Permission error - API key is valid but user lacks permissions for this action
+              console.warn('⚠️ Permission error (403) - API key valid but lacks permissions for this action', {
                 endpoint,
+                method: options.method || 'GET',
                 errorType: errorData.error_type,
+                errorMessage: errorData.errors?.[0]?.substring(0, 100),
               });
+            } else if (isAuthFailure) {
+              console.log('🔒 API key expired or invalid (401), clearing authentication');
             } else {
-              console.log('🔒 API key expired or invalid (401/403), clearing authentication');
+              console.warn('⚠️ 403 without clear permission message - treating as auth failure', {
+                endpoint,
+                errorData,
+              });
             }
             
             // Clear User API Key only if it's a real authentication failure (not CSRF or permission error on GET)

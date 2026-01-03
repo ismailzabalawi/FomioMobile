@@ -285,6 +285,11 @@ export async function signIn(): Promise<boolean> {
         // Temporarily store key so API call works
         await SecureStore.setItemAsync("fomio_user_api_key", key);
         
+        // CRITICAL FIX: Set memory cache immediately so it's available for any API calls
+        // This prevents race conditions where write operations happen before storeCompleteAuth
+        const clientId = await UserApiKeyManager.getOrGenerateClientId();
+        UserApiKeyManager.setMemoryCache(key, undefined, clientId);
+        
         const discourseApi = require('../shared/discourseApi').discourseApi;
         const userResponse = await discourseApi.getCurrentUser();
         if (userResponse.success && userResponse.data?.username) {
@@ -356,13 +361,32 @@ export async function signIn(): Promise<boolean> {
  * Uses UserApiKeyManager.getAuthCredentials() as the single source of truth.
  */
 export async function authHeaders(): Promise<Record<string, string>> {
+  // #region agent log
+  const logData11 = {location:'lib/auth.ts:358',message:'authHeaders ENTRY',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
+  console.log('🔍 DEBUG:', JSON.stringify(logData11));
+  fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData11)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
+  // #endregion
   try {
     // Use unified storage via UserApiKeyManager
     const credentials = await UserApiKeyManager.getAuthCredentials();
+    // #region agent log
+    const logData12 = {location:'lib/auth.ts:361',message:'authHeaders AFTER getAuthCredentials',data:{hasCredentials:!!credentials,hasKey:!!credentials?.key,keyLength:credentials?.key?.length||0,hasUsername:!!credentials?.username},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
+    console.log('🔍 DEBUG:', JSON.stringify(logData12));
+    fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData12)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
+    // #endregion
 
     if (!credentials?.key) {
       console.warn("⚠️ Missing User-Api-Key");
       console.log("⚠️ User API Key not found, request may fail");
+      logger.error('🔍 DEBUG: authHeaders - NO CREDENTIALS', {
+        hasCredentials: !!credentials,
+        timestamp: new Date().toISOString(),
+      });
+      // #region agent log
+      const logData13 = {location:'lib/auth.ts:363',message:'authHeaders EXIT - NO KEY',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
+      console.log('🔍 DEBUG:', JSON.stringify(logData13));
+      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData13)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
+      // #endregion
       return {};
     }
 
@@ -397,6 +421,130 @@ export async function hasUserApiKey(): Promise<boolean> {
   } catch (error) {
     logger.error('Failed to check API key', error);
     return false;
+  }
+}
+
+/**
+ * Process the encrypted auth payload from Discourse callback
+ * This decrypts the payload, verifies the nonce, and stores the API key
+ * 
+ * @param encryptedPayload - The encrypted payload from Discourse callback (base64 encoded)
+ * @returns Object with success status and optional user data or error message
+ */
+export async function processAuthPayload(encryptedPayload: string): Promise<{
+  success: boolean;
+  username?: string;
+  error?: string;
+}> {
+  try {
+    logger.info('processAuthPayload: Starting payload processing...');
+    
+    // Normalize the payload (replace spaces with +, URL decode if needed)
+    let payload = encryptedPayload.replace(/ /g, '+');
+    
+    // URL decode if encoded
+    try {
+      payload = decodeURIComponent(payload);
+    } catch {
+      // Already decoded
+    }
+    
+    // Decrypt payload
+    logger.info('processAuthPayload: Decrypting payload...');
+    const decrypted = await UserApiKeyManager.decryptPayload(payload);
+    
+    if (!decrypted.key) {
+      throw new Error('Invalid payload: API key not found after decryption');
+    }
+    
+    // Verify nonce matches stored nonce (security check to prevent replay attacks)
+    const storedNonce = await UserApiKeyManager.getNonce();
+    if (decrypted.nonce && storedNonce) {
+      if (decrypted.nonce !== storedNonce) {
+        logger.error('processAuthPayload: Nonce mismatch - possible replay attack', {
+          storedNonce: storedNonce.substring(0, 10) + '...',
+          decryptedNonce: decrypted.nonce.substring(0, 10) + '...',
+        });
+        throw new Error('Security verification failed. Please try again.');
+      }
+      logger.info('processAuthPayload: Nonce verification successful');
+    } else if (decrypted.nonce || storedNonce) {
+      // If only one is present, log warning but don't fail (for backward compatibility)
+      logger.warn('processAuthPayload: Partial nonce data - one missing', {
+        hasDecryptedNonce: !!decrypted.nonce,
+        hasStoredNonce: !!storedNonce,
+      });
+    }
+    
+    // Clear nonce after successful verification (prevents reuse)
+    await UserApiKeyManager.clearNonce();
+    
+    // Store one-time password if provided
+    if (decrypted.one_time_password) {
+      await UserApiKeyManager.storeOneTimePassword(decrypted.one_time_password);
+    }
+    
+    // Temporarily store key so API call works
+    await SecureStore.setItemAsync("fomio_user_api_key", decrypted.key);
+    
+    // Fetch username for API operations that require it
+    let username: string | undefined;
+    try {
+      // Dynamic import to avoid circular dependency
+      const { discourseApi } = await import('../shared/discourseApi');
+      const userResponse = await discourseApi.getCurrentUser();
+      if (userResponse.success && userResponse.data?.username) {
+        username = userResponse.data.username;
+        logger.info('processAuthPayload: Username retrieved', { username });
+      }
+    } catch (error) {
+      logger.warn('processAuthPayload: Failed to fetch username (non-critical)', error);
+      // Don't fail auth if username fetch fails - we can get it later
+    }
+    
+    // Store complete auth using unified storage
+    const clientId = await UserApiKeyManager.getOrGenerateClientId();
+    await UserApiKeyManager.storeCompleteAuth(
+      decrypted.key,
+      username,
+      clientId,
+      decrypted.one_time_password
+    );
+    
+    // CRITICAL: Add a small delay to ensure SecureStore has flushed on Android
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Verify the key was stored correctly
+    const verifyCredentials = await UserApiKeyManager.getAuthCredentials();
+    if (!verifyCredentials?.key) {
+      logger.warn('processAuthPayload: Key not immediately available, retrying...');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const retryCredentials = await UserApiKeyManager.getAuthCredentials();
+      if (!retryCredentials?.key) {
+        throw new Error('API key storage verification failed');
+      }
+      logger.info('processAuthPayload: API key found on retry');
+    } else {
+      logger.info('processAuthPayload: API key storage verified', {
+        hasUsername: !!verifyCredentials.username,
+      });
+    }
+    
+    // Mark onboarding as completed
+    await setOnboardingCompleted();
+    
+    logger.info('processAuthPayload: Authentication successful');
+    
+    return {
+      success: true,
+      username: username,
+    };
+  } catch (error: any) {
+    logger.error('processAuthPayload: Failed', error);
+    return {
+      success: false,
+      error: error?.message || 'Failed to process authentication',
+    };
   }
 }
 
