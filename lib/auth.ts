@@ -1,4 +1,3 @@
-import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import type { WebBrowserRedirectResult } from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
@@ -17,8 +16,6 @@ WebBrowser.maybeCompleteAuthSession();
 const config = Constants.expoConfig?.extra || {};
 const SITE = config.DISCOURSE_BASE_URL || process.env.EXPO_PUBLIC_DISCOURSE_URL || 'https://meta.fomio.app';
 const PUSH_URL = config.DISCOURSE_PUSH_URL || process.env.EXPO_PUBLIC_DISCOURSE_PUSH_URL;
-const STORAGE_KEY = 'disc_user_api_key';
-const CLIENT_ID_KEY = 'disc_client_id';
 
 /**
  * Build redirect URI using Discourse's official pattern
@@ -55,35 +52,6 @@ function getRedirectUri(): string {
 }
 
 /**
- * Generate RSA keypair for authentication
- * Uses UserApiKeyManager which handles multiple crypto backends
- */
-async function getRsaKeypair(): Promise<{ publicKey: string; privateKey: string }> {
-  try {
-    // Check if we have a stored private key
-    const storedPrivateKey = await UserApiKeyManager.getPrivateKey();
-    const storedPublicKey = await UserApiKeyManager.getPublicKey();
-    
-    if (storedPrivateKey && storedPublicKey) {
-      return {
-        publicKey: storedPublicKey,
-        privateKey: storedPrivateKey,
-      };
-    }
-    
-    // Generate new keypair
-    const keyPair = await UserApiKeyManager.generateKeyPair();
-    return {
-      publicKey: keyPair.publicKey,
-      privateKey: keyPair.privateKey,
-    };
-  } catch (error) {
-    logger.error('Failed to get RSA keypair', error);
-    throw new Error('Failed to generate encryption keys. Please try again.');
-  }
-}
-
-/**
  * Decrypt payload from Discourse
  */
 async function decryptPayload(encryptedPayload: string, privateKey: string): Promise<{ key: string; one_time_password?: string; nonce?: string }> {
@@ -114,92 +82,50 @@ async function decryptPayload(encryptedPayload: string, privateKey: string): Pro
 }
 
 /**
- * Build auth URL for WebView-based flow (Android shell)
- * Ensures RSA keys + nonce are ready and private key is stored for callback decryption.
- */
-export async function buildAuthUrlForWebView(): Promise<string> {
-  // ALWAYS generate fresh RSA keypair for each auth attempt
-  // This prevents key mismatch issues from stale/corrupted stored keys
-  logger.info('Generating fresh RSA keypair for WebView auth...');
-  const keyPair = await UserApiKeyManager.generateKeyPair();
-  const publicKey = keyPair.publicKey;
-  const privateKey = keyPair.privateKey;
-
-  // Persist private key so callback can decrypt payload
-  await UserApiKeyManager.storePrivateKey(privateKey);
-  await UserApiKeyManager.storePublicKey(publicKey);
-
-  // Generate or get client ID
-  const clientId = await UserApiKeyManager.getOrGenerateClientId();
-
-  // Create redirect URI
-  const redirectUri = getRedirectUri();
-
-  // Build authorization URL
-  const scopes = 'read,write,notifications,session_info,one_time_password';
-  // ALWAYS generate fresh nonce for each auth attempt
-  const nonce = await UserApiKeyManager.generateNonce();
-  await UserApiKeyManager.storeNonce(nonce);
-
-  const params = new URLSearchParams({
-    application_name: 'Fomio',
-    client_id: clientId,
-    scopes,
-    public_key: publicKey,
-    auth_redirect: redirectUri,
-    nonce,
-    discourse_app: '1',
-  });
-  if (PUSH_URL) {
-    params.append('push_url', PUSH_URL);
-  }
-
-  const authUrl = `${SITE}/user-api-key/new?${params.toString()}`;
-
-  logger.info('Built WebView auth URL', {
-    url: authUrl.substring(0, 200),
-    redirectUri,
-    platform: Platform.OS,
-    noncePreview: nonce.substring(0, 20),
-    publicKeyPreview: publicKey.substring(0, 50),
-  });
-
-  return authUrl;
-}
-
-/**
  * Sign in using Discourse delegated authentication
  * Follows Discourse User API Keys specification
+ * 
+ * Uses WebBrowser.openAuthSessionAsync for BOTH platforms:
+ * - iOS: ASWebAuthenticationSession
+ * - Android: Chrome Custom Tabs
+ * 
+ * This is the OAuth best practice approach that provides:
+ * - Better security (app can't inspect credentials/cookies)
+ * - Password manager / passkeys compatibility
+ * - Consistent experience across platforms
  */
 export async function signIn(): Promise<boolean> {
   try {
-    logger.info('Starting Discourse delegated authentication...');
+    logger.info('Starting Discourse delegated authentication...', { platform: Platform.OS });
     
-    // Generate RSA keypair
-    const { publicKey, privateKey } = await getRsaKeypair();
+    // ALWAYS generate fresh RSA keypair for each auth attempt
+    // This prevents key mismatch issues from stale/corrupted stored keys
+    const keyPair = await UserApiKeyManager.generateKeyPair();
+    const publicKey = keyPair.publicKey;
+    const privateKey = keyPair.privateKey;
+    
+    // Persist keys so callback can decrypt payload
+    await UserApiKeyManager.storePrivateKey(privateKey);
+    await UserApiKeyManager.storePublicKey(publicKey);
     
     // Generate or get client ID
     const clientId = await UserApiKeyManager.getOrGenerateClientId();
     
-    // Create redirect URI - Force fomio:// scheme even in development
-    // In Expo Go, Linking.createURL returns exp://, but Discourse needs fomio://
+    // Create redirect URI
     const redirectUri = getRedirectUri();
     
-    // Log redirect URI format for debugging
-    logger.info('Generated redirect URI for auth', {
+    logger.info('Auth setup complete', {
       redirectUri,
-      platform: require('react-native').Platform.OS,
-      scheme: 'fomio',
-      path: '/auth/callback',
+      platform: Platform.OS,
     });
     
     // Build authorization URL
     const scopes = 'read,write,notifications,session_info,one_time_password';
-    let nonce = await UserApiKeyManager.getNonce();
-    if (!nonce) {
-      nonce = await UserApiKeyManager.generateNonce();
-      await UserApiKeyManager.storeNonce(nonce);
-    }
+    
+    // ALWAYS generate fresh nonce for each auth attempt
+    const nonce = await UserApiKeyManager.generateNonce();
+    await UserApiKeyManager.storeNonce(nonce);
+    
     const params = new URLSearchParams({
       application_name: 'Fomio',
       client_id: clientId,
@@ -215,138 +141,94 @@ export async function signIn(): Promise<boolean> {
     
     const authUrl = `${SITE}/user-api-key/new?${params.toString()}`;
     
-    logger.info('Opening authorization URL', {
-      url: authUrl.replace(publicKey, '[PUBLIC_KEY]'),
-      redirectUri,
+    logger.info('Opening authorization URL via system browser...', {
       platform: Platform.OS,
     });
     
-    // Platform-specific handling
-    if (Platform.OS === 'ios') {
-      // iOS: Use existing working flow (100% UNCHANGED - exact same code)
-      // This uses ASWebAuthenticationSession which properly intercepts redirects
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-      
-      if (result.type !== 'success') {
-        if (result.type === 'cancel') {
-          logger.info('User cancelled authorization');
-          throw new Error('Authorization cancelled');
-        }
-        logger.error('Authorization failed', { type: result.type });
-        throw new Error('Authorization failed. Please try again.');
+    // UNIFIED APPROACH: Use WebBrowser.openAuthSessionAsync for both platforms
+    // - iOS: Uses ASWebAuthenticationSession
+    // - Android: Uses Chrome Custom Tabs
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+    
+    if (result.type !== 'success') {
+      if (result.type === 'cancel') {
+        logger.info('User cancelled authorization');
+        throw new Error('Authorization cancelled');
       }
-      
-      // Extract payload from the redirect URL
-      // Parse the URL using utility function
-      const redirectResult = result as WebBrowserRedirectResult;
-      const urlString = redirectResult.url ?? '';
-      const urlParams = parseURLParameters(urlString);
-      const payload = urlParams.payload || null;
-      
-      if (!payload) {
-        logger.error('No payload in redirect URL', { url: urlString });
-        throw new Error('Invalid authorization response. Please try again.');
-      }
-      logger.info('Received authorization payload, decrypting...');
-      
-      // Decrypt payload
-      const { key, one_time_password, nonce: decryptedNonce } = await decryptPayload(payload, privateKey);
-      
-      if (!key) {
-        throw new Error('Invalid authorization response: API key not found');
-      }
-      
-      // Verify nonce matches stored nonce (security check to prevent replay attacks)
-      const storedNonce = await UserApiKeyManager.getNonce();
-      if (decryptedNonce && storedNonce) {
-        if (decryptedNonce !== storedNonce) {
-          logger.error('Nonce mismatch - possible replay attack', {
-            storedNonce: storedNonce.substring(0, 10) + '...',
-            decryptedNonce: decryptedNonce.substring(0, 10) + '...',
-          });
-          throw new Error('Security verification failed. Please try again.');
-        }
-        logger.info('Nonce verification successful');
-      } else if (decryptedNonce || storedNonce) {
-        // If only one is present, log warning but don't fail (for backward compatibility)
-        logger.warn('Partial nonce data - one missing', {
-          hasDecryptedNonce: !!decryptedNonce,
-          hasStoredNonce: !!storedNonce,
-        });
-      }
-      
-      // Clear nonce after successful verification (prevents reuse)
-      await UserApiKeyManager.clearNonce();
-      
-      // Get username from API after storing the key temporarily
-      // This is needed for the Api-Username header required by Discourse API
-      let username: string | undefined;
-      try {
-        // Temporarily store key so API call works
-        await SecureStore.setItemAsync("fomio_user_api_key", key);
-        
-        // CRITICAL FIX: Set memory cache immediately so it's available for any API calls
-        // This prevents race conditions where write operations happen before storeCompleteAuth
-        const clientId = await UserApiKeyManager.getOrGenerateClientId();
-        UserApiKeyManager.setMemoryCache(key, undefined, clientId);
-        
-        const discourseApi = require('../shared/discourseApi').discourseApi;
-        const userResponse = await discourseApi.getCurrentUser();
-        if (userResponse.success && userResponse.data?.username) {
-          username = userResponse.data.username;
-          logger.info('Username retrieved during sign in', { username });
-        }
-      } catch (error) {
-        logger.warn('Failed to get username during sign in (non-critical)', error);
-        // Don't fail sign in if username fetch fails - we can get it later
-      }
-
-      // Store complete auth using unified storage
-      await UserApiKeyManager.storeCompleteAuth(key, username, clientId, one_time_password);
-      
-      logger.info('API key stored successfully');
-      
-      // Warm browser cookies with OTP if provided (recommended)
-      if (one_time_password) {
-        try {
-          logger.info('Warming browser cookies with OTP...');
-          const otpUrl = `${SITE}/session/otp/${one_time_password}`;
-          
-          // Open OTP URL in system browser to set logged-in cookie
-          // Using openBrowserAsync ensures cookies are set in the user's default browser
-          await WebBrowser.openBrowserAsync(otpUrl);
-          
-          logger.info('OTP cookie warming completed');
-        } catch (otpError) {
-          // OTP warming is optional, log but don't fail
-          logger.warn('OTP cookie warming failed (non-critical)', otpError);
-        }
-      }
-
-      emitAuthEvent('auth:signed-in');
-      await setOnboardingCompleted();
-
-      return true;
-    } else {
-      // Android: Use Linking.openURL() which works reliably with any browser
-      // The deep link redirect will be handled by app/auth/callback.tsx via Expo Router
-      // This approach works with Chrome, Firefox, Samsung Internet, Edge, etc.
-      logger.info('Android: Opening auth URL, redirect will be handled via deep link');
-      
-      const canOpen = await Linking.canOpenURL(authUrl);
-      if (!canOpen) {
-        logger.error('Cannot open authorization URL', { authUrl });
-        throw new Error('Cannot open authorization URL. Please check your browser settings.');
-      }
-      
-      await Linking.openURL(authUrl);
-      
-      // Return true immediately - the callback screen will complete the auth flow
-      // When Discourse redirects to fomio://auth/callback?payload=..., Android's intent system
-      // will open the app and route to app/auth/callback.tsx, which handles the full flow
-      logger.info('Android: Auth URL opened, waiting for deep link redirect...');
-      return true;
+      logger.error('Authorization failed', { type: result.type });
+      throw new Error('Authorization failed. Please try again.');
     }
+    
+    // Extract payload from the redirect URL
+    const redirectResult = result as WebBrowserRedirectResult;
+    const urlString = redirectResult.url ?? '';
+    const urlParams = parseURLParameters(urlString);
+    const payload = urlParams.payload || null;
+    
+    if (!payload) {
+      logger.error('No payload in redirect URL', { url: urlString.substring(0, 100) });
+      throw new Error('Invalid authorization response. Please try again.');
+    }
+    
+    logger.info('Received authorization payload, decrypting...');
+    
+    // Decrypt payload
+    const { key, one_time_password, nonce: decryptedNonce } = await decryptPayload(payload, privateKey);
+    
+    if (!key) {
+      throw new Error('Invalid authorization response: API key not found');
+    }
+    
+    // Verify nonce matches stored nonce (security check to prevent replay attacks)
+    const storedNonce = await UserApiKeyManager.getNonce();
+    if (decryptedNonce && storedNonce) {
+      if (decryptedNonce !== storedNonce) {
+        logger.error('Nonce mismatch - possible replay attack');
+        throw new Error('Security verification failed. Please try again.');
+      }
+      logger.info('Nonce verification successful');
+    }
+    
+    // Clear nonce after successful verification (prevents reuse)
+    await UserApiKeyManager.clearNonce();
+    
+    // Get username from API after storing the key temporarily
+    let username: string | undefined;
+    try {
+      // Temporarily store key so API call works
+      await SecureStore.setItemAsync("fomio_user_api_key", key);
+      
+      const discourseApi = require('../shared/discourseApi').discourseApi;
+      const userResponse = await discourseApi.getCurrentUser();
+      if (userResponse.success && userResponse.data?.username) {
+        username = userResponse.data.username;
+        logger.info('Username retrieved during sign in', { username });
+      }
+    } catch (error) {
+      logger.warn('Failed to get username during sign in (non-critical)', error);
+    }
+
+    // Store complete auth using unified storage
+    await UserApiKeyManager.storeCompleteAuth(key, username, clientId, one_time_password);
+    
+    logger.info('API key stored successfully');
+    
+    // Warm browser cookies with OTP if provided (recommended)
+    if (one_time_password) {
+      try {
+        logger.info('Warming browser cookies with OTP...');
+        const otpUrl = `${SITE}/session/otp/${one_time_password}`;
+        await WebBrowser.openBrowserAsync(otpUrl);
+        logger.info('OTP cookie warming completed');
+      } catch (otpError) {
+        logger.warn('OTP cookie warming failed (non-critical)', otpError);
+      }
+    }
+
+    emitAuthEvent('auth:signed-in');
+    await setOnboardingCompleted();
+
+    return true;
   } catch (error: any) {
     logger.error('Sign in failed', error);
     throw error;
@@ -361,37 +243,14 @@ export async function signIn(): Promise<boolean> {
  * Uses UserApiKeyManager.getAuthCredentials() as the single source of truth.
  */
 export async function authHeaders(): Promise<Record<string, string>> {
-  // #region agent log
-  const logData11 = {location:'lib/auth.ts:358',message:'authHeaders ENTRY',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
-  console.log('🔍 DEBUG:', JSON.stringify(logData11));
-  fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData11)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-  // #endregion
   try {
-    // Use unified storage via UserApiKeyManager
     const credentials = await UserApiKeyManager.getAuthCredentials();
-    // #region agent log
-    const logData12 = {location:'lib/auth.ts:361',message:'authHeaders AFTER getAuthCredentials',data:{hasCredentials:!!credentials,hasKey:!!credentials?.key,keyLength:credentials?.key?.length||0,hasUsername:!!credentials?.username},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
-    console.log('🔍 DEBUG:', JSON.stringify(logData12));
-    fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData12)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-    // #endregion
 
     if (!credentials?.key) {
-      console.warn("⚠️ Missing User-Api-Key");
-      console.log("⚠️ User API Key not found, request may fail");
-      logger.error('🔍 DEBUG: authHeaders - NO CREDENTIALS', {
-        hasCredentials: !!credentials,
-        timestamp: new Date().toISOString(),
-      });
-      // #region agent log
-      const logData13 = {location:'lib/auth.ts:363',message:'authHeaders EXIT - NO KEY',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
-      console.log('🔍 DEBUG:', JSON.stringify(logData13));
-      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData13)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-      // #endregion
+      logger.debug('authHeaders: No API key available');
       return {};
     }
 
-    // Return headers - username is optional for GET requests
-    // Api-Username is required for write operations, but GET requests work with just User-Api-Key
     const headers: Record<string, string> = {
       "User-Api-Key": credentials.key,
       ...(credentials.clientId ? { "User-Api-Client-Id": credentials.clientId } : {}),
@@ -401,8 +260,6 @@ export async function authHeaders(): Promise<Record<string, string>> {
 
     if (credentials.username) {
       headers["Api-Username"] = credentials.username;
-    } else {
-      console.log("⚠️ Api-Username not available yet, some operations may fail");
     }
 
     return headers;
@@ -550,64 +407,63 @@ export async function processAuthPayload(encryptedPayload: string): Promise<{
 
 /**
  * Sign out and revoke API key
+ * Clears all authentication state from storage
  */
 export async function signOut(): Promise<void> {
   try {
     logger.info('Signing out...');
     
-    // Get API key from either storage location for revocation
-    let key: string | null = null;
-    const apiKeyData = await UserApiKeyManager.getApiKey();
-    if (apiKeyData?.key) {
-      key = apiKeyData.key;
-    }
+    // Get API key for server revocation
+    const credentials = await UserApiKeyManager.getAuthCredentials();
     
-    if (!key) {
-      key = await SecureStore.getItemAsync(STORAGE_KEY);
-    }
-    
-    if (key) {
+    if (credentials?.key) {
       try {
-        // Revoke API key on server
+        // Revoke API key on server (best effort)
         const response = await fetch(`${SITE}/user-api-key/revoke`, {
           method: 'POST',
           headers: {
-            'User-Api-Key': key,
+            'User-Api-Key': credentials.key,
             'Content-Type': 'application/json',
           },
         });
         
-        if (!response.ok) {
-          logger.warn('API key revocation failed', {
-            status: response.status,
-            statusText: response.statusText,
-          });
+        if (response.ok) {
+          logger.info('API key revoked on server');
         } else {
-          logger.info('API key revoked successfully');
+          logger.warn('API key revocation failed on server', { status: response.status });
         }
       } catch (revokeError) {
-        logger.warn('Failed to revoke API key (non-critical)', revokeError);
+        logger.warn('Failed to revoke API key on server (non-critical)', revokeError);
       }
     }
     
-    // Clear local storage (both new and legacy locations)
-    await SecureStore.deleteItemAsync(STORAGE_KEY);
-    await SecureStore.deleteItemAsync(CLIENT_ID_KEY);
-    
-    // Clear keypair and API key data (optional, but good for security)
+    // Clear all authentication data
     await UserApiKeyManager.clearApiKey();
+    
+    // Clear any legacy keys that might still exist
+    const legacyKeys = ['disc_user_api_key', 'disc_client_id', 'fomio_user_api_key', 'fomio_user_api_username'];
+    for (const key of legacyKeys) {
+      try {
+        await SecureStore.deleteItemAsync(key);
+      } catch {
+        // Ignore individual deletion failures
+      }
+    }
+    
+    // Emit sign out event for React Query cache invalidation
+    emitAuthEvent('auth:signed-out');
     
     logger.info('Sign out completed');
   } catch (error) {
     logger.error('Sign out failed', error);
-    // Still clear local storage even if revocation fails
+    
+    // Still try to clear local storage even if something failed
     try {
-      await SecureStore.deleteItemAsync(STORAGE_KEY);
-      await SecureStore.deleteItemAsync(CLIENT_ID_KEY);
       await UserApiKeyManager.clearApiKey();
     } catch {
       // Ignore cleanup errors
     }
+    
     throw error;
   }
 }

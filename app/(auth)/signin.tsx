@@ -4,6 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
+import Animated, { 
+  FadeInDown, 
+  FadeInUp,
+  useAnimatedStyle,
+  withSpring,
+  useSharedValue,
+} from 'react-native-reanimated';
 
 import { useTheme } from '@/components/theme';
 import { useAuth } from '@/shared/auth-context';
@@ -14,11 +21,13 @@ import { getTokens } from '@/shared/design/tokens';
 const config = Constants.expoConfig?.extra || {};
 const BASE_URL = config.DISCOURSE_BASE_URL;
 
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+
 /**
  * Sign In Screen - Gateway to authentication
  * 
  * This screen provides entry points to:
- * 1. Sign in via auth modal (WebView-based User API Key flow)
+ * 1. Sign in via auth modal (User API Key flow with Chrome Custom Tabs)
  * 2. Create account (opens signup screen)
  * 
  * If already authenticated, redirects to main app.
@@ -31,6 +40,10 @@ export default function SignInScreen(): React.ReactElement {
   
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const baseUrlMissing = !BASE_URL;
+  
+  // Animation values
+  const primaryButtonScale = useSharedValue(1);
+  const secondaryButtonScale = useSharedValue(1);
 
   const colors = {
     background: tokens.colors.background,
@@ -47,7 +60,6 @@ export default function SignInScreen(): React.ReactElement {
   useEffect(() => {
     if (!isAuthLoading) {
       if (isAuthenticated) {
-        // Already authenticated, redirect to main app or returnTo
         const returnTo = params.returnTo;
         if (returnTo) {
           router.replace(decodeURIComponent(returnTo) as any);
@@ -60,11 +72,35 @@ export default function SignInScreen(): React.ReactElement {
     }
   }, [isAuthenticated, isAuthLoading, params.returnTo]);
 
+  // Button press animations
+  const onPrimaryPressIn = useCallback(() => {
+    primaryButtonScale.value = withSpring(0.97, { damping: 15, stiffness: 400 });
+  }, [primaryButtonScale]);
+
+  const onPrimaryPressOut = useCallback(() => {
+    primaryButtonScale.value = withSpring(1, { damping: 15, stiffness: 400 });
+  }, [primaryButtonScale]);
+
+  const onSecondaryPressIn = useCallback(() => {
+    secondaryButtonScale.value = withSpring(0.97, { damping: 15, stiffness: 400 });
+  }, [secondaryButtonScale]);
+
+  const onSecondaryPressOut = useCallback(() => {
+    secondaryButtonScale.value = withSpring(1, { damping: 15, stiffness: 400 });
+  }, [secondaryButtonScale]);
+
+  const primaryButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: primaryButtonScale.value }],
+  }));
+
+  const secondaryButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: secondaryButtonScale.value }],
+  }));
+
   // Open auth modal for sign in
   const handleSignIn = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     
-    // Pass returnTo param to auth modal
     const returnTo = params.returnTo;
     if (returnTo) {
       router.push(`/(auth)/auth-modal?returnTo=${encodeURIComponent(returnTo)}` as any);
@@ -79,6 +115,12 @@ export default function SignInScreen(): React.ReactElement {
     router.push('/(auth)/signup');
   }, []);
 
+  // Continue as guest
+  const handleGuest = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    router.replace('/(tabs)');
+  }, []);
+
   // Handle back navigation
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {
@@ -90,13 +132,12 @@ export default function SignInScreen(): React.ReactElement {
   const canGoBack = router.canGoBack();
 
   useScreenHeader({
-    title: 'Sign In',
+    title: '',
     canGoBack,
     onBackPress: handleBack,
     withSafeTop: false,
     tone: 'bg',
     compact: true,
-    titleFontSize: 20,
   }, [isDark]);
 
   useScreenBackBehavior({
@@ -119,9 +160,12 @@ export default function SignInScreen(): React.ReactElement {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.content}>
         <View style={styles.form}>
-          {/* Header section */}
-          <View style={styles.infoContainer}>
-            <Text style={[styles.infoTitle, { color: colors.text }]}>Welcome Back</Text>
+          {/* Header section with animation */}
+          <Animated.View 
+            entering={FadeInDown.delay(100).duration(400).springify()}
+            style={styles.infoContainer}
+          >
+            <Text style={[styles.infoTitle, { color: colors.text }]}>Welcome to Fomio</Text>
             <Text style={[styles.infoText, { color: colors.secondary }]}>
               Sign in to access your account, post Bytes, and join the conversation.
             </Text>
@@ -132,64 +176,80 @@ export default function SignInScreen(): React.ReactElement {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
 
-          {/* Sign In Button */}
-          <TouchableOpacity
-            style={[
-              styles.primaryButton,
-              baseUrlMissing && styles.disabledButton,
-              { backgroundColor: colors.primary },
-            ]}
-            onPress={handleSignIn}
-            disabled={baseUrlMissing}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Sign In"
-            accessibilityHint="Opens sign in flow"
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          {/* Sign In Button with animation */}
+          <Animated.View entering={FadeInUp.delay(200).duration(400).springify()}>
+            <AnimatedTouchableOpacity
+              style={[
+                styles.primaryButton,
+                baseUrlMissing && styles.disabledButton,
+                { backgroundColor: colors.primary },
+                primaryButtonStyle,
+              ]}
+              onPress={handleSignIn}
+              onPressIn={onPrimaryPressIn}
+              onPressOut={onPrimaryPressOut}
+              disabled={baseUrlMissing}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Sign In"
+              accessibilityHint="Opens sign in flow"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={1}
+            >
+              <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                {baseUrlMissing ? 'Configuration Required' : 'Sign In'}
+              </Text>
+            </AnimatedTouchableOpacity>
+          </Animated.View>
+
+          {/* Divider with animation */}
+          <Animated.View 
+            entering={FadeInUp.delay(300).duration(400).springify()}
+            style={styles.divider}
           >
-            <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-              {baseUrlMissing ? 'Configuration Required' : 'Sign In'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Divider */}
-          <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
             <Text style={[styles.dividerText, { color: colors.secondary }]}>or</Text>
             <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
-          </View>
+          </Animated.View>
 
-          {/* Create Account Button */}
-          <TouchableOpacity
-            style={[styles.secondaryButton, { borderColor: colors.primary }]}
-            onPress={handleSignUp}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Create Account"
-            accessibilityHint="Go to sign up screen"
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
-              Create Account
-            </Text>
-          </TouchableOpacity>
+          {/* Create Account Button with animation */}
+          <Animated.View entering={FadeInUp.delay(400).duration(400).springify()}>
+            <AnimatedTouchableOpacity
+              style={[styles.secondaryButton, { borderColor: colors.primary }, secondaryButtonStyle]}
+              onPress={handleSignUp}
+              onPressIn={onSecondaryPressIn}
+              onPressOut={onSecondaryPressOut}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Create Account"
+              accessibilityHint="Go to sign up screen"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={1}
+            >
+              <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                Create Account
+              </Text>
+            </AnimatedTouchableOpacity>
+          </Animated.View>
 
-          {/* Guest mode hint */}
-          <TouchableOpacity
-            style={styles.guestButton}
-            onPress={() => router.replace('/(tabs)')}
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel="Continue as Guest"
-            accessibilityHint="Browse without signing in"
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Text style={[styles.guestButtonText, { color: colors.secondary }]}>
-              Continue as Guest
-            </Text>
-          </TouchableOpacity>
+          {/* Guest mode hint with animation */}
+          <Animated.View entering={FadeInUp.delay(500).duration(400).springify()}>
+            <TouchableOpacity
+              style={styles.guestButton}
+              onPress={handleGuest}
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel="Continue as Guest"
+              accessibilityHint="Browse without signing in"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={[styles.guestButtonText, { color: colors.secondary }]}>
+                Continue as Guest
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
         </View>
       </View>
     </SafeAreaView>
@@ -207,7 +267,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 20,
+    padding: 24,
     justifyContent: 'center',
   },
   form: {
@@ -216,24 +276,26 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   infoContainer: {
-    marginBottom: 32,
+    marginBottom: 40,
     alignItems: 'center',
   },
   infoTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 12,
+    fontSize: 32,
+    fontWeight: '700',
+    marginBottom: 16,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   infoText: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   errorBanner: {
     marginTop: 16,
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
   },
   errorText: {
@@ -241,13 +303,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   primaryButton: {
-    paddingVertical: 16,
-    borderRadius: 8,
+    paddingVertical: 18,
+    borderRadius: 12,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   primaryButtonText: {
     fontSize: 17,
     fontWeight: '600',
+    letterSpacing: 0.3,
   },
   disabledButton: {
     opacity: 0.5,
@@ -255,28 +323,29 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: 28,
   },
   dividerLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
   },
   dividerText: {
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     fontSize: 14,
+    fontWeight: '500',
   },
   secondaryButton: {
     paddingVertical: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   secondaryButtonText: {
     fontSize: 17,
     fontWeight: '600',
   },
   guestButton: {
-    marginTop: 24,
+    marginTop: 28,
     paddingVertical: 12,
     alignItems: 'center',
   },

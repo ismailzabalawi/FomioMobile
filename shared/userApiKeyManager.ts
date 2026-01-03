@@ -83,19 +83,25 @@ function loadQuickCrypto(): any {
   return QuickCrypto;
 }
 
+// === STORAGE KEYS ===
+// Single source of truth for auth credentials
+const AUTH_CREDENTIALS_KEY = 'fomio_auth_credentials';
+
+// Crypto keys (needed for RSA operations)
 const PRIVATE_KEY_STORAGE_KEY = 'fomio_user_api_private_key';
 const PUBLIC_KEY_STORAGE_KEY = 'fomio_user_api_public_key';
-const API_KEY_STORAGE_KEY = 'fomio_user_api_key_data'; // JSON data storage (separate from raw key)
-const CLIENT_ID_STORAGE_KEY = 'fomio_user_api_client_id';
-const ONE_TIME_PASSWORD_STORAGE_KEY = 'fomio_user_api_otp';
 const NONCE_STORAGE_KEY = 'fomio_user_api_nonce';
+const CLIENT_ID_STORAGE_KEY = 'fomio_user_api_client_id';
 
-// Unified storage keys for lib/auth.ts compatibility
-const FOMIO_USER_API_KEY = 'fomio_user_api_key'; // Raw key storage (must be separate from JSON)
-const FOMIO_USER_API_USERNAME = 'fomio_user_api_username';
-// Legacy keys for backward compatibility
-const LEGACY_API_KEY = 'disc_user_api_key';
-const LEGACY_CLIENT_ID = 'disc_client_id';
+// Legacy keys for migration (will be cleaned up after migration)
+const LEGACY_KEYS = [
+  'fomio_user_api_key_data',
+  'fomio_user_api_key',
+  'fomio_user_api_username',
+  'fomio_user_api_otp',
+  'disc_user_api_key',
+  'disc_client_id',
+];
 
 export interface UserApiKeyData {
   key: string;
@@ -111,14 +117,20 @@ export interface KeyPair {
 }
 
 /**
+ * Auth Credentials interface - single source of truth for stored auth data
+ */
+export interface AuthCredentials {
+  apiKey: string;
+  username?: string;
+  clientId: string;
+  createdAt: number;
+}
+
+/**
  * User API Key Manager
  * Handles RSA key pair generation, API key storage, and encrypted payload decryption
  * Following Discourse User API Keys specification
  */
-// Memory cache for API key to handle Android SecureStore timing issues
-// This ensures the key is immediately available even if SecureStore hasn't flushed yet
-let memoryKeyCache: { key: string; username?: string; clientId?: string; timestamp: number } | null = null;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export class UserApiKeyManager {
   /**
@@ -451,67 +463,29 @@ export class UserApiKeyManager {
   }
 
   /**
-   * Store API key data securely
-   * @param apiKeyData - API key data to store
-   */
-  static async storeApiKey(apiKeyData: UserApiKeyData): Promise<void> {
-    try {
-      await SecureStore.setItemAsync(API_KEY_STORAGE_KEY, JSON.stringify(apiKeyData));
-      logger.info('UserApiKeyManager: API key stored securely');
-    } catch (error: any) {
-      logger.error('UserApiKeyManager: Failed to store API key', error);
-      throw new Error('Failed to store API key securely');
-    }
-  }
-
-  /**
-   * Get stored API key
-   * @returns API key data or null if not found
-   */
-  static async getApiKey(): Promise<UserApiKeyData | null> {
-    try {
-      const apiKeyData = await SecureStore.getItemAsync(API_KEY_STORAGE_KEY);
-      if (!apiKeyData) {
-        return null; // Key doesn't exist - this is expected, not an error
-      }
-      return JSON.parse(apiKeyData) as UserApiKeyData;
-    } catch (error: any) {
-      // Only log actual errors (storage failures, parse errors), not null/undefined
-      // On iOS simulator, SecureStore can fail with null errors due to storage directory issues
-      // CRITICAL: Don't call logger.error for SecureStore null errors - they cause React Native LogBox to show "ERROR null"
-      if (error && error !== null && error !== undefined) {
-        const errorMessage = error?.message || String(error);
-        // Only log if it's a real error, not just a null value
-        // Also check if error object itself stringifies to null
-        if (errorMessage && 
-            errorMessage !== 'null' && 
-            errorMessage !== 'undefined' &&
-            String(error) !== 'null' &&
-            String(error) !== 'undefined') {
-          // Final check: ensure error object doesn't stringify to null
-          try {
-            const errorStringify = JSON.stringify(error);
-            if (errorStringify && errorStringify !== 'null' && errorStringify !== null) {
-              logger.error('UserApiKeyManager: Failed to get API key', error);
-            }
-            // If stringify is null, silently skip logging (expected SecureStore behavior)
-          } catch {
-            // If stringify fails, skip logging to avoid React Native LogBox issues
-          }
-        }
-      }
-      // Return null for any error (expected or unexpected) - caller should handle gracefully
-      return null;
-    }
-  }
-
-  /**
    * Check if user has an API key stored
    * @returns true if API key exists
    */
   static async hasApiKey(): Promise<boolean> {
-    const apiKey = await this.getApiKey();
-    return apiKey !== null && !!apiKey.key;
+    const credentials = await this.getAuthCredentials();
+    return credentials !== null && !!credentials.key;
+  }
+  
+  /**
+   * Get stored API key (legacy method - prefer getAuthCredentials)
+   * @returns API key data or null if not found
+   * @deprecated Use getAuthCredentials instead
+   */
+  static async getApiKey(): Promise<UserApiKeyData | null> {
+    const credentials = await this.getAuthCredentials();
+    if (!credentials) return null;
+    
+    return {
+      key: credentials.key,
+      clientId: credentials.clientId || '',
+      createdAt: Date.now(),
+      username: credentials.username,
+    };
   }
 
   /**
@@ -736,159 +710,42 @@ export class UserApiKeyManager {
   }
 
   /**
-   * Set memory cache immediately (for temporary key storage scenarios)
-   * This ensures the key is available even before SecureStore flushes
-   * @param key - The API key string
-   * @param username - Username (optional)
-   * @param clientId - Client ID (optional)
-   */
-  static setMemoryCache(key: string, username?: string, clientId?: string): void {
-    memoryKeyCache = {
-      key,
-      username,
-      clientId,
-      timestamp: Date.now(),
-    };
-    logger.info('🔍 DEBUG: Memory cache SET via setMemoryCache', {
-      hasKey: !!key,
-      keyLength: key.length,
-      hasUsername: !!username,
-      timestamp: memoryKeyCache.timestamp,
-    });
-    // #region agent log
-    const logDataSetCache = {location:'userApiKeyManager.ts:745',message:'setMemoryCache CALLED',data:{hasKey:!!key,keyLength:key.length,hasUsername:!!username,hasClientId:!!clientId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-    console.log('🔍 DEBUG:', JSON.stringify(logDataSetCache));
-    fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataSetCache)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-    // #endregion
-  }
-
-  /**
-   * Store complete auth credentials atomically to all required storage locations.
-   * This is the single source of truth for storing auth data.
+   * Store complete auth credentials to the single source of truth.
+   * Also handles migration by cleaning up legacy keys.
    * 
    * @param key - The API key string
    * @param username - Username for Api-Username header (optional but recommended)
    * @param clientId - Client ID for the app instance
-   * @param otp - One-time password for cookie warming (optional)
+   * @param _otp - One-time password (unused, kept for API compatibility)
    */
   static async storeCompleteAuth(
     key: string,
     username?: string,
     clientId?: string,
-    otp?: string
+    _otp?: string
   ): Promise<void> {
-    // #region agent log
-    const logData1 = {location:'userApiKeyManager.ts:742',message:'storeCompleteAuth ENTRY',data:{keyLength:key?.length||0,hasUsername:!!username,hasClientId:!!clientId,hasOtp:!!otp},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'};
-    console.log('🔍 DEBUG:', JSON.stringify(logData1));
-    fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData1)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-    // #endregion
     try {
       const resolvedClientId = clientId || await this.getOrGenerateClientId();
       
-      // 1. Store complete JSON data first (for UserApiKeyManager consumers)
-      const apiKeyData: UserApiKeyData = {
-        key,
-        clientId: resolvedClientId,
-        oneTimePassword: otp,
-        createdAt: Date.now(),
+      // Store as single JSON object
+      const credentials: AuthCredentials = {
+        apiKey: key,
         username,
+        clientId: resolvedClientId,
+        createdAt: Date.now(),
       };
-      await SecureStore.setItemAsync(API_KEY_STORAGE_KEY, JSON.stringify(apiKeyData));
       
-      // 2. Store username if provided
-      if (username) {
-        await SecureStore.setItemAsync(FOMIO_USER_API_USERNAME, username);
-      }
+      await SecureStore.setItemAsync(AUTH_CREDENTIALS_KEY, JSON.stringify(credentials));
       
-      // 3. Store raw API key LAST (for direct access by authHeaders)
-      // This ensures the raw key is the final value and won't be overwritten
-      // #region agent log
-      const logData2 = {location:'userApiKeyManager.ts:768',message:'BEFORE storing raw key',data:{keyLength:key.length,storageKey:'FOMIO_USER_API_KEY'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'};
-      console.log('🔍 DEBUG:', JSON.stringify(logData2));
-      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData2)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-      // #endregion
-      await SecureStore.setItemAsync(FOMIO_USER_API_KEY, key);
-      
-      // CRITICAL FIX: Update memory cache immediately (handles Android SecureStore timing)
-      // Update existing cache if it exists, or create new one
-      // This ensures username is added to cache if it was set after initial cache creation
-      if (memoryKeyCache && memoryKeyCache.key === key) {
-        // Update existing cache with username if it wasn't set before
-        memoryKeyCache.username = username || memoryKeyCache.username;
-        memoryKeyCache.clientId = resolvedClientId;
-        memoryKeyCache.timestamp = Date.now();
-      } else {
-        // Create new cache entry
-        memoryKeyCache = {
-          key,
-          username,
-          clientId: resolvedClientId,
-          timestamp: Date.now(),
-        };
-      }
-      logger.info('🔍 DEBUG: Memory cache SET/UPDATED in storeCompleteAuth', {
-        hasKey: !!key,
-        keyLength: key.length,
+      logger.info('UserApiKeyManager: Auth credentials stored', {
         hasUsername: !!username,
-        timestamp: memoryKeyCache.timestamp,
       });
-      // #region agent log
-      const logDataCacheSet = {location:'userApiKeyManager.ts:786',message:'MEMORY CACHE SET',data:{hasKey:!!key,keyLength:key.length,hasUsername:!!username},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-      console.log('🔍 DEBUG:', JSON.stringify(logDataCacheSet));
-      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataCacheSet)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-      // #endregion
-      // #region agent log
-      const logData3 = {location:'userApiKeyManager.ts:770',message:'AFTER storing raw key',data:{keyLength:key.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-      console.log('🔍 DEBUG:', JSON.stringify(logData3));
-      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData3)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-      // #endregion
       
-      // 4. Store legacy keys for backward compatibility
-      await SecureStore.setItemAsync(LEGACY_API_KEY, key);
-      await SecureStore.setItemAsync(LEGACY_CLIENT_ID, resolvedClientId);
+      // Clean up legacy keys (migration)
+      await this.cleanupLegacyKeys();
       
-      // 5. Store OTP separately if provided
-      if (otp) {
-        await SecureStore.setItemAsync(ONE_TIME_PASSWORD_STORAGE_KEY, otp);
-      }
-      
-      // CRITICAL: Verify the raw key was stored (Android SecureStore may need a moment)
-      // Small delay to ensure SecureStore has flushed
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      // Verify the key is readable
-      const verifyKey = await SecureStore.getItemAsync(FOMIO_USER_API_KEY);
-      // #region agent log
-      const logData4 = {location:'userApiKeyManager.ts:784',message:'VERIFICATION check',data:{expectedLength:key.length,actualLength:verifyKey?.length||0,matches:verifyKey===key,hasValue:!!verifyKey},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,D'};
-      console.log('🔍 DEBUG:', JSON.stringify(logData4));
-      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData4)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-      // #endregion
-      if (verifyKey !== key) {
-        logger.warn('UserApiKeyManager: Key verification failed, retrying storage...', {
-          expectedLength: key.length,
-          actualLength: verifyKey?.length || 0,
-        });
-        // Retry storing the raw key
-        await SecureStore.setItemAsync(FOMIO_USER_API_KEY, key);
-        await new Promise(resolve => setTimeout(resolve, 50));
-        
-        // Verify again after retry
-        const retryVerifyKey = await SecureStore.getItemAsync(FOMIO_USER_API_KEY);
-        if (retryVerifyKey !== key) {
-          logger.error('UserApiKeyManager: Key verification failed after retry', {
-            expectedLength: key.length,
-            actualLength: retryVerifyKey?.length || 0,
-          });
-        }
-      }
-      
-      logger.info('UserApiKeyManager: Complete auth credentials stored', {
-        hasUsername: !!username,
-        hasOtp: !!otp,
-        verified: verifyKey === key,
-      });
     } catch (error: any) {
-      logger.error('UserApiKeyManager: Failed to store complete auth', error);
+      logger.error('UserApiKeyManager: Failed to store auth credentials', error);
       throw new Error('Failed to store authentication credentials securely');
     }
   }
@@ -900,244 +757,120 @@ export class UserApiKeyManager {
    * @returns Object with key and optional username/clientId, or null if not authenticated
    */
   static async getAuthCredentials(): Promise<{ key: string; username?: string; clientId?: string } | null> {
-    // #region agent log
-    const logData5 = {location:'userApiKeyManager.ts:821',message:'getAuthCredentials ENTRY',data:{hasMemoryCache:!!memoryKeyCache,cacheAge:memoryKeyCache?(Date.now()-memoryKeyCache.timestamp):0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
-    console.log('🔍 DEBUG:', JSON.stringify(logData5));
-    fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData5)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-    // #endregion
     try {
-      // CRITICAL FIX: Check memory cache first (handles Android SecureStore timing issues)
-      // Memory cache is updated immediately when key is stored, before SecureStore flushes
-      const cacheAge = memoryKeyCache ? (Date.now() - memoryKeyCache.timestamp) : 0;
-      const cacheValid = memoryKeyCache && cacheAge < CACHE_TTL;
+      // Try new storage format first
+      const credentialsJson = await SecureStore.getItemAsync(AUTH_CREDENTIALS_KEY);
       
-      // #region agent log
-      const logDataCacheCheck = {location:'userApiKeyManager.ts:905',message:'MEMORY CACHE CHECK',data:{hasCache:!!memoryKeyCache,cacheAge,cacheValid,cacheTTL:CACHE_TTL,hasKey:!!memoryKeyCache?.key,keyLength:memoryKeyCache?.key?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-      console.log('🔍 DEBUG:', JSON.stringify(logDataCacheCheck));
-      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataCacheCheck)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-      // #endregion
-      
-      logger.debug('UserApiKeyManager: Memory cache check', {
-        hasCache: !!memoryKeyCache,
-        cacheAge,
-        cacheValid,
-        cacheTTL: CACHE_TTL,
-      });
-      
-      // CRITICAL: Always use memory cache if it exists and has a key, regardless of expiration
-      // This is a safety measure for Android SecureStore timing issues
-      // The cache is only 5 minutes, so even if expired, it's still recent enough to be valid
-      if (memoryKeyCache && memoryKeyCache.key) {
-        // Only reject if cache is extremely old (more than 1 hour) to prevent using stale keys after app restart
-        const oneHour = 60 * 60 * 1000;
-        const isExtremelyOld = cacheAge > oneHour;
-        
-        if (!isExtremelyOld) {
-          logger.info('🔍 DEBUG: Using memory cache for credentials', {
-            hasKey: !!memoryKeyCache.key,
-            keyLength: memoryKeyCache.key.length,
-            hasUsername: !!memoryKeyCache.username,
-            cacheAge,
-            cacheValid,
-          });
-          // #region agent log
-          const logDataCache = {location:'userApiKeyManager.ts:870',message:'getAuthCredentials - USING MEMORY CACHE',data:{hasKey:!!memoryKeyCache.key,keyLength:memoryKeyCache.key.length,hasUsername:!!memoryKeyCache.username,cacheAge,cacheValid},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-          console.log('🔍 DEBUG:', JSON.stringify(logDataCache));
-          fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataCache)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-          // #endregion
-          return {
-            key: memoryKeyCache.key,
-            username: memoryKeyCache.username,
-            clientId: memoryKeyCache.clientId,
-          };
-        } else {
-          logger.warn('🔍 DEBUG: Memory cache too old (over 1 hour), ignoring', {
-            cacheAge,
-            oneHour,
-          });
-          // Clear stale cache
-          memoryKeyCache = null;
-        }
-      } else if (memoryKeyCache && !memoryKeyCache.key) {
-        logger.warn('🔍 DEBUG: Memory cache exists but has no key', {
-          hasCache: !!memoryKeyCache,
-        });
-        // Clear invalid cache
-        memoryKeyCache = null;
-      }
-      
-      // Try raw key first (fastest path)
-      let key = await SecureStore.getItemAsync(FOMIO_USER_API_KEY);
-      
-      // CRITICAL FIX: If SecureStore doesn't have the key but memory cache does (even if expired),
-      // use the memory cache as a fallback (handles Android SecureStore timing issues)
-      if (!key && memoryKeyCache && memoryKeyCache.key) {
-        logger.warn('🔍 DEBUG: SecureStore key not found, using memory cache as fallback', {
-          cacheAge: Date.now() - memoryKeyCache.timestamp,
-          hasKey: !!memoryKeyCache.key,
-        });
-        // #region agent log
-        const logDataCacheFallback = {location:'userApiKeyManager.ts:935',message:'USING MEMORY CACHE AS FALLBACK',data:{hasKey:!!memoryKeyCache.key,keyLength:memoryKeyCache.key.length,cacheAge:Date.now()-memoryKeyCache.timestamp},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
-        console.log('🔍 DEBUG:', JSON.stringify(logDataCacheFallback));
-        fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logDataCacheFallback)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-        // #endregion
-        return {
-          key: memoryKeyCache.key,
-          username: memoryKeyCache.username,
-          clientId: memoryKeyCache.clientId,
-        };
-      }
-      let username = await SecureStore.getItemAsync(FOMIO_USER_API_USERNAME);
-      let clientId = await SecureStore.getItemAsync(CLIENT_ID_STORAGE_KEY);
-      // #region agent log
-      const logData6 = {location:'userApiKeyManager.ts:825',message:'AFTER raw key check',data:{hasRawKey:!!key,keyLength:key?.length||0,hasUsername:!!username,hasClientId:!!clientId,keyIsJson:key?.startsWith('{')||false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,E'};
-      console.log('🔍 DEBUG:', JSON.stringify(logData6));
-      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData6)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-      // #endregion
-      
-      logger.debug('UserApiKeyManager: getAuthCredentials - raw key check', {
-        hasRawKey: !!key,
-        hasUsername: !!username,
-        hasClientId: !!clientId,
-        keyLength: key?.length || 0,
-      });
-      // Enhanced debug logging
-      if (!key) {
-        logger.warn('🔍 DEBUG: getAuthCredentials - RAW KEY NOT FOUND', {
-          storageKey: FOMIO_USER_API_KEY,
-          checkedAt: new Date().toISOString(),
-        });
-      }
-      
-      // If key looks like JSON (old format), extract the actual key
-      if (key && key.startsWith('{')) {
+      if (credentialsJson) {
         try {
-          const parsed = JSON.parse(key);
-          key = parsed.key || key;
-          if (!username && parsed.username) {
-            username = parsed.username;
+          const credentials = JSON.parse(credentialsJson) as AuthCredentials;
+          if (credentials.apiKey) {
+            return {
+              key: credentials.apiKey,
+              username: credentials.username,
+              clientId: credentials.clientId,
+            };
           }
-          if (!clientId && parsed.clientId) {
-            clientId = parsed.clientId;
-          }
-          logger.debug('UserApiKeyManager: Extracted key from JSON format');
         } catch {
-          // Not JSON, use as-is
+          // Invalid JSON, continue to migration
         }
       }
       
-      // Fallback to JSON data if raw key not found
-      if (!key) {
-        logger.debug('UserApiKeyManager: Raw key not found, trying JSON storage...');
-        // #region agent log
-        const logData7 = {location:'userApiKeyManager.ts:853',message:'FALLBACK to JSON storage',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
-        console.log('🔍 DEBUG:', JSON.stringify(logData7));
-        fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData7)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-        // #endregion
-        const apiKeyData = await this.getApiKey();
-        // #region agent log
-        const logData8 = {location:'userApiKeyManager.ts:856',message:'AFTER JSON storage check',data:{hasApiKeyData:!!apiKeyData,hasKey:!!apiKeyData?.key,keyLength:apiKeyData?.key?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
-        console.log('🔍 DEBUG:', JSON.stringify(logData8));
-        fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData8)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-        // #endregion
-        if (apiKeyData?.key) {
-          key = apiKeyData.key;
-          username = username || apiKeyData.username || null;
-          clientId = clientId || apiKeyData.clientId || null;
-          logger.debug('UserApiKeyManager: Found key in JSON storage');
-        } else {
-          logger.debug('UserApiKeyManager: JSON storage also empty');
-        }
+      // Migration: Try legacy storage locations
+      const migrated = await this.migrateFromLegacyStorage();
+      if (migrated) {
+        return migrated;
       }
       
-      // Final fallback to legacy storage
-      if (!key) {
-        logger.debug('UserApiKeyManager: Trying legacy storage...');
-        key = await SecureStore.getItemAsync(LEGACY_API_KEY);
-        if (key) {
-          logger.debug('UserApiKeyManager: Found key in legacy storage');
-        }
-      }
-      if (!clientId) {
-        clientId = await SecureStore.getItemAsync(LEGACY_CLIENT_ID);
-      }
-      
-      if (!key) {
-        logger.error('🔍 DEBUG: getAuthCredentials - NO KEY FOUND IN ANY LOCATION', {
-          checkedRaw: true,
-          checkedJson: true,
-          checkedLegacy: true,
-          storageKeys: {
-            raw: FOMIO_USER_API_KEY,
-            json: API_KEY_STORAGE_KEY,
-            legacy: LEGACY_API_KEY,
-          },
-          timestamp: new Date().toISOString(),
-        });
-        
-        // CRITICAL FIX: On Android, SecureStore may need additional time to flush
-        // Try one more time with a delay to handle race conditions
-        logger.warn('🔍 DEBUG: Retrying key retrieval after delay (Android SecureStore flush)');
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Retry all storage locations
-        key = await SecureStore.getItemAsync(FOMIO_USER_API_KEY);
-        if (!key) {
-          const retryApiKeyData = await this.getApiKey();
-          if (retryApiKeyData?.key) {
-            key = retryApiKeyData.key;
-            username = username || retryApiKeyData.username || null;
-            clientId = clientId || retryApiKeyData.clientId || null;
-            logger.info('🔍 DEBUG: Found key in JSON storage on retry');
-          }
-        }
-        if (!key) {
-          key = await SecureStore.getItemAsync(LEGACY_API_KEY);
-          if (key) {
-            logger.info('🔍 DEBUG: Found key in legacy storage on retry');
-          }
-        }
-        
-        if (!key) {
-          // #region agent log
-          const logData9 = {location:'userApiKeyManager.ts:878',message:'getAuthCredentials EXIT - NO KEY AFTER RETRY',data:{checkedRaw:true,checkedJson:true,checkedLegacy:true,retried:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
-          console.log('🔍 DEBUG:', JSON.stringify(logData9));
-          fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData9)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-          // #endregion
-          return null;
-        } else {
-          logger.info('🔍 DEBUG: Key found on retry - Android SecureStore timing issue resolved');
-        }
-      }
-      
-      logger.debug('UserApiKeyManager: Successfully retrieved credentials', {
-        hasKey: !!key,
-        hasUsername: !!username,
-        hasClientId: !!clientId,
-      });
-      
-      // Update memory cache with retrieved credentials (keeps cache fresh)
-      if (key) {
-        memoryKeyCache = {
-          key,
-          username: username || undefined,
-          clientId: clientId || undefined,
-          timestamp: Date.now(),
-        };
-      }
-      
-      // #region agent log
-      const logData10 = {location:'userApiKeyManager.ts:890',message:'getAuthCredentials EXIT - SUCCESS',data:{hasKey:!!key,keyLength:key.length,hasUsername:!!username,hasClientId:!!clientId,fromMemoryCache:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
-      console.log('🔍 DEBUG:', JSON.stringify(logData10));
-      fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData10)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-      // #endregion
-      return { key, username: username || undefined, clientId: clientId || undefined };
+      return null;
     } catch (error: any) {
       // Don't log null errors from SecureStore
       if (error && String(error) !== 'null' && error?.message !== 'null') {
         logger.error('UserApiKeyManager: Failed to get auth credentials', error);
       }
       return null;
+    }
+  }
+
+  /**
+   * Migrate from legacy storage locations to new single key format
+   */
+  private static async migrateFromLegacyStorage(): Promise<{ key: string; username?: string; clientId?: string } | null> {
+    try {
+      // Try various legacy locations
+      let key: string | null = null;
+      let username: string | null = null;
+      let clientId: string | null = null;
+      
+      // Try JSON data storage
+      const jsonData = await SecureStore.getItemAsync('fomio_user_api_key_data');
+      if (jsonData) {
+        try {
+          const parsed = JSON.parse(jsonData);
+          key = parsed.key;
+          username = parsed.username;
+          clientId = parsed.clientId;
+        } catch {
+          // Invalid JSON
+        }
+      }
+      
+      // Try raw key storage
+      if (!key) {
+        key = await SecureStore.getItemAsync('fomio_user_api_key');
+      }
+      
+      // Try username
+      if (!username) {
+        username = await SecureStore.getItemAsync('fomio_user_api_username');
+      }
+      
+      // Try legacy keys
+      if (!key) {
+        key = await SecureStore.getItemAsync('disc_user_api_key');
+      }
+      if (!clientId) {
+        clientId = await SecureStore.getItemAsync('disc_client_id');
+      }
+      if (!clientId) {
+        clientId = await SecureStore.getItemAsync(CLIENT_ID_STORAGE_KEY);
+      }
+      
+      if (key) {
+        // Migrate to new format
+        const resolvedClientId = clientId || await this.getOrGenerateClientId();
+        await this.storeCompleteAuth(key, username || undefined, resolvedClientId);
+        
+        logger.info('UserApiKeyManager: Migrated legacy credentials to new format');
+        
+        return {
+          key,
+          username: username || undefined,
+          clientId: resolvedClientId,
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      logger.warn('UserApiKeyManager: Legacy migration failed', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clean up legacy storage keys
+   */
+  private static async cleanupLegacyKeys(): Promise<void> {
+    try {
+      for (const legacyKey of LEGACY_KEYS) {
+        try {
+          await SecureStore.deleteItemAsync(legacyKey);
+        } catch {
+          // Ignore individual deletion failures
+        }
+      }
+    } catch {
+      // Ignore cleanup failures
     }
   }
 
@@ -1155,19 +888,17 @@ export class UserApiKeyManager {
    */
   static async clearApiKey(): Promise<void> {
     try {
-      await SecureStore.deleteItemAsync(API_KEY_STORAGE_KEY);
+      // Clear new storage
+      await SecureStore.deleteItemAsync(AUTH_CREDENTIALS_KEY);
+      
+      // Clear crypto keys
       await SecureStore.deleteItemAsync(PRIVATE_KEY_STORAGE_KEY);
       await SecureStore.deleteItemAsync(PUBLIC_KEY_STORAGE_KEY);
-      await SecureStore.deleteItemAsync(ONE_TIME_PASSWORD_STORAGE_KEY);
       await SecureStore.deleteItemAsync(NONCE_STORAGE_KEY);
-      // Also clear unified storage keys
-      await SecureStore.deleteItemAsync(FOMIO_USER_API_KEY);
-      await SecureStore.deleteItemAsync(FOMIO_USER_API_USERNAME);
+      
       // Clear legacy keys
-      await SecureStore.deleteItemAsync(LEGACY_API_KEY);
-      await SecureStore.deleteItemAsync(LEGACY_CLIENT_ID);
-      // Clear memory cache
-      memoryKeyCache = null;
+      await this.cleanupLegacyKeys();
+      
       // Keep client ID for potential reuse
       logger.info('UserApiKeyManager: API key data cleared');
     } catch (error: any) {
@@ -1189,29 +920,22 @@ export class UserApiKeyManager {
   }
 
   /**
-   * Store one-time password if provided
-   * @param otp - One-time password string
+   * Store one-time password if provided (legacy - no longer persisted)
+   * @param _otp - One-time password string
+   * @deprecated OTP is now used immediately and not persisted
    */
-  static async storeOneTimePassword(otp: string): Promise<void> {
-    try {
-      await SecureStore.setItemAsync(ONE_TIME_PASSWORD_STORAGE_KEY, otp);
-      logger.info('UserApiKeyManager: One-time password stored');
-    } catch (error: any) {
-      logger.error('UserApiKeyManager: Failed to store one-time password', error);
-    }
+  static async storeOneTimePassword(_otp: string): Promise<void> {
+    // OTP is used immediately for cookie warming, no need to persist
+    logger.debug('UserApiKeyManager: OTP storage is no-op (not persisted)');
   }
 
   /**
-   * Get stored one-time password
-   * @returns One-time password or null
+   * Get stored one-time password (legacy - always returns null)
+   * @returns null (OTP is no longer persisted)
+   * @deprecated OTP is now used immediately and not persisted
    */
   static async getOneTimePassword(): Promise<string | null> {
-    try {
-      return await SecureStore.getItemAsync(ONE_TIME_PASSWORD_STORAGE_KEY);
-    } catch (error: any) {
-      logger.error('UserApiKeyManager: Failed to get one-time password', error);
-      return null;
-    }
+    return null;
   }
 }
 

@@ -388,17 +388,7 @@ class DiscourseApiService {
 
       // Authentication: Use User API Keys (delegated auth with RSA)
       try {
-        // #region agent log
-        const logData14 = {location:'discourseApi.ts:390',message:'makeRequest BEFORE authHeaders',data:{method,endpoint,isWriteOperation:method!=='GET'&&method!=='HEAD'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,E'};
-        console.log('🔍 DEBUG:', JSON.stringify(logData14));
-        fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData14)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-        // #endregion
         const authHeadersData = await authHeaders();
-        // #region agent log
-        const logData15 = {location:'discourseApi.ts:392',message:'makeRequest AFTER authHeaders',data:{hasApiKey:!!authHeadersData['User-Api-Key'],hasUsername:!!authHeadersData['Api-Username'],method,endpoint,isWriteOperation:method!=='GET'&&method!=='HEAD'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'};
-        console.log('🔍 DEBUG:', JSON.stringify(logData15));
-        fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData15)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-        // #endregion
         
         if (authHeadersData['User-Api-Key']) {
           Object.assign(headers, authHeadersData);
@@ -431,11 +421,6 @@ class DiscourseApiService {
           // For write operations without API key, try refreshing credentials once (handles race conditions)
           const isWriteOperation = method !== 'GET' && method !== 'HEAD';
           if (isWriteOperation) {
-            // #region agent log
-            const logData16 = {location:'discourseApi.ts:423',message:'RETRY for write operation',data:{method,endpoint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'};
-            console.log('🔍 DEBUG:', JSON.stringify(logData16));
-            fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData16)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-            // #endregion
             // Small delay to handle race conditions where key was just stored
             // Increased to 200ms to give SecureStore more time to flush
             await new Promise(resolve => setTimeout(resolve, 200));
@@ -443,11 +428,6 @@ class DiscourseApiService {
             // Try getting auth headers again
             try {
               const retryHeaders = await authHeaders();
-              // #region agent log
-              const logData17 = {location:'discourseApi.ts:430',message:'RETRY result',data:{hasApiKey:!!retryHeaders['User-Api-Key'],hasUsername:!!retryHeaders['Api-Username'],method,endpoint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'};
-              console.log('🔍 DEBUG:', JSON.stringify(logData17));
-              fetch('http://127.0.0.1:7242/ingest/175fba8e-6f1b-43ce-9829-bea85f53fa72',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData17)}).catch((e)=>console.log('🔍 DEBUG FETCH ERROR:',e));
-              // #endregion
               if (retryHeaders['User-Api-Key']) {
                 Object.assign(headers, retryHeaders);
                 console.log('🔑 API key found on retry');
