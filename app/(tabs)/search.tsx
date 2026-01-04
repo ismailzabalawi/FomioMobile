@@ -4,13 +4,13 @@ import {
   Text, 
   TouchableOpacity, 
   ActivityIndicator,
-  Image,
   ListRenderItem,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   MagnifyingGlass,
-  Fire, 
+  Fire,
   Hash,
   Warning,
   ArrowClockwise,
@@ -18,7 +18,6 @@ import {
 } from 'phosphor-react-native';
 import { useTheme } from '@/components/theme';
 import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
-import { ByteCard } from '@/components/bytes/ByteCard';
 import { searchResultToByte } from '@/shared/adapters/searchResultToByte';
 import { useSearch } from '../../shared/useSearch';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -28,8 +27,13 @@ import { getThemeColors } from '@/shared/theme-constants';
 import { useFluidNav } from '@/shared/navigation/fluidNavContext';
 import * as Haptics from 'expo-haptics';
 import { SearchInput } from '@/components/search/SearchInput';
+import { TopicResultCard } from '@/components/search/TopicResultCard';
+import { UserResultCard } from '@/components/search/UserResultCard';
+import { HubResultCard } from '@/components/search/HubResultCard';
+import { PostResultCard } from '@/components/search/PostResultCard';
 import { FluidSection } from '@/shared/ui/FluidSection';
 import { getTokens } from '@/shared/design/tokens';
+import { Input } from '@/components/ui/input';
 
 // UI Spec: SearchScreen
 // - Uses semantic theme tokens from getThemeColors
@@ -38,10 +42,13 @@ import { getTokens } from '@/shared/design/tokens';
 // - FlatList for optimized rendering
 // - AMOLED dark mode support with true black baseline
 
-type SearchType = 'bytes' | 'hubs' | 'users';
+type SearchType = 'bytes' | 'hubs' | 'users' | 'posts';
+type SearchOrder = 'relevance' | 'latest' | 'views' | 'likes' | 'created' | 'updated';
+type SearchPeriod = 'all' | 'yearly' | 'quarterly' | 'monthly' | 'weekly' | 'daily';
+type SearchStatus = 'open' | 'closed' | 'archived' | 'visible' | 'hidden';
 
 // Helper to map frontend SearchType to backend type
-function mapSearchTypeToBackendType(frontendType: SearchType): 'topic' | 'category' | 'user' {
+function mapSearchTypeToBackendType(frontendType: SearchType): 'topic' | 'category' | 'user' | 'all' {
   switch (frontendType) {
     case 'bytes':
       return 'topic';
@@ -49,6 +56,8 @@ function mapSearchTypeToBackendType(frontendType: SearchType): 'topic' | 'catego
       return 'category';
     case 'users':
       return 'user';
+    case 'posts':
+      return 'all';
     default:
       return 'topic';
   }
@@ -56,7 +65,7 @@ function mapSearchTypeToBackendType(frontendType: SearchType): 'topic' | 'catego
 
 interface SearchResultItem {
   id: string;
-  type: 'byte' | 'hub' | 'user';
+  type: 'byte' | 'hub' | 'user' | 'post';
   data: any;
 }
 
@@ -64,104 +73,35 @@ interface SearchResultItem {
 function renderTopicCard(topic: any, onPressByteId: (byteId: number | string) => void) {
   const byte = searchResultToByte(topic);
   return (
-    <ByteCard
+    <TopicResultCard
       byte={byte}
-      onPressByteId={onPressByteId}
+      onPress={() => onPressByteId(byte.id)}
     />
   );
 }
 
-function HubCard({ category, onPress }: { category: any; onPress: () => void }) {
-  const { themeMode, isAmoled, isDark } = useTheme();
-  const colors = getThemeColors(themeMode, isAmoled);
-  const tokens = useMemo(() => getTokens(isDark ? 'dark' : 'light'), [isDark]);
-  const categoryColor = useMemo(() => {
-    const raw = category.color || '';
-    if (!raw) return colors.accent;
-    return raw.startsWith('#') ? raw : `#${raw}`;
-  }, [category.color, colors.accent]);
-
-  return (
-    <TouchableOpacity
-      className="mb-3"
-      style={[
-        {
-          padding: 16,
-          backgroundColor: tokens.colors.surfaceFrost,
-          borderColor: tokens.colors.border,
-          borderWidth: 1,
-          borderRadius: tokens.radii.lg,
-        },
-        tokens.shadows.soft,
-      ]}
-      onPress={onPress}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`${category.name} hub`}
-    >
-      <View className="flex-row items-start mb-3">
-        <View 
-          className="w-10 h-10 rounded-full items-center justify-center mr-3"
-          style={{ backgroundColor: `${categoryColor}20` }}
-        >
-          <Text 
-            className="text-xl font-semibold"
-            style={{ color: categoryColor }}
-          >
-            {category.name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View className="flex-1 min-w-0">
-          <View className="flex-row items-center">
-            <Text 
-              className="text-base font-bold mb-1 flex-shrink"
-              style={{ color: colors.foreground }}
-              numberOfLines={1}
-            >
-              {category.name}
-            </Text>
-            {category.topic_count > 5 && (
-              <View className="ml-2">
-                <Fire size={12} color={categoryColor} weight="fill" />
-              </View>
-            )}
-          </View>
-          <Text 
-            className="text-sm flex-shrink"
-            style={{ color: colors.secondary }}
-            numberOfLines={2}
-          >
-            {category.description || 'No description available'}
-          </Text>
-        </View>
-      </View>
-      <View className="flex-row justify-between">
-        <Text className="text-xs font-medium" style={{ color: colors.secondary }}>
-          {category.topic_count} topics
-        </Text>
-        <Text className="text-xs font-medium" style={{ color: colors.secondary }}>
-          {category.post_count} posts
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-}
 
 function SearchTypeTabs({
   activeType,
   onChange,
+  availableTypes,
 }: {
   activeType: SearchType;
   onChange: (type: SearchType) => void;
+  availableTypes?: SearchType[];
 }) {
   const { isDark } = useTheme();
   const mode = isDark ? 'dark' : 'light';
   const tokens = useMemo(() => getTokens(mode), [mode]);
-  const types: { key: SearchType; label: string }[] = [
-    { key: 'bytes', label: 'Posts' },
-    { key: 'hubs', label: 'Tags' },
-    { key: 'users', label: 'People' },
-  ];
+  const tabLabels: Record<SearchType, string> = {
+    bytes: 'Bytes',
+    hubs: 'Hubs',
+    users: 'Users',
+    posts: 'Posts',
+  };
+  const types = (availableTypes?.length ? availableTypes : ['bytes', 'hubs', 'users']).map(
+    (key) => ({ key, label: tabLabels[key] })
+  );
 
   return (
     <View
@@ -222,6 +162,66 @@ function SearchTypeTabs({
           );
         })}
       </View>
+    </View>
+  );
+}
+
+function FilterChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { isDark } = useTheme();
+  const tokens = useMemo(() => getTokens(isDark ? 'dark' : 'light'), [isDark]);
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: tokens.radii.pill,
+        backgroundColor: selected ? tokens.colors.accentSoft : tokens.colors.surfaceMuted,
+        borderWidth: 1,
+        borderColor: selected ? tokens.colors.accent : tokens.colors.border,
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text
+        style={{
+          color: selected ? tokens.colors.text : tokens.colors.muted,
+          fontSize: 12,
+          fontWeight: selected ? '600' : '500',
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function FilterSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const { isDark } = useTheme();
+  const tokens = useMemo(() => getTokens(isDark ? 'dark' : 'light'), [isDark]);
+
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ color: tokens.colors.muted, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
+        {title}
+      </Text>
+      {children}
     </View>
   );
 }
@@ -292,14 +292,21 @@ function SearchResults({
         items.push({ id: `user-${user.id}`, type: 'user', data: user });
       });
     }
+
+    if (activeType === 'posts' && normalizedResults.comments.length > 0) {
+      normalizedResults.comments.forEach((comment) => {
+        items.push({ id: `post-${comment.id}`, type: 'post', data: comment });
+      });
+    }
     
     return items;
   }, [normalizedResults, activeType]);
   const displayedTotal = listData.length;
   const emptyStateByType: Record<SearchType, string> = {
-    bytes: 'No posts found',
-    hubs: 'No tags found',
-    users: 'No people found',
+    bytes: 'No bytes found',
+    hubs: 'No hubs found',
+    users: 'No users found',
+    posts: 'No posts found',
   };
 
   if (isLoading) {
@@ -394,9 +401,9 @@ function SearchResults({
     if (item.type === 'hub') {
       return (
         <Animated.View entering={FadeInDown.delay(staggerDelay).duration(350).springify()}>
-          <HubCard 
-            category={item.data} 
-            onPress={() => router.push(`/feed?category=${item.data.slug}`)} 
+          <HubResultCard
+            hub={item.data}
+            onPress={() => router.push(`/feed?category=${item.data.slug}`)}
           />
         </Animated.View>
       );
@@ -404,42 +411,12 @@ function SearchResults({
 
     if (item.type === 'user') {
       const user = item.data;
-      // AppUser interface: { id, username, name, email, avatar, bio, followers, following, bytes, comments, joinedDate }
       const username = user?.username || '';
-      const displayName = user?.name || username || 'Unknown User';
-      const avatar = user?.avatar || '';
-      const bio = user?.bio || '';
-      const joinedDate = user?.joinedDate || '';
-      const bytesCount = user?.bytes || 0;
-      const commentsCount = user?.comments || 0;
-      
-      // Build subtitle: prefer bio, then joined date, then stats
-      let subtitle = '';
-      if (bio) {
-        subtitle = bio;
-      } else if (joinedDate && joinedDate !== 'Unknown') {
-        subtitle = joinedDate;
-      } else if (bytesCount > 0 || commentsCount > 0) {
-        const stats = [];
-        if (bytesCount > 0) stats.push(`${bytesCount} ${bytesCount === 1 ? 'byte' : 'bytes'}`);
-        if (commentsCount > 0) stats.push(`${commentsCount} ${commentsCount === 1 ? 'comment' : 'comments'}`);
-        subtitle = stats.join(' • ');
-      }
       
       return (
         <Animated.View entering={FadeInDown.delay(staggerDelay).duration(350).springify()}>
-          <TouchableOpacity
-            className="mb-3"
-            style={[
-              {
-                padding: 16,
-                backgroundColor: tokens.colors.surfaceFrost,
-                borderColor: tokens.colors.border,
-                borderWidth: 1,
-                borderRadius: tokens.radii.lg,
-              },
-              tokens.shadows.soft,
-            ]}
+          <UserResultCard
+            user={item.data}
             onPress={() => {
               if (username) {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -448,57 +425,23 @@ function SearchResults({
                 console.warn('User result missing username:', item.data);
               }
             }}
-            activeOpacity={0.7}
-          >
-            <View className="flex-row items-center mb-2">
-              {avatar ? (
-                <Image 
-                  source={{ uri: avatar }} 
-                  className="w-10 h-10 rounded-full mr-3"
-                  style={{ borderWidth: 1, borderColor: tokens.colors.border }}
-                />
-              ) : (
-                <View 
-                  className="w-10 h-10 rounded-full mr-3 justify-center items-center"
-                  style={{ backgroundColor: colors.secondary }}
-                >
-                  <Text 
-                    className="text-sm font-semibold"
-                    style={{ color: tokens.colors.surfaceFrost }}
-                  >
-                    {displayName.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-              <View className="flex-1">
-                <Text 
-                  className="text-base font-bold mb-0.5"
-                  style={{ color: colors.foreground }}
-                  numberOfLines={1}
-                >
-                  {displayName}
-                </Text>
-                {!!username && (
-                  <Text 
-                    className="text-xs font-medium"
-                    style={{ color: colors.secondary }}
-                    numberOfLines={1}
-                  >
-                    @{username}
-                  </Text>
-                )}
-              </View>
-            </View>
-            {subtitle ? (
-              <Text 
-                className="text-sm mt-1"
-                style={{ color: colors.secondary }}
-                numberOfLines={2}
-              >
-                {subtitle}
-              </Text>
-            ) : null}
-          </TouchableOpacity>
+          />
+        </Animated.View>
+      );
+    }
+
+    if (item.type === 'post') {
+      const byteId = item.data.byteId || item.data.topicId || item.data.topic_id;
+      return (
+        <Animated.View entering={FadeInDown.delay(staggerDelay).duration(350).springify()}>
+          <PostResultCard
+            comment={item.data}
+            onPress={() => {
+              if (byteId) {
+                router.push(`/feed/${byteId}` as any);
+              }
+            }}
+          />
         </Animated.View>
       );
     }
@@ -610,6 +553,13 @@ export default function SearchScreen(): React.ReactElement {
   const { q: initialQuery } = useLocalSearchParams<{ q?: string }>();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeType, setActiveType] = useState<SearchType>('bytes');
+  const [showFilters, setShowFilters] = useState(false);
+  const [order, setOrder] = useState<SearchOrder>('relevance');
+  const [period, setPeriod] = useState<SearchPeriod>('all');
+  const [category, setCategory] = useState('');
+  const [author, setAuthor] = useState('');
+  const [tags, setTags] = useState('');
+  const [status, setStatus] = useState<SearchStatus | null>(null);
   const [initialQueryApplied, setInitialQueryApplied] = useState(false);
   const { scrollY, setUpHandler } = useFluidNav();
   const flatListRef = useRef<Animated.FlatList<any>>(null);
@@ -625,6 +575,20 @@ export default function SearchScreen(): React.ReactElement {
     retry: retrySearch,
   } = useSearch();
   
+  const availableTypes = useMemo<SearchType[]>(() => {
+    const base: SearchType[] = ['bytes', 'hubs', 'users'];
+    if (results?.comments && results.comments.length > 0) {
+      base.push('posts');
+    }
+    return base;
+  }, [results]);
+
+  useEffect(() => {
+    if (!availableTypes.includes(activeType)) {
+      setActiveType('bytes');
+    }
+  }, [activeType, availableTypes]);
+
   // Handle deep link with pre-filled query (fomio://search?q=...)
   useEffect(() => {
     if (initialQuery && !initialQueryApplied) {
@@ -639,6 +603,23 @@ export default function SearchScreen(): React.ReactElement {
   }, [initialQuery, initialQueryApplied, activeType, search]);
 
   const colors = useMemo(() => getThemeColors(themeMode, isAmoled), [themeMode, isAmoled]);
+
+  const parsedTags = useMemo(
+    () => tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+    [tags]
+  );
+
+  const buildFilters = useCallback(() => {
+    return {
+      type: mapSearchTypeToBackendType(activeType),
+      order,
+      period,
+      category: category.trim() || undefined,
+      author: author.trim() || undefined,
+      tags: parsedTags.length > 0 ? parsedTags : undefined,
+      status: status || undefined,
+    };
+  }, [activeType, order, period, category, author, parsedTags, status]);
 
   // Configure header
   useScreenHeader({
@@ -657,8 +638,7 @@ export default function SearchScreen(): React.ReactElement {
     
     if (trimmed.length >= 3) {
       // Use debounced search with type filter
-      const backendType = mapSearchTypeToBackendType(activeType);
-      searchWithDebounce(trimmed, { type: backendType }, 500);
+      searchWithDebounce(trimmed, buildFilters(), 500);
     } else if (trimmed.length > 0) {
       // Clear previous results for short queries
       clearSearch();
@@ -666,16 +646,21 @@ export default function SearchScreen(): React.ReactElement {
       // Clear results when query is empty
       clearSearch();
     }
-  }, [searchWithDebounce, activeType, clearSearch]);
+  }, [searchWithDebounce, buildFilters, clearSearch]);
 
   // Handle search type change - trigger new search with type filter
   const handleTypeChange = useCallback((type: SearchType) => {
     setActiveType(type);
     if (searchQuery.trim().length >= 3) {
-      const backendType = mapSearchTypeToBackendType(type);
-      search(searchQuery.trim(), { type: backendType });
+      search(searchQuery.trim(), buildFilters());
     }
-  }, [searchQuery, search]);
+  }, [searchQuery, search, buildFilters]);
+
+  useEffect(() => {
+    if (searchQuery.trim().length >= 3) {
+      search(searchQuery.trim(), buildFilters());
+    }
+  }, [buildFilters, searchQuery, search]);
 
   // Fluid nav: Scroll-to-top handler
   const handleScrollToTop = useCallback(() => {
@@ -722,16 +707,108 @@ export default function SearchScreen(): React.ReactElement {
         className="flex-1"
         style={{ backgroundColor: colors.background }}
       >
-        <SearchInput
-          value={searchQuery}
-          onChangeText={handleSearch}
-          onSubmitEditing={handleSearchSubmit}
-        />
+      <SearchInput
+        value={searchQuery}
+        onChangeText={handleSearch}
+        onSubmitEditing={handleSearchSubmit}
+      />
 
-        <SearchTypeTabs
-          activeType={activeType}
-          onChange={handleTypeChange}
-        />
+      <SearchTypeTabs
+        activeType={activeType}
+        onChange={handleTypeChange}
+        availableTypes={availableTypes}
+      />
+
+      <View style={{ paddingHorizontal: 12, paddingBottom: 6 }}>
+        <TouchableOpacity
+          onPress={() => setShowFilters((prev) => !prev)}
+          style={{
+            alignSelf: 'flex-start',
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 999,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            borderWidth: 1,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={showFilters ? 'Hide filters' : 'Show filters'}
+        >
+          <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600' }}>
+            {showFilters ? 'Hide filters' : 'Filters'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {showFilters && (
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+          <FilterSection title="Order">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {(['relevance', 'latest', 'views', 'likes', 'created', 'updated'] as SearchOrder[]).map((option) => (
+                <FilterChip
+                  key={option}
+                  label={option}
+                  selected={order === option}
+                  onPress={() => setOrder(option)}
+                />
+              ))}
+            </ScrollView>
+          </FilterSection>
+
+          <FilterSection title="Period">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {(['all', 'yearly', 'quarterly', 'monthly', 'weekly', 'daily'] as SearchPeriod[]).map((option) => (
+                <FilterChip
+                  key={option}
+                  label={option}
+                  selected={period === option}
+                  onPress={() => setPeriod(option)}
+                />
+              ))}
+            </ScrollView>
+          </FilterSection>
+
+          <FilterSection title="Status">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {(['open', 'closed', 'archived', 'visible', 'hidden'] as SearchStatus[]).map((option) => (
+                <FilterChip
+                  key={option}
+                  label={option}
+                  selected={status === option}
+                  onPress={() => setStatus(status === option ? null : option)}
+                />
+              ))}
+            </ScrollView>
+          </FilterSection>
+
+          <FilterSection title="Category">
+            <Input
+              value={category}
+              onChangeText={setCategory}
+              placeholder="Category slug"
+              accessibilityLabel="Category filter"
+            />
+          </FilterSection>
+
+          <FilterSection title="Author">
+            <Input
+              value={author}
+              onChangeText={setAuthor}
+              placeholder="Username"
+              accessibilityLabel="Author filter"
+            />
+          </FilterSection>
+
+          <FilterSection title="Tags">
+            <Input
+              value={tags}
+              onChangeText={setTags}
+              placeholder="tag1, tag2"
+              accessibilityLabel="Tags filter"
+            />
+          </FilterSection>
+        </View>
+      )}
 
         <SearchResults 
           results={results ? {

@@ -36,7 +36,23 @@
           "data": [
             {
               "scheme": "https",
-              "host": "meta.fomio.app"
+              "host": "meta.fomio.app",
+              "pathPattern": "/t/.*"
+            },
+            {
+              "scheme": "https",
+              "host": "meta.fomio.app",
+              "pathPattern": "/u/.*"
+            },
+            {
+              "scheme": "https",
+              "host": "meta.fomio.app",
+              "pathPattern": "/c/.*"
+            },
+            {
+              "scheme": "https",
+              "host": "meta.fomio.app",
+              "path": "/search"
             }
           ],
           "category": [

@@ -34,6 +34,7 @@ import { topicSummaryToByte } from '@/shared/adapters/topicSummaryToByte';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
 import { getThemeColors } from '@/shared/theme-constants';
+import { useAdaptiveContentLayout } from '@/shared/hooks/useAdaptiveContentLayout';
 import { useFluidNav } from '@/shared/navigation/fluidNavContext';
 import * as Haptics from 'expo-haptics';
 
@@ -76,6 +77,7 @@ export default function TeretScreen(): React.ReactElement {
     }),
     [isAmoled, isDark, themeColors]
   );
+  const adaptiveLayout = useAdaptiveContentLayout();
 
   // Header-aware scroll handler
   const { onScroll: headerScrollHandler, unregister: unregisterHeaderScroll } = useMemo(
@@ -320,7 +322,7 @@ export default function TeretScreen(): React.ReactElement {
         data={topics}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, adaptiveLayout.contentContainerStyle]}
         showsVerticalScrollIndicator={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
@@ -408,7 +410,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   listContent: {
-    paddingHorizontal: 16,
     paddingBottom: 100,
   },
   descriptionContainer: {
@@ -420,4 +421,3 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-

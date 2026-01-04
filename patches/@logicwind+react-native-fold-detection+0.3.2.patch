@@ -1,0 +1,20 @@
+diff --git a/node_modules/@logicwind/react-native-fold-detection/android/src/main/java/com/folddetection/FoldDetectionModule.kt b/node_modules/@logicwind/react-native-fold-detection/android/src/main/java/com/folddetection/FoldDetectionModule.kt
+index 783a892..52818b2 100644
+--- a/node_modules/@logicwind/react-native-fold-detection/android/src/main/java/com/folddetection/FoldDetectionModule.kt
++++ b/node_modules/@logicwind/react-native-fold-detection/android/src/main/java/com/folddetection/FoldDetectionModule.kt
+@@ -1,5 +1,6 @@
+ package com.folddetection
+ 
++import android.app.Activity
+ import android.content.pm.PackageManager
+ import com.facebook.react.bridge.Arguments
+ import com.facebook.react.bridge.ReactApplicationContext
+@@ -33,7 +34,7 @@ class FoldDetectionModule(reactContext: ReactApplicationContext) :
+ 
+   @ReactMethod
+   fun startListening() {
+-    val activity = currentActivity
++    val activity = reactApplicationContext.currentActivity as? Activity
+     try {
+       if (activity != null && windowInfoTracker != null) {
+         windowInfoTracker!!.addWindowLayoutInfoListener(

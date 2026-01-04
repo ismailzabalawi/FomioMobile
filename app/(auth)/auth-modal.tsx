@@ -129,16 +129,21 @@ export default function AuthModalScreen(): React.ReactElement {
           throw new Error('Sign-in failed. Please try again.');
         }
       } catch (err: any) {
-        logger.error('AuthModal: Sign-in failed', err);
-        
         if (!mounted) return;
         
         const displayError = mapAuthError(err);
-        if (displayError.toLowerCase().includes('cancel')) {
+        const isCancellation = displayError.toLowerCase().includes('cancel') || 
+                               displayError.toLowerCase().includes('cancelled');
+        
+        if (isCancellation) {
+          // Don't log cancellations as errors - they're expected user actions
           // On cancel, close the modal instead of showing error
           router.back();
           return;
         }
+        
+        // Only log actual errors
+        logger.error('AuthModal: Sign-in failed', err);
 
         setError(displayError);
         setIsLoading(false);

@@ -5,6 +5,7 @@ export { requireAuth } from './requireAuth';
 export { useCreateByte } from './useCreateByte';
 export { useFeed } from './useFeed';
 export { useSearch } from './useSearch';
+export { mapSearchResultToItems, type SearchResultItem, type SearchResultItemType } from './search';
 export { useCategories } from './useCategories';
 export { useTerets } from './useTerets';
 export { useRecentTopics } from './useRecentTopics';
@@ -67,4 +68,3 @@ export {
   useDiscourseUser,
   type UseDiscourseUserReturn 
 } from './useDiscourseUser';
-

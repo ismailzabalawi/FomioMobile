@@ -31,6 +31,7 @@ import { useHeader } from '@/components/ui/header';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
 import { getThemeColors } from '@/shared/theme-constants';
+import { useAdaptiveContentLayout } from '@/shared/hooks/useAdaptiveContentLayout';
 import * as Haptics from 'expo-haptics';
 
 interface HubData {
@@ -123,6 +124,7 @@ export default function HubScreen(): React.ReactElement {
     }),
     [isAmoled, isDark, themeColors]
   );
+  const adaptiveLayout = useAdaptiveContentLayout();
 
   // Header-aware scroll handler
   const { onScroll: headerScrollHandler, unregister: unregisterHeaderScroll } = useMemo(
@@ -305,7 +307,7 @@ export default function HubScreen(): React.ReactElement {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, adaptiveLayout.contentContainerStyle]}
         showsVerticalScrollIndicator={false}
         onScroll={headerScrollHandler}
         scrollEventThrottle={16}
@@ -404,7 +406,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   descriptionContainer: {
-    paddingHorizontal: 16,
     paddingVertical: 16,
   },
   description: {
@@ -412,7 +413,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   teretsContainer: {
-    paddingHorizontal: 16,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -461,4 +461,3 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
-

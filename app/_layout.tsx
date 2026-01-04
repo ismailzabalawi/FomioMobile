@@ -10,6 +10,7 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { queryClient, asyncStoragePersister } from '@/shared/query-client';
 import '../global.css';
+import { FoldingFeatureProvider } from '@logicwind/react-native-fold-detection';
 
 import { ThemeProvider, useTheme } from '@/components/theme';
 import { AuthProvider, useAuth } from '@/shared/auth-context';
@@ -28,9 +29,8 @@ import { ToastContainer } from '@/components/shared/ToastContainer';
 // Global flag to prevent duplicate deep link initialization across remounts (foldable screen changes)
 let deepLinkInitialized = false;
 
-// Note: FoldingFeatureProvider from @logicwind/react-native-fold-detection is disabled
-// because the native modules are not compatible with Expo Go and have been excluded from autolinking.
-// The useFoldableLayout hook uses a width-based heuristic fallback that works without native modules.
+// FoldingFeatureProvider enables native foldable posture detection in dev/EAS builds.
+// The useFoldableLayout hook still falls back to width heuristics when native info is unavailable.
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -125,13 +125,15 @@ export default function RootLayout(): React.ReactElement | null {
         }}
       >
         <BottomSheetModalProvider>
-          <ThemeProvider defaultTheme="system">
-            <AuthProvider>
-              <InitializationCoordinator>
-                <RootLayoutNav />
-              </InitializationCoordinator>
-            </AuthProvider>
-          </ThemeProvider>
+          <FoldingFeatureProvider>
+            <ThemeProvider defaultTheme="system">
+              <AuthProvider>
+                <InitializationCoordinator>
+                  <RootLayoutNav />
+                </InitializationCoordinator>
+              </AuthProvider>
+            </ThemeProvider>
+          </FoldingFeatureProvider>
         </BottomSheetModalProvider>
       </PersistQueryClientProvider>
     </GestureHandlerRootView>
@@ -177,7 +179,7 @@ function RootLayoutNav(): React.ReactElement {
         isAuthenticated,
       });
       
-      // Use unified handler - warm start uses push(), pass auth state
+      // Use unified handler - warm start uses push() to add route to stack
       if (isFomioDeepLink(url)) {
         handleDeepLink(url, false, isAuthenticated);
       }

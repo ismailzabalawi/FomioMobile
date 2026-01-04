@@ -129,11 +129,22 @@ function convertHttpsUrlToFomioUrl(url: string): string | null {
     const rawPath = parsed.path ?? '';
     const path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
     
+    // Debug logging for URL conversion
+    logger.info('Converting HTTPS URL', {
+      originalUrl: url,
+      parsedScheme: parsed.scheme,
+      parsedHostname: parsed.hostname,
+      rawPath,
+      normalizedPath: path,
+      queryParams: parsed.queryParams,
+    });
+    
     // Extract topic ID from /t/{slug}/{id} - Discourse topic URL format
     // Handle trailing slashes and query params
     const topicMatch = path.match(/^\/t\/[^/]+\/(\d+)(?:\/|\?|$)/);
     if (topicMatch) {
       const topicId = topicMatch[1];
+      logger.info('Matched topic URL with slug', { path, topicId, match: topicMatch[0] });
       return `fomio://byte/${topicId}`;
     }
     
@@ -141,6 +152,7 @@ function convertHttpsUrlToFomioUrl(url: string): string | null {
     // Handle trailing slashes and query params
     const topicShortMatch = path.match(/^\/t\/(\d+)(?:\/|\?|$)/);
     if (topicShortMatch) {
+      logger.info('Matched topic URL without slug', { path, topicId: topicShortMatch[1], match: topicShortMatch[0] });
       return `fomio://byte/${topicShortMatch[1]}`;
     }
     
@@ -200,12 +212,22 @@ export function resolveDeepLink(url: string): DeepLinkResult | null {
   if (parsed.scheme === 'https' && parsed.hostname === 'meta.fomio.app') {
     const convertedUrl = convertHttpsUrlToFomioUrl(url);
     if (convertedUrl) {
-      logger.info('Converted HTTPS URL to Fomio URL', { original: url, converted: convertedUrl });
+      logger.info('Converted HTTPS URL to Fomio URL', { 
+        original: url, 
+        converted: convertedUrl,
+        parsedPath: parsed.path,
+      });
       // Recursively process the converted URL
       return resolveDeepLink(convertedUrl);
     }
     // If conversion failed, it's not a recognized URL pattern
-    logger.warn('HTTPS URL could not be converted to Fomio URL', { url });
+    logger.warn('HTTPS URL could not be converted to Fomio URL', { 
+      url,
+      parsedScheme: parsed.scheme,
+      parsedHostname: parsed.hostname,
+      parsedPath: parsed.path,
+      queryParams: parsed.queryParams,
+    });
     return null;
   }
 
@@ -340,7 +362,15 @@ export function handleDeepLink(
     if (isColdStart) {
       router.replace(result.path as any);
     } else {
-      router.push(result.path as any);
+      // For warm start, use replace() for feed routes to prevent navigation stack issues
+      // Feed routes are nested stacks, and push() can cause "screen doesn't exist" on back navigation
+      // Using replace() maintains a clean navigation state
+      if (result.path.startsWith('/feed')) {
+        router.replace(result.path as any);
+      } else {
+        // For other routes, use push() to maintain navigation stack
+        router.push(result.path as any);
+      }
     }
 
     return true;

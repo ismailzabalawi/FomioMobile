@@ -2416,6 +2416,19 @@ class DiscourseApiService {
       }
     }
     
+    // Fallback to username/user_id if present on topic
+    if (!authorUser && (topic.username || topic.user_id)) {
+      authorUser = {
+        id: topic.user_id || 0,
+        username: topic.username || 'unknown',
+        name: topic.name || topic.username || 'Unknown User',
+        avatar_template: topic.avatar_template || topic.last_poster_avatar_template || '',
+      };
+      if (__DEV__ && topic.id) {
+        console.warn(`⚠️ mapTopicToByte: Topic ${topic.id} - Using topic.username fallback for author`);
+      }
+    }
+
     // Fallback to last_poster only if we couldn't find original creator
     if (!authorUser) {
       authorUser = topic.last_poster;

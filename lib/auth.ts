@@ -151,10 +151,12 @@ export async function signIn(): Promise<boolean> {
     const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
     
     if (result.type !== 'success') {
-      if (result.type === 'cancel') {
-        logger.info('User cancelled authorization');
+      // Handle user-initiated cancellations (cancel/dismiss) as info, not errors
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        logger.info('User cancelled authorization', { type: result.type });
         throw new Error('Authorization cancelled');
       }
+      // Only log as error for actual failures (locked, etc.)
       logger.error('Authorization failed', { type: result.type });
       throw new Error('Authorization failed. Please try again.');
     }
@@ -230,6 +232,13 @@ export async function signIn(): Promise<boolean> {
 
     return true;
   } catch (error: any) {
+    // Don't log cancellations as errors - they're expected user actions
+    const isCancellation = error?.message?.toLowerCase().includes('cancel') || 
+                          error?.message?.toLowerCase().includes('cancelled');
+    if (isCancellation) {
+      // Cancellation already logged as info above, just re-throw
+      throw error;
+    }
     logger.error('Sign in failed', error);
     throw error;
   }

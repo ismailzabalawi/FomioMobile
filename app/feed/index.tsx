@@ -23,6 +23,7 @@ import { useHeader } from '@/components/ui/header';
 import { ByteCard } from '@/components/bytes/ByteCard';
 import { ByteCardSkeleton } from '@/components/bytes/ByteCardSkeleton';
 import { topicSummaryToByte } from '@/shared/adapters/topicSummaryToByte';
+import { useAdaptiveContentLayout } from '@/shared/hooks/useAdaptiveContentLayout';
 import { discourseApi } from '../../shared/discourseApi';
 import { logger } from '../../shared/logger';
 import { getThemeColors } from '../../shared/theme-constants';
@@ -191,6 +192,7 @@ export default function FeedScreen(): React.ReactElement {
     secondary: themeColors.secondary,
     error: themeColors.destructive,
   };
+  const adaptiveLayout = useAdaptiveContentLayout();
 
   // Load data based on category parameter
   const loadData = useCallback(async () => {
@@ -382,7 +384,7 @@ export default function FeedScreen(): React.ReactElement {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, adaptiveLayout.contentContainerStyle]}
         showsVerticalScrollIndicator={false}
         onScroll={headerScrollHandler}
         scrollEventThrottle={16}
@@ -480,10 +482,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   teretsContainer: {
-    paddingHorizontal: 16,
   },
   topicsContainer: {
-    paddingHorizontal: 16,
   },
   emptyContainer: {
     flex: 1,

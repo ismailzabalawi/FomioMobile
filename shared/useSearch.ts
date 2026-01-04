@@ -5,10 +5,11 @@
  * Debounce is handled at the UI layer via the query string.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { discourseApi, SearchResult } from './discourseApi';
 import { queryKeys } from './query-client';
+import { mapSearchResultToItems } from './search';
 
 export interface SearchState {
   results: SearchResult | null;
@@ -23,6 +24,10 @@ export interface SearchFilters {
   order?: 'relevance' | 'latest' | 'views' | 'likes' | 'created' | 'updated';
   limit?: number;
   period?: 'all' | 'yearly' | 'quarterly' | 'monthly' | 'weekly' | 'daily';
+  category?: string;
+  tags?: string[];
+  author?: string;
+  status?: 'open' | 'closed' | 'archived' | 'visible' | 'hidden';
 }
 
 /**
@@ -150,9 +155,11 @@ export function useSearch() {
   // Compute states for backward compatibility
   const isSearching = isQueryLoading || isFetching;
   const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
+  const items = useMemo(() => mapSearchResultToItems(results ?? null), [results]);
 
   return {
     results: results ?? null,
+    items,
     isSearching,
     error: errorMessage,
     query: currentQuery,

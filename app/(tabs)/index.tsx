@@ -6,6 +6,7 @@ import { useTheme } from '@/components/theme';
 import { ByteCard } from '@/components/bytes/ByteCard';
 import { useFeedHeader } from '@/shared/hooks/useFeedHeader';
 import { useFeed, FeedItem } from '../../shared/useFeed';
+import { useAdaptiveContentLayout } from '@/shared/hooks/useAdaptiveContentLayout';
 import { useAuth } from '@/shared/auth-context';
 import { ByteCardSkeleton } from '@/components/bytes/ByteCardSkeleton';
 import { ArrowClockwise, Newspaper } from 'phosphor-react-native';
@@ -28,6 +29,7 @@ export default function HomeScreen(): React.ReactElement {
     error: isDark ? '#ef4444' : '#dc2626',
     primary: isDark ? '#26A69A' : '#009688',
   }), [isAmoled, isDark]);
+  const adaptiveLayout = useAdaptiveContentLayout({ minHorizontalPadding: 0 });
   
   const { 
     items, 
@@ -220,7 +222,7 @@ export default function HomeScreen(): React.ReactElement {
           data={Array(5).fill(null)}
           renderItem={() => <ByteCardSkeleton />}
           keyExtractor={(_, index) => `skeleton-${index}`}
-          contentContainerStyle={styles.feedContainer}
+          contentContainerStyle={[styles.feedContainer, adaptiveLayout.contentContainerStyle]}
           showsVerticalScrollIndicator={false}
         />
       </SafeAreaView>
@@ -235,7 +237,7 @@ export default function HomeScreen(): React.ReactElement {
         data={items}
         renderItem={renderFeedItem}
         keyExtractor={keyExtractor}
-        contentContainerStyle={styles.feedContainer}
+        contentContainerStyle={[styles.feedContainer, adaptiveLayout.contentContainerStyle]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
