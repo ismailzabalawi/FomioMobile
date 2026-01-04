@@ -725,7 +725,7 @@ export default function NotificationsScreen(): React.ReactElement {
         <AnimatedSectionList
           ref={sectionListRef}
           sections={processedNotifications}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item: Notification) => item.id.toString()}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={{ paddingBottom: 32 }}

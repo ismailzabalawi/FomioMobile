@@ -14,8 +14,10 @@ import '../global.css';
 import { ThemeProvider, useTheme } from '@/components/theme';
 import { AuthProvider, useAuth } from '@/shared/auth-context';
 import { attachIntentReplay } from '@/shared/intent-replay';
+import { useIntentReplay } from '@/shared/hooks/useIntentReplay';
 import { discourseApi } from '@/shared/discourseApi';
 import { logger } from '@/shared/logger';
+import { handleDeepLink, isFomioDeepLink } from '@/lib/deep-link-handler';
 import * as Linking from 'expo-linking';
 import { Platform, View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -138,68 +140,68 @@ export default function RootLayout(): React.ReactElement | null {
 
 function RootLayoutNav(): React.ReactElement {
   const { navigationTheme } = useTheme();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const insets = useSafeAreaInsets();
   const isInitializedRef = useRef(false);
 
-  // Set up deep link listener for Android auth redirects
-  // This is a fallback for edge cases - primary auth flow uses WebView
+  // Set up intent replay for deep links that required auth
+  // This listens for auth:signed-in and replays any pending navigation intent
+  useIntentReplay();
+
+  // Set up unified deep link listener for all fomio:// URLs
+  // Handles: bytes, terets, hubs, profiles, search, compose, settings, notifications, home
+  // Auth callbacks are handled as a special case within the handler
   // Uses global flag + ref to prevent duplicate initialization on foldable screen changes
+  // Waits for auth to load before processing to correctly gate auth-required routes
   useEffect(() => {
+    // Wait for auth state to be ready before processing deep links
+    if (authLoading) {
+      return;
+    }
+
     // Skip if already initialized globally (prevents conflicts on foldable remounts)
     if (deepLinkInitialized || isInitializedRef.current) {
       logger.info('Deep link handler already initialized, skipping duplicate setup');
       return;
     }
     
-    if (Platform.OS === 'android') {
-      deepLinkInitialized = true;
-      isInitializedRef.current = true;
+    deepLinkInitialized = true;
+    isInitializedRef.current = true;
+    
+    // Handle deep links while app is running (warm start)
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      logger.info('Deep link received (warm start)', { 
+        url, 
+        platform: Platform.OS,
+        isFomio: isFomioDeepLink(url),
+        isAuthenticated,
+      });
       
-      // Handle deep links while app is running
-      // Expo Router handles fomio://auth_redirect via app/auth_redirect.tsx
-      // This listener is for additional logging/debugging
-      const subscription = Linking.addEventListener('url', ({ url }) => {
-        logger.info('Deep link received via Linking listener', { 
-          url, 
-          platform: Platform.OS,
-          hasPayload: url.includes('payload='),
-        });
-        
-        // Expo Router will handle routing to auth_redirect.tsx automatically
-        // We only need to handle edge cases here
-        if (url.includes('fomio://auth_redirect') && url.includes('payload=')) {
-          logger.info('Auth redirect deep link detected, Expo Router will handle routing');
-          // Expo Router should handle this via app/auth_redirect.tsx
-          // Force navigate if Expo Router doesn't pick it up
-          const urlParams = new URLSearchParams(url.split('?')[1] || '');
-          const payload = urlParams.get('payload');
-          if (payload) {
-            router.replace(`/auth_redirect?payload=${encodeURIComponent(payload)}` as any);
-          }
-        }
-      });
+      // Use unified handler - warm start uses push(), pass auth state
+      if (isFomioDeepLink(url)) {
+        handleDeepLink(url, false, isAuthenticated);
+      }
+    });
 
-      // Handle initial URL (cold start)
-      Linking.getInitialURL().then((url) => {
-        if (url && url.includes('fomio://auth_redirect')) {
-          logger.info('Initial auth redirect deep link detected', { url });
-          const urlParams = new URLSearchParams(url.split('?')[1] || '');
-          const payload = urlParams.get('payload');
-          if (payload) {
-            // Navigate to auth_redirect which will then go to callback
-            router.replace(`/auth_redirect?payload=${encodeURIComponent(payload)}` as any);
-          }
-        }
-      }).catch((error) => {
-        logger.error('Error getting initial URL', error);
-      });
+    // Handle initial URL (cold start)
+    Linking.getInitialURL().then((url) => {
+      if (url && isFomioDeepLink(url)) {
+        logger.info('Deep link received (cold start)', { url, isAuthenticated });
+        // Delay slightly to ensure router is ready
+        setTimeout(() => {
+          // Cold start uses replace() for clean back stack, pass auth state
+          handleDeepLink(url, true, isAuthenticated);
+        }, 150);
+      }
+    }).catch((error) => {
+      logger.error('Error getting initial URL', error);
+    });
 
-      return () => {
-        subscription.remove();
-        // Don't reset global flag on cleanup - prevents re-initialization on foldable changes
-      };
-    }
-  }, []);
+    return () => {
+      subscription.remove();
+      // Don't reset global flag on cleanup - prevents re-initialization on foldable changes
+    };
+  }, [authLoading, isAuthenticated]);
 
   // Set up intent replay for anonymous user actions
   useEffect(() => {
@@ -363,6 +365,10 @@ function RootLayoutContent({ insets }: { insets: { top: number } }): React.React
           <Stack.Screen name="(protected)" />
           <Stack.Screen name="(profile)" />
           <Stack.Screen name="feed" />
+          <Stack.Screen name="teret" />
+          <Stack.Screen name="hub" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen name="(debug)" />
           <Stack.Screen name="auth/callback" />
           <Stack.Screen name="auth_redirect" />
           <Stack.Screen

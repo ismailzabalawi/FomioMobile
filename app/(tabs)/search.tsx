@@ -21,7 +21,7 @@ import { useScreenHeader } from '@/shared/hooks/useScreenHeader';
 import { ByteCard } from '@/components/bytes/ByteCard';
 import { searchResultToByte } from '@/shared/adapters/searchResultToByte';
 import { useSearch } from '../../shared/useSearch';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { goToProfile } from '@/shared/navigation/profile';
 import Animated, { FadeInDown, useAnimatedScrollHandler } from 'react-native-reanimated';
 import { getThemeColors } from '@/shared/theme-constants';
@@ -607,8 +607,10 @@ function EmptyStateCards() {
 
 export default function SearchScreen(): React.ReactElement {
   const { themeMode, isAmoled } = useTheme();
+  const { q: initialQuery } = useLocalSearchParams<{ q?: string }>();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeType, setActiveType] = useState<SearchType>('bytes');
+  const [initialQueryApplied, setInitialQueryApplied] = useState(false);
   const { scrollY, setUpHandler } = useFluidNav();
   const flatListRef = useRef<Animated.FlatList<any>>(null);
   
@@ -622,6 +624,19 @@ export default function SearchScreen(): React.ReactElement {
     error: searchError,
     retry: retrySearch,
   } = useSearch();
+  
+  // Handle deep link with pre-filled query (fomio://search?q=...)
+  useEffect(() => {
+    if (initialQuery && !initialQueryApplied) {
+      setInitialQueryApplied(true);
+      setSearchQuery(initialQuery);
+      // Trigger search immediately if query is long enough
+      if (initialQuery.trim().length >= 3) {
+        const backendType = mapSearchTypeToBackendType(activeType);
+        search(initialQuery.trim(), { type: backendType });
+      }
+    }
+  }, [initialQuery, initialQueryApplied, activeType, search]);
 
   const colors = useMemo(() => getThemeColors(themeMode, isAmoled), [themeMode, isAmoled]);
 

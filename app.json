@@ -29,6 +29,20 @@
             "BROWSABLE",
             "DEFAULT"
           ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "meta.fomio.app"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
@@ -39,6 +53,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.fomio.mobile",
       "userInterfaceStyle": "automatic",
+      "associatedDomains": ["applinks:meta.fomio.app"],
       "infoPlist": {
         "CFBundleURLTypes": [
           {

@@ -6,10 +6,11 @@
 // - Empty state: "No media yet"
 // - Extracts images from user posts
 
-import React, { useCallback } from 'react';
-import { View, Text, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { View, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
+import { useFoldableLayout } from '@/shared/hooks/useFoldableLayout';
 
 export interface MediaItem {
   id: string;
@@ -24,11 +25,9 @@ export interface ProfileMediaGridProps {
   onMediaPress?: (media: MediaItem, index: number) => void;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PADDING = 16;
 const GAP = 4;
 const COLUMNS = 3;
-const ITEM_SIZE = (SCREEN_WIDTH - PADDING * 2 - GAP * (COLUMNS - 1)) / COLUMNS;
 
 export function ProfileMediaGrid({
   media,
@@ -36,6 +35,14 @@ export function ProfileMediaGrid({
   onMediaPress,
 }: ProfileMediaGridProps) {
   const { isDark, isAmoled } = useTheme();
+  const { width } = useWindowDimensions();
+  const { paddingLeft, paddingRight } = useFoldableLayout();
+
+  const itemSize = useMemo(() => {
+    const availableWidth = width - paddingLeft - paddingRight - PADDING * 2;
+    const safeWidth = Math.max(0, availableWidth);
+    return Math.max(0, Math.floor((safeWidth - GAP * (COLUMNS - 1)) / COLUMNS));
+  }, [width, paddingLeft, paddingRight]);
 
   const handlePress = useCallback(
     (item: MediaItem, index: number) => {
@@ -76,7 +83,13 @@ export function ProfileMediaGrid({
   }
 
   return (
-    <View className="px-4 pb-4">
+    <View
+      className="pb-4"
+      style={{
+        paddingLeft: PADDING + paddingLeft,
+        paddingRight: PADDING + paddingRight,
+      }}
+    >
       <View
         className="flex-row flex-wrap"
         style={{
@@ -89,8 +102,8 @@ export function ProfileMediaGrid({
             onPress={() => handlePress(item, index)}
             activeOpacity={0.9}
             style={{
-              width: ITEM_SIZE,
-              height: ITEM_SIZE,
+              width: itemSize,
+              height: itemSize,
               margin: GAP / 2,
               borderRadius: 8,
               overflow: 'hidden',
@@ -116,4 +129,3 @@ export function ProfileMediaGrid({
     </View>
   );
 }
-

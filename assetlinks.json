@@ -1,0 +1,11 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.fomio.mobile",
+    "sha256_cert_fingerprints": [
+      "01584EDB4544A6FF9204A6FADD4C860C9D9BCA52D478A4B2D0CA2E2A8993F051"
+    ]
+  }
+}]
+

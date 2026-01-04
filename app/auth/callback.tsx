@@ -8,6 +8,7 @@ import { discourseApi } from '../../shared/discourseApi';
 import { UserApiKeyManager } from '../../shared/userApiKeyManager';
 import { hasUserApiKey, processAuthPayload } from '../../lib/auth';
 import { parseURLParameters } from '../../lib/auth-utils';
+import { getPendingIntent, clearPendingIntent } from '../../lib/pending-intent';
 import Constants from 'expo-constants';
 import { setOnboardingCompleted } from '../../shared/onboardingStorage';
 
@@ -72,8 +73,8 @@ export default function AuthCallbackScreen() {
             await setAuthenticatedUser(appUser);
             await setOnboardingCompleted();
             
-            // Navigate to tabs
-            navigateToTabs();
+            // Navigate (with intent replay if pending)
+            await navigateAfterAuth();
             return;
           }
         }
@@ -128,7 +129,7 @@ export default function AuthCallbackScreen() {
             }
             
             await setOnboardingCompleted();
-            navigateToTabs();
+            await navigateAfterAuth();
             return;
           } else {
             throw new Error(result.error || 'Failed to process authentication');
@@ -153,9 +154,26 @@ export default function AuthCallbackScreen() {
       }
     }
 
-    function navigateToTabs() {
-      // Use Expo Router's replace to navigate to tabs
-      // This replaces the current route, preventing going back to auth screens
+    async function navigateAfterAuth() {
+      // Check for pending intent from deep link that required auth
+      try {
+        const intent = await getPendingIntent();
+        
+        if (intent) {
+          // Clear before navigating to prevent loops
+          await clearPendingIntent();
+          logger.info('AuthCallbackScreen: Replaying pending intent', { 
+            resolvedPath: intent.resolvedPath 
+          });
+          router.replace(intent.resolvedPath as any);
+          return;
+        }
+      } catch (intentError) {
+        logger.warn('AuthCallbackScreen: Failed to get pending intent', intentError);
+        // Fall through to default navigation
+      }
+      
+      // Default: go to home tabs
       router.replace('/(tabs)');
     }
 

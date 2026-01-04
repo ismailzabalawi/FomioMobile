@@ -1,0 +1,21 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "LK9253R3XB.com.fomio.mobile",
+        "paths": [
+          "/t/*",
+          "/u/*",
+          "/c/*",
+          "/teret/*",
+          "/hub/*",
+          "/byte/*",
+          "/profile/*",
+          "/search*"
+        ]
+      }
+    ]
+  }
+}
+

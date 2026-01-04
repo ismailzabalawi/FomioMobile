@@ -13,8 +13,8 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Dimensions,
   TextInput,
+  useWindowDimensions,
 } from 'react-native';
 import { useTheme } from '@/components/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,8 +28,9 @@ interface HelpSheetProps {
 export function HelpSheet({ visible, onClose }: HelpSheetProps) {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const screenHeight = Dimensions.get('window').height;
-  const maxSheetHeight = screenHeight * 0.9;
+  const { height: screenHeight } = useWindowDimensions();
+  const safeHeight = Math.max(0, screenHeight - insets.top - insets.bottom);
+  const maxSheetHeight = safeHeight * 0.9;
   const [query, setQuery] = React.useState('');
 
   const sectionTitleClass =

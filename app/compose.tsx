@@ -51,7 +51,7 @@ export default function ComposeScreen(): React.ReactElement {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { safeBack } = useSafeNavigation();
-  const params = useLocalSearchParams<{ draftKey?: string; draftSequence?: string }>();
+  const params = useLocalSearchParams<{ draftKey?: string; draftSequence?: string; teret?: string }>();
   const { 
     terets, 
     allCategories, // All categories (Hubs + Terets) for picker
@@ -100,6 +100,25 @@ export default function ComposeScreen(): React.ReactElement {
         : undefined;
     return Number.isFinite(value) ? (value as number) : 0;
   }, [params]);
+
+  // Deep link teret pre-selection (fomio://compose?teret={slug})
+  const paramTeret = useMemo(
+    () => (typeof params?.teret === 'string' ? params.teret : undefined),
+    [params]
+  );
+  const [teretPreselected, setTeretPreselected] = useState(false);
+
+  // Pre-select teret from deep link param
+  useEffect(() => {
+    if (paramTeret && !teretPreselected && terets.length > 0) {
+      const found = terets.find((t) => t.slug === paramTeret);
+      if (found) {
+        setSelectedTeret(found);
+        setTeretPreselected(true);
+        Haptics.selectionAsync().catch(() => {});
+      }
+    }
+  }, [paramTeret, teretPreselected, terets]);
 
   const latestDraftRef = useRef({
     title: '',
