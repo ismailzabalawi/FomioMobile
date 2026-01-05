@@ -1,12 +1,13 @@
 import React from 'react';
+import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { ByteBlogPage } from '../../components/feed/ByteBlogPage';
 import { useTheme } from '@/components/theme';
 
 // UI Spec: Dynamic Byte Detail Route — Renders ByteBlogPage with data from route params
 // Provides seamless navigation from feed to detailed byte view with proper theming
 // Header is now handled by ByteBlogPage component
+// Note: Do NOT wrap in SafeAreaView - ByteBlogPage handles its own safe areas
 export default function ByteDetailScreen(): React.ReactElement {
   const { byteId, showComments } = useLocalSearchParams<{ byteId: string; showComments?: string }>();
   const { isDark, isAmoled } = useTheme();
@@ -33,8 +34,9 @@ export default function ByteDetailScreen(): React.ReactElement {
     console.log('Bookmark pressed for byte:', byteId);
   };
 
+  // Use plain View instead of SafeAreaView - ByteBlogPage handles safe areas internally
   return (
-    <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.background }]}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ByteBlogPage
         topicId={parseInt(byteId || '0')}
         onLike={handleLike}
@@ -43,6 +45,6 @@ export default function ByteDetailScreen(): React.ReactElement {
         onBookmark={handleBookmark}
         initialCommentsVisible={showComments === 'true'}
       />
-    </SafeAreaView>
+    </View>
   );
 } 

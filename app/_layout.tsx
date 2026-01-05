@@ -369,7 +369,6 @@ function RootLayoutContent({ insets }: { insets: { top: number } }): React.React
           <Stack.Screen name="feed" />
           <Stack.Screen name="teret" />
           <Stack.Screen name="hub" />
-          <Stack.Screen name="profile" />
           <Stack.Screen name="(debug)" />
           <Stack.Screen name="auth/callback" />
           <Stack.Screen name="auth_redirect" />

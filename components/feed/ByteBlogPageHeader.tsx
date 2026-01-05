@@ -93,7 +93,7 @@ export function ByteBlogPageHeader({
       </Text>
 
       {/* 2. Avatar + Username · Category */}
-      <View className="flex-row items-center mb-3 gap-2">
+      <View className="flex-row items-center flex-wrap mb-3 gap-2">
         {/* Small avatar */}
         {avatarSource ? (
           <Image 

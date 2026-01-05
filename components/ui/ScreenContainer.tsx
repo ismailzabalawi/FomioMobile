@@ -5,8 +5,8 @@
 // - Zero-layer navigation compatible
 // - variant='card' paints safe-area to match header (white/black seamless)
 
-import React, { useEffect } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import React from 'react';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cn } from '@/lib/utils/cn';
 import { useTheme } from '@/components/theme';
@@ -20,13 +20,6 @@ interface ScreenContainerProps {
 
 export function ScreenContainer({ children, className, variant = 'bg' }: ScreenContainerProps) {
   const { navigationTheme, isDark } = useTheme();
-  const { width, height } = useWindowDimensions(); // Track dimension changes for foldable devices
-
-  // Force re-render when dimensions change (for foldable devices)
-  useEffect(() => {
-    // This ensures the component updates when device is folded/unfolded
-    // The dependency on width/height will trigger re-render
-  }, [width, height]);
 
   // Paint the safe-area background using navigation theme (AMOLED-safe).
   // This ensures the status bar area matches the header/screen background.

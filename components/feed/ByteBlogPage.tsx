@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+// SafeAreaView removed - parent screen handles safe areas, StickyActionBar handles bottom insets
 import { Image } from 'expo-image';
 import { useTheme } from '@/components/theme';
 import { getTokens } from '@/shared/design/tokens';
@@ -240,34 +240,31 @@ export function ByteBlogPage({
   }
 
   // Main render - MINIMAL VERSION
+  // Note: No SafeAreaView needed here - parent handles top safe area,
+  // StickyActionBar handles bottom safe area internally
   return (
     <>
       {/* Main Screen */}
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: tokens.colors.background }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <SafeAreaView 
-          className={`flex-1 ${isAmoled ? 'bg-fomio-bg-dark' : isDark ? 'bg-fomio-bg-dark' : 'bg-fomio-bg'}`}
-          edges={['bottom']}
+        <ScrollView
+          ref={scrollViewRef}
+          style={{ flex: 1 }}
+          onScroll={handleScrollWithTracking}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={{ 
+            backgroundColor: tokens.colors.background
+          }}
         >
-          <ScrollView
-            ref={scrollViewRef}
-            onScroll={handleScrollWithTracking}
-            scrollEventThrottle={16}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
-            keyboardDismissMode="on-drag"
-            contentContainerStyle={{ 
-              paddingBottom: 12,
-              backgroundColor: tokens.colors.background
-            }}
-          >
-            {renderHeaderSection}
-            {renderFooter}
-          </ScrollView>
-        </SafeAreaView>
+          {renderHeaderSection}
+          {renderFooter}
+        </ScrollView>
       </KeyboardAvoidingView>
 
       {/* Comments Bottom Sheet - OUTSIDE main layout to appear above everything */}
