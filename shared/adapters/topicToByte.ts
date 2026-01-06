@@ -1,6 +1,7 @@
 import type { TopicData } from '../useTopic';
 import type { Byte } from '@/types/byte';
 import { extractMedia } from '@/lib/utils/media';
+import { extractLinkPreview } from '@/lib/utils/linkPreview';
 
 // Declare __DEV__ for TypeScript (React Native global)
 declare const __DEV__: boolean;
@@ -23,6 +24,9 @@ export function topicToByte(topic: TopicData): Byte {
   
   // Extract images from HTML content
   const media = extractMedia(cooked);
+  
+  // Extract link preview from cooked HTML (first onebox only)
+  const linkPreview = extractLinkPreview(cooked);
   
   // Get raw markdown from first post if available
   const raw = topic.posts?.[0]?.raw || FALLBACK_RAW;
@@ -49,8 +53,7 @@ export function topicToByte(topic: TopicData): Byte {
     cooked,
     createdAt: topic.createdAt,
     media: media.length > 0 ? media : undefined,
-    // linkPreview is not wired yet - will be added when Discourse provides link metadata
-    linkPreview: undefined,
+    linkPreview,
     stats: {
       likes: topic.likeCount || 0,
       replies: topic.replyCount || 0,

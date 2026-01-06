@@ -387,11 +387,26 @@ class DiscourseApiService {
       }
 
       // Authentication: Use User API Keys (delegated auth with RSA)
+      const mergeAuthHeaders = (authHeadersData: Record<string, string>) => {
+        const {
+          'Content-Type': authContentType,
+          'content-type': authContentTypeLower,
+          ...rest
+        } = authHeadersData;
+        Object.assign(headers, rest);
+        if (!headers['Content-Type'] && !headers['content-type']) {
+          const contentType = authContentType || authContentTypeLower;
+          if (contentType) {
+            headers['Content-Type'] = contentType;
+          }
+        }
+      };
+
       try {
         const authHeadersData = await authHeaders();
         
         if (authHeadersData['User-Api-Key']) {
-          Object.assign(headers, authHeadersData);
+          mergeAuthHeaders(authHeadersData);
           
           // Log authentication status for debugging
           const hasApiKey = !!authHeadersData['User-Api-Key'];
@@ -429,7 +444,7 @@ class DiscourseApiService {
             try {
               const retryHeaders = await authHeaders();
               if (retryHeaders['User-Api-Key']) {
-                Object.assign(headers, retryHeaders);
+                mergeAuthHeaders(retryHeaders);
                 console.log('🔑 API key found on retry');
               } else {
                 console.error('❌ Write operation without API key - request will fail', {
@@ -461,9 +476,12 @@ class DiscourseApiService {
         console.warn('Failed to load auth headers', error);
       }
 
-      // Sanitize request body if present
+      // Sanitize request body only for JSON payloads
       let sanitizedBody = options.body;
-      if (options.body && typeof options.body === 'string') {
+      const contentTypeHeader = headers['Content-Type'] || headers['content-type'] || '';
+      const isJsonBody =
+        typeof options.body === 'string' && contentTypeHeader.includes('application/json');
+      if (isJsonBody && typeof options.body === 'string') {
         try {
           const parsed = JSON.parse(options.body);
           const sanitized = this.sanitizeObject(parsed);
@@ -497,9 +515,19 @@ class DiscourseApiService {
           const isSessionCheck = endpoint === '/session/current.json' && response.status === 404;
           const isAdminUserEndpoint = endpoint.includes('/admin/users/') && response.status === 404;
           
-          // Handle 500 errors on drafts endpoint - Discourse may return 500 when draft doesn't exist
-          // Treat this as "no draft exists" rather than a server error
-          const isDraftEndpoint = endpoint.includes('/drafts/') && response.status === 500;
+          // Handle 500 OR 404 errors on drafts endpoint - Discourse may return either when draft doesn't exist
+          // Treat this as "no draft exists" rather than an error
+          const isDraftEndpoint = endpoint.includes('/drafts/') && (response.status === 500 || response.status === 404);
+          
+          // Handle 404 on resource lookups - these are expected when resource doesn't exist
+          // Topics, posts, users, categories can legitimately not exist
+          const isResourceLookup404 = response.status === 404 && (
+            endpoint.match(/^\/t\/\d+/) ||           // Topic lookup /t/{id}
+            endpoint.match(/^\/posts\/\d+/) ||       // Post lookup /posts/{id}
+            endpoint.match(/^\/u\/[^/]+\.json/) ||   // User lookup /u/{username}.json
+            endpoint.includes('/c/') ||               // Category lookup
+            endpoint.includes('/notifications')       // Notifications (can be empty)
+          );
           
           if (isSessionCheck) {
             console.log('📱 No active session (user not authenticated)');
@@ -509,12 +537,15 @@ class DiscourseApiService {
             console.debug(`⚠️ Admin endpoint not accessible (expected for non-admin): ${endpoint}`);
           } else if (isDraftEndpoint) {
             // Draft doesn't exist - return empty draft response instead of error
-            console.log('📝 Draft not found (500 treated as empty draft)');
+            console.log('📝 Draft not found (treated as empty draft)');
             return {
               success: true,
               data: { draft: null, draft_key: null, sequence: 0 } as T,
               status: 200,
             };
+          } else if (isResourceLookup404) {
+            // Resource not found is a valid response, not an error
+            console.log(`📭 Resource not found (404): ${endpoint}`);
           } else {
             console.error(`❌ HTTP Error ${response.status}:`, errorData);
           }
@@ -3269,14 +3300,17 @@ class DiscourseApiService {
   async saveDraft(params: { draftKey: string; draft: Record<string, any>; sequence?: number }): Promise<DiscourseApiResponse<any>> {
     const { draftKey, draft, sequence = 0 } = params;
     try {
-      const formData = new FormData();
-      formData.append('draft', JSON.stringify(draft));
-      formData.append('draft_key', draftKey);
-      formData.append('sequence', String(sequence));
+      const body = new URLSearchParams();
+      body.append('draft', JSON.stringify(draft));
+      body.append('draft_key', draftKey);
+      body.append('sequence', String(sequence));
 
       return await this.makeRequest<any>(`/drafts/${encodeURIComponent(draftKey)}.json`, {
         method: 'PUT',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        },
+        body: body.toString(),
       });
     } catch (error) {
       return {

@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, NativeSyntheticEvent, NativeScrollEvent, RefreshControl, Share } from 'react-native';
 // SafeAreaView removed - parent screen handles safe areas, StickyActionBar handles bottom insets
 import { Image } from 'expo-image';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/components/theme';
 import { getTokens } from '@/shared/design/tokens';
 import { Heart, ChatCircle, BookmarkSimple } from 'phosphor-react-native';
@@ -14,6 +16,7 @@ import { useByteBlogComments } from './hooks/useByteBlogComments';
 import { StickyActionBar } from './StickyActionBar';
 import { ByteBlogPageHeader } from './ByteBlogPageHeader';
 import { ByteBlogPageLoading, ByteBlogPageError, ByteBlogPageNotFound } from './ByteBlogPageStates';
+import { ReadingProgressBar } from './ReadingProgressBar';
 import { useAuth } from '@/shared/auth-context';
 import { useBookmarkStore } from '@/shared/useBookmarkSync';
 import { CommentsSheet } from '../comments/CommentsSheet';
@@ -41,6 +44,14 @@ export function ByteBlogPage({
   const { topic, isLoading, hasError, errorMessage, retry, refetch } = useTopic(topicId);
   const mode = isDark ? (isAmoled ? 'darkAmoled' : 'dark') : 'light';
   const tokens = useMemo(() => getTokens(mode), [mode]);
+  const insets = useSafeAreaInsets();
+  
+  // Calculate header height for content inset (to prevent header overlap during pull-to-refresh)
+  const COMPACT_HEADER_HEIGHT = Platform.OS === 'ios' ? 32 : 36;
+  const headerHeight = insets.top + COMPACT_HEADER_HEIGHT;
+  
+  // Pull-to-refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // ScrollView ref for scrolling
   const scrollViewRef = React.useRef<ScrollView>(null);
@@ -169,24 +180,103 @@ export function ByteBlogPage({
     }
   }, [toggleBookmark, onBookmark, topic, currentIsBookmarked]);
 
+  // Default share handler
+  const handleShare = useCallback(async () => {
+    if (onShare) {
+      onShare();
+      return;
+    }
+    
+    // Default share implementation
+    if (!topic) return;
+    
+    try {
+      const shareUrl = `https://fomio.app/byte/${topicId}`;
+      const shareMessage = `Check out "${topic.title}" on Fomio\n\n${shareUrl}`;
+      
+      await Share.share({
+        message: shareMessage,
+        title: topic.title,
+        url: shareUrl, // iOS only
+      });
+    } catch (error) {
+      // User cancelled or share failed - silently handle
+      console.log('Share cancelled or failed:', error);
+    }
+  }, [topic, topicId, onShare]);
 
   // Configure header and get scroll handler for automatic scroll-aware behavior
-  const { onScroll: headerAwareScroll } = useByteBlogHeader(topic, isDark, onShare, retry);
+  const { onScroll: headerAwareScroll } = useByteBlogHeader(topic, isDark, handleShare, retry);
 
+  // Reading progress state (0 to 1)
+  const [readingProgress, setReadingProgress] = useState(0);
+  
+  // Scroll Y for parallax effect
+  const scrollY = useSharedValue(0);
+  
+  // Fade-in animation
+  const fadeOpacity = useSharedValue(0);
+  
+  // Trigger fade-in when topic loads
+  useEffect(() => {
+    if (topic) {
+      fadeOpacity.value = withTiming(1, { duration: 300 });
+    } else {
+      fadeOpacity.value = 0;
+    }
+  }, [topic, fadeOpacity]);
+  
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: fadeOpacity.value,
+    };
+  });
+  
   // Track scroll position for comments scroll offset and call header-aware scroll
   const handleScrollWithTracking = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       // Store scroll position for comment scrolling
       if (event?.nativeEvent) {
-        scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        let offsetY = event.nativeEvent.contentOffset.y;
+        
+        // On Android, contentContainerStyle has paddingTop, so offsetY already accounts for header
+        // We need to adjust for parallax calculation
+        scrollOffsetRef.current = offsetY;
+        
+        // Update scrollY for parallax effect
+        // On Android, offsetY includes the paddingTop, so we use it directly
+        // On iOS, offsetY is negative initially due to contentOffset, so we use Math.max(0, offsetY)
+        const parallaxOffset = Platform.OS === 'android' 
+          ? Math.max(0, offsetY) 
+          : Math.max(0, offsetY);
+        scrollY.value = parallaxOffset;
+        
+        // Calculate reading progress
+        const contentHeight = event.nativeEvent.contentSize.height;
+        const scrollViewHeight = event.nativeEvent.layoutMeasurement.height;
+        const maxScroll = Math.max(0, contentHeight - scrollViewHeight);
+        const progress = maxScroll > 0 ? Math.min(1, Math.max(0, offsetY / maxScroll)) : 0;
+        setReadingProgress(progress);
       }
       // Call header-aware scroll handler (handles scroll state automatically)
       headerAwareScroll(event);
     },
-    [headerAwareScroll]
+    [headerAwareScroll, scrollY]
   );
 
   useScreenBackBehavior({}, []);
+
+  // Pull-to-refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetch]);
 
   // Handle empty avatar URLs
   const avatarSource = useMemo(() => {
@@ -206,9 +296,10 @@ export function ByteBlogPage({
         isDark={isDark}
         isAmoled={isAmoled}
         formatTimeAgo={formatTimeAgo}
+        scrollY={scrollY}
       />
     );
-  }, [topic, avatarSource, isDark, isAmoled, formatTimeAgo]);
+  }, [topic, avatarSource, isDark, isAmoled, formatTimeAgo, scrollY]);
 
   // Simplified footer - just the action bar
   const renderFooter = useMemo(() => {
@@ -221,7 +312,7 @@ export function ByteBlogPage({
         onLike={handleLike}
         onComment={handleToggleComments}
         onBookmark={handleBookmark}
-        onShare={onShare || (() => {})}
+        onShare={handleShare}
       />
     );
   }, [currentIsLiked, currentIsBookmarked, currentLikeCount, topic?.replyCount, handleLike, handleToggleComments, handleBookmark, onShare]);
@@ -245,27 +336,51 @@ export function ByteBlogPage({
   return (
     <>
       {/* Main Screen */}
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: tokens.colors.background }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        <ScrollView
-          ref={scrollViewRef}
+      <View style={{ flex: 1, backgroundColor: tokens.colors.background }}>
+        {/* Reading Progress Bar */}
+        {topic && <ReadingProgressBar scrollProgress={readingProgress} />}
+        
+        <KeyboardAvoidingView
           style={{ flex: 1 }}
-          onScroll={handleScrollWithTracking}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="on-drag"
-          contentContainerStyle={{ 
-            backgroundColor: tokens.colors.background
-          }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
-          {renderHeaderSection}
-          {renderFooter}
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <Animated.View style={[{ flex: 1 }, animatedStyle]}>
+            <ScrollView
+            ref={scrollViewRef}
+            style={{ flex: 1 }}
+            onScroll={handleScrollWithTracking}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={{ 
+              backgroundColor: tokens.colors.background,
+              // On Android, add padding to prevent content from scrolling under header during pull-to-refresh
+              paddingTop: Platform.OS === 'android' ? headerHeight : 0,
+            }}
+            {...(Platform.OS === 'ios' && {
+              contentInset: { top: headerHeight },
+              contentOffset: { x: 0, y: -headerHeight },
+              contentInsetAdjustmentBehavior: 'never' as const,
+            })}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={tokens.colors.text}
+                colors={[tokens.colors.accent]}
+                progressViewOffset={headerHeight}
+              />
+            }
+          >
+              {renderHeaderSection}
+            </ScrollView>
+          </Animated.View>
+        </KeyboardAvoidingView>
+        {/* Sticky Action Bar - Now truly sticky at bottom */}
+        {renderFooter}
+      </View>
 
       {/* Comments Bottom Sheet - OUTSIDE main layout to appear above everything */}
       <CommentsSheet

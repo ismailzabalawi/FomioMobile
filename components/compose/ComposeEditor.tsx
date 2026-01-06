@@ -1,25 +1,65 @@
-// UI Spec: ComposeEditor
-// - Auto-expanding TextInput for body (multiline, min 120px height)
-// - Teret row at the top (simple, tappable row)
-// - Minimal inline title TextInput below Teret picker
-// - Uses NativeWind classes with semantic tokens
-// - Placeholder: "Start writing…" for body
-// - Placeholder: "Add title" for title field
-// - Phase 1: Slash commands (/help, /image) with callback props
-// - Phase 3: Write/Preview toggle with Markdown renderer
+// UI Spec: ComposeEditor - Premium Edition
+// - Hero title: Large, borderless, prominent typography
+// - Distraction-free body with generous line height
+// - TeretChip for category selection with color indicator
+// - SegmentedControl for Write/Preview toggle
+// - FloatingToolbar appears on text selection
+// - Character count indicators
+// - Focus animations and micro-interactions
+// - Clean visual hierarchy with subtle dividers
 
-import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  ScrollView,
+  Keyboard,
+  Platform,
+  NativeSyntheticEvent,
+  TextInputSelectionChangeEventData,
+  LayoutChangeEvent,
+  StyleSheet,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  FadeIn,
+  FadeInDown,
+  interpolateColor,
+  useDerivedValue,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/components/theme';
-import { CaretRight } from 'phosphor-react-native';
 import { Teret } from '@/shared/useTerets';
 import { getMarkdownStyles } from '@/shared/markdown-styles';
 import { MarkdownContent } from '../feed/MarkdownContent';
 import { getTokens } from '@/shared/design/tokens';
 
+// Premium sub-components
+import { SegmentedControl } from './SegmentedControl';
+import { FloatingToolbar } from './FloatingToolbar';
+import { TeretChip } from './TeretChip';
+import { PencilSimple, Eye } from 'phosphor-react-native';
+
 type EditorMode = 'write' | 'preview';
+type FormatAction = 'bold' | 'italic' | 'link' | 'code' | 'quote' | 'list' | 'heading';
+
+// All supported slash commands (lowercase for matching)
+const SUPPORTED_COMMANDS = [
+  '/help', '/image', '/b', '/bold', '/i', '/italic', '/link',
+  '/code', '/fence', '/h1', '/h2', '/h3', '/quote', '/list', '/todo', '/task',
+] as const;
+
+type SupportedCommand = typeof SUPPORTED_COMMANDS[number];
+
+// Helper to normalize command to lowercase
+const normalizeCommand = (cmd: string): string => cmd.toLowerCase();
+
+const SPRING_CONFIG = { damping: 16, stiffness: 220 };
 
 interface ComposeEditorProps {
   title: string;
@@ -32,9 +72,15 @@ interface ComposeEditorProps {
   onTeretPress: () => void;
   onSlashHelp?: () => void;
   onSlashImage?: () => void;
+  onCommandExecuted?: (command: string) => void;
   mode: EditorMode;
   onModeChange: (mode: EditorMode) => void;
+  minTitle?: number;
+  minBody?: number;
 }
+
+// Animated TextInput wrapper for focus effects
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 export function ComposeEditor({
   title,
@@ -47,8 +93,11 @@ export function ComposeEditor({
   onTeretPress,
   onSlashHelp,
   onSlashImage,
+  onCommandExecuted,
   mode,
   onModeChange,
+  minTitle = 15,
+  minBody = 20,
 }: ComposeEditorProps) {
   const { isDark, isAmoled } = useTheme();
   const insets = useSafeAreaInsets();
@@ -56,52 +105,85 @@ export function ComposeEditor({
     () => (isAmoled ? 'darkAmoled' : isDark ? 'dark' : 'light'),
     [isDark, isAmoled]
   );
-  const tokens = useMemo(
-    () => getTokens(themeMode),
-    [themeMode]
-  );
-  const [bodyHeight, setBodyHeight] = useState(120);
+  const tokens = useMemo(() => getTokens(themeMode), [themeMode]);
+
+  // State
+  const [bodyHeight, setBodyHeight] = useState(180);
   const [selection, setSelection] = useState<{ start: number; end: number }>({
     start: body.length,
     end: body.length,
   });
+  const [titleFocused, setTitleFocused] = useState(false);
+  const [bodyFocused, setBodyFocused] = useState(false);
+  const [showToolbar, setShowToolbar] = useState(false);
+  const [bodyInputLayout, setBodyInputLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
 
-  // Editor-first background: translucent, light weight
-  const inputBg = tokens.colors.surfaceFrost;
+  // Refs
+  const titleInputRef = useRef<TextInput>(null);
+  const bodyInputRef = useRef<TextInput>(null);
+  const lastProcessedBody = useRef<string>('');
+  const isProcessingCommand = useRef(false);
+  const lastCommandRef = useRef<{ command: string; timestamp: number } | null>(null);
 
-  // Markdown styles for preview mode (shared with MarkdownContent)
+  // Animated values
+  const titleScale = useSharedValue(1);
+  const titleBorderOpacity = useSharedValue(0);
+  const bodyBorderOpacity = useSharedValue(0);
+
+  // Markdown styles for preview mode
   const markdownStyles = useMemo(() => getMarkdownStyles(themeMode), [themeMode]);
 
-  // Image renderer for preview (prevents key prop spread warning from internal FitImage)
-  const markdownRenderers = useMemo(() => ({
-    image: (node: any, children: any, parent: any, styles: any) => {
-      const src = node.attributes?.src;
-      if (!src) return null;
-      
-      return (
-        <TouchableOpacity
-          key={node.key}
-          activeOpacity={0.9}
-          onPress={() => {
-            // Preview mode - images are view-only for now
-            if (__DEV__) console.log('Preview image tapped:', src);
-          }}
-          style={styles.image}
-        >
-          <Image
-            source={{ uri: src }}
-            style={{
-              width: '100%',
-              minHeight: 200,
-            }}
-            contentFit="contain"
-            transition={200}
-            accessibilityLabel="Post image"
-          />
-        </TouchableOpacity>
-      );
-    },
-  }), []);
+  // Focus animations
+  useEffect(() => {
+    titleBorderOpacity.value = withSpring(titleFocused ? 1 : 0, SPRING_CONFIG);
+  }, [titleFocused, titleBorderOpacity]);
+
+  useEffect(() => {
+    bodyBorderOpacity.value = withSpring(bodyFocused ? 1 : 0, SPRING_CONFIG);
+  }, [bodyFocused, bodyBorderOpacity]);
+
+  // Character counts
+  const titleLength = title.trim().length;
+  const bodyLength = body.trim().length;
+  const titleProgress = Math.min(titleLength / minTitle, 1);
+  const bodyProgress = Math.min(bodyLength / minBody, 1);
+
+  // Animated border styles
+  const titleBorderStyle = useAnimatedStyle(() => {
+    const borderColor = interpolateColor(
+      titleBorderOpacity.value,
+      [0, 1],
+      [
+        'transparent',
+        isDark ? tokens.colors.accent : tokens.colors.accent,
+      ]
+    );
+    return {
+      borderBottomColor: borderColor,
+      borderBottomWidth: withSpring(titleFocused ? 2 : 1, SPRING_CONFIG),
+    };
+  }, [titleFocused, isDark, tokens]);
+
+  const bodyBorderStyle = useAnimatedStyle(() => {
+    const borderColor = interpolateColor(
+      bodyBorderOpacity.value,
+      [0, 1],
+      [
+        isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+        isDark ? tokens.colors.accent : tokens.colors.accent,
+      ]
+    );
+    return { borderColor };
+  }, [bodyFocused, isDark, tokens]);
+
+  // Haptic feedback for command execution
+  const triggerCommandHaptic = useCallback((success: boolean) => {
+    if (success) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    }
+  }, []);
 
   // Helper: wrap selection or insert inline wrapper (e.g. bold/italic)
   const applyInlineWrap = useCallback(
@@ -109,7 +191,6 @@ export function ComposeEditor({
       const { start, end } = sel;
 
       if (start !== end) {
-        // Wrap selected text
         const before = currentBody.slice(0, start);
         const middle = currentBody.slice(start, end);
         const after = currentBody.slice(end);
@@ -121,7 +202,6 @@ export function ComposeEditor({
         onChangeBody(next);
         setSelection({ start: newStart, end: newEnd });
       } else {
-        // No selection: insert wrapperwrapper and place cursor in the middle
         const before = currentBody.slice(0, start);
         const after = currentBody.slice(end);
         const snippet = `${wrapper}${wrapper}`;
@@ -133,31 +213,29 @@ export function ComposeEditor({
         setSelection({ start: cursor, end: cursor });
       }
     },
-    [onChangeBody],
+    [onChangeBody]
   );
 
   const applyBold = useCallback(
     (currentBody: string, sel: { start: number; end: number }) => {
       applyInlineWrap(currentBody, sel, '**');
     },
-    [applyInlineWrap],
+    [applyInlineWrap]
   );
 
   const applyItalic = useCallback(
     (currentBody: string, sel: { start: number; end: number }) => {
       applyInlineWrap(currentBody, sel, '_');
     },
-    [applyInlineWrap],
+    [applyInlineWrap]
   );
 
-  // Helper: apply prefix to the current line (for headings, quote, list)
+  // Helper: apply prefix to the current line
   const applyLinePrefix = useCallback(
     (currentBody: string, sel: { start: number; end: number }, prefix: string) => {
       const { start } = sel;
 
       const before = currentBody.slice(0, start);
-      const after = currentBody.slice(start);
-
       const lastNewline = before.lastIndexOf('\n');
       const lineStartIndex = lastNewline === -1 ? 0 : lastNewline + 1;
 
@@ -167,51 +245,54 @@ export function ComposeEditor({
         firstNewline === -1 ? currentBody.length : lineStartIndex + firstNewline;
 
       const line = currentBody.slice(lineStartIndex, lineEndIndex);
-
-      // Keep leading spaces, then add prefix
       const leadingSpacesMatch = line.match(/^\s*/);
       const leadingSpaces = leadingSpacesMatch ? leadingSpacesMatch[0] : '';
       const rest = line.slice(leadingSpaces.length);
 
       const newLine = leadingSpaces + prefix + rest;
-
       const next =
         currentBody.slice(0, lineStartIndex) + newLine + currentBody.slice(lineEndIndex);
-
       const newCursor = start + prefix.length;
 
       onChangeBody(next);
       setSelection({ start: newCursor, end: newCursor });
     },
-    [onChangeBody],
+    [onChangeBody]
   );
 
   const applyH1 = useCallback(
     (currentBody: string, sel: { start: number; end: number }) => {
       applyLinePrefix(currentBody, sel, '# ');
     },
-    [applyLinePrefix],
+    [applyLinePrefix]
   );
 
   const applyH2 = useCallback(
     (currentBody: string, sel: { start: number; end: number }) => {
       applyLinePrefix(currentBody, sel, '## ');
     },
-    [applyLinePrefix],
+    [applyLinePrefix]
+  );
+
+  const applyH3 = useCallback(
+    (currentBody: string, sel: { start: number; end: number }) => {
+      applyLinePrefix(currentBody, sel, '### ');
+    },
+    [applyLinePrefix]
   );
 
   const applyQuote = useCallback(
     (currentBody: string, sel: { start: number; end: number }) => {
       applyLinePrefix(currentBody, sel, '> ');
     },
-    [applyLinePrefix],
+    [applyLinePrefix]
   );
 
   const applyList = useCallback(
     (currentBody: string, sel: { start: number; end: number }) => {
       applyLinePrefix(currentBody, sel, '- ');
     },
-    [applyLinePrefix],
+    [applyLinePrefix]
   );
 
   const applyChecklist = useCallback(
@@ -251,275 +332,549 @@ export function ComposeEditor({
     [onChangeBody]
   );
 
-  // Detect and handle slash commands
-  const handleBodyChange = useCallback(
-    (text: string) => {
-      const lines = text.split('\n');
-      const lastLineIndex = lines.length - 1;
-      const lastLine = lines[lastLineIndex] ?? '';
+  // Floating toolbar action handler
+  const handleToolbarAction = useCallback(
+    (action: FormatAction) => {
+      const sel = selection;
+      switch (action) {
+        case 'bold':
+          applyBold(body, sel);
+          break;
+        case 'italic':
+          applyItalic(body, sel);
+          break;
+        case 'link':
+          applyLink(body, sel);
+          break;
+        case 'code':
+          applyCodeBlock(body, sel);
+          break;
+        case 'quote':
+          applyQuote(body, sel);
+          break;
+        case 'list':
+          applyList(body, sel);
+          break;
+        case 'heading':
+          applyH2(body, sel);
+          break;
+      }
+      setShowToolbar(false);
+      triggerCommandHaptic(true);
+      onCommandExecuted?.(action);
+    },
+    [
+      body,
+      selection,
+      applyBold,
+      applyItalic,
+      applyLink,
+      applyCodeBlock,
+      applyQuote,
+      applyList,
+      applyH2,
+      triggerCommandHaptic,
+      onCommandExecuted,
+    ]
+  );
 
-      // Find a slash command at the end of the line
-      const match = lastLine.match(/(?:^|\s)(\/[a-zA-Z0-9]+)\s*$/);
-      const command = match?.[1]; // e.g. "/b", "/h1", "/quote"
+  // Command processor
+  const processCommand = useCallback(
+    (text: string, cursorPosition: number): boolean => {
+      const validCursorPos = Math.min(Math.max(0, cursorPosition), text.length);
+      const textBeforeCursor = text.slice(0, validCursorPos);
+      const cursorMatch = textBeforeCursor.match(/(?:^|[\s\n])(\/[a-zA-Z0-9]+)\s$/);
 
-      if (command) {
-        // Remove the matched part (including leading space) from the line
-        const lineWithoutCommand = lastLine.slice(0, lastLine.length - match[0].length);
-        lines[lastLineIndex] = lineWithoutCommand;
-        const clean = lines.join('\n'); // body without the /command token
+      if (!cursorMatch) return false;
 
-        // Calculate command position in the original text
-        const commandLength = match[0].length;
-        const commandStartPos = text.length - commandLength;
-        const commandEndPos = text.length;
+      const rawCommand = cursorMatch[1];
+      const command = normalizeCommand(rawCommand) as SupportedCommand;
 
-        // Adjust selection to account for removed command
-        let adjustedStart = selection.start;
-        let adjustedEnd = selection.end;
+      if (!SUPPORTED_COMMANDS.includes(command)) {
+        triggerCommandHaptic(false);
+        return false;
+      }
 
-        if (selection.start >= commandEndPos) {
-          // Cursor was after the command, move it back
-          adjustedStart = selection.start - commandLength;
-          adjustedEnd = selection.end - commandLength;
-        } else if (selection.end > commandStartPos) {
-          // Selection overlaps with command area
-          if (selection.start >= commandStartPos) {
-            // Entire selection was in the command, place cursor at removal point
-            adjustedStart = commandStartPos;
-            adjustedEnd = commandStartPos;
-          } else {
-            // Selection starts before but extends into command, clamp end to command start
-            adjustedEnd = commandStartPos;
-          }
-        }
+      // Debounce protection
+      const now = Date.now();
+      const lastCmd = lastCommandRef.current;
+      if (lastCmd && lastCmd.command === command && now - lastCmd.timestamp < 500) {
+        return true;
+      }
+      lastCommandRef.current = { command, timestamp: now };
 
-        const adjustedSel = { start: adjustedStart, end: adjustedEnd };
-        setSelection(adjustedSel);
+      try {
+        const matchedString = cursorMatch[0];
+        const commandStartInMatch = matchedString.indexOf('/');
+        const commandStartPos = validCursorPos - matchedString.length + commandStartInMatch;
+        const commandEndPos = validCursorPos;
+
+        const before = text.slice(0, commandStartPos);
+        const after = text.slice(commandEndPos);
+        const cleanText = before + after;
+        const newCursorPos = commandStartPos;
+        const adjustedSel = { start: newCursorPos, end: newCursorPos };
+
+        lastProcessedBody.current = cleanText;
+        let commandExecuted = true;
 
         switch (command) {
           case '/help':
             if (onSlashHelp) {
-              if (__DEV__) {
-                console.log('🔍 [ComposeEditor] /help detected! Calling onSlashHelp');
-              }
-              onChangeBody(clean);
+              onChangeBody(cleanText);
+              setSelection(adjustedSel);
               onSlashHelp();
             }
-            return;
+            break;
 
           case '/image':
             if (onSlashImage) {
-              onChangeBody(clean);
+              onChangeBody(cleanText);
+              setSelection(adjustedSel);
               onSlashImage();
             }
-            return;
+            break;
 
           case '/b':
           case '/bold':
-            applyBold(clean, adjustedSel);
-            return;
+            applyBold(cleanText, adjustedSel);
+            break;
 
           case '/i':
           case '/italic':
-            applyItalic(clean, adjustedSel);
-            return;
+            applyItalic(cleanText, adjustedSel);
+            break;
 
           case '/h1':
-            applyH1(clean, adjustedSel);
-            return;
+            applyH1(cleanText, adjustedSel);
+            break;
 
           case '/h2':
-            applyH2(clean, adjustedSel);
-            return;
+            applyH2(cleanText, adjustedSel);
+            break;
+
+          case '/h3':
+            applyH3(cleanText, adjustedSel);
+            break;
 
           case '/quote':
-            applyQuote(clean, adjustedSel);
-            return;
+            applyQuote(cleanText, adjustedSel);
+            break;
 
           case '/list':
-            applyList(clean, adjustedSel);
-            return;
+            applyList(cleanText, adjustedSel);
+            break;
 
           case '/todo':
           case '/task':
-            applyChecklist(clean, adjustedSel);
-            return;
+            applyChecklist(cleanText, adjustedSel);
+            break;
 
           case '/code':
           case '/fence':
-            applyCodeBlock(clean, adjustedSel);
-            return;
+            applyCodeBlock(cleanText, adjustedSel);
+            break;
 
           case '/link':
-            applyLink(clean, adjustedSel);
-            return;
+            applyLink(cleanText, adjustedSel);
+            break;
 
-          case '/h3':
-            applyLinePrefix(clean, adjustedSel, '### ');
-            return;
+          default:
+            commandExecuted = false;
         }
-      }
 
-      // No command matched → normal update
-      onChangeBody(text);
+        if (commandExecuted) {
+          triggerCommandHaptic(true);
+          onCommandExecuted?.(command);
+        }
+
+        return commandExecuted;
+      } catch (error) {
+        console.error('Command execution failed:', error);
+        triggerCommandHaptic(false);
+        return false;
+      }
     },
     [
       onChangeBody,
       onSlashHelp,
       onSlashImage,
+      onCommandExecuted,
       applyBold,
       applyItalic,
       applyH1,
       applyH2,
+      applyH3,
       applyQuote,
       applyList,
-      selection,
-    ],
+      applyChecklist,
+      applyCodeBlock,
+      applyLink,
+      triggerCommandHaptic,
+    ]
   );
 
-  // Helper for inserting text at cursor position (for future formatting features)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const insertAtCursor = useCallback(
-    (snippet: string) => {
-      const { start, end } = selection;
-      const before = body.slice(0, start);
-      const after = body.slice(end);
-      const next = before + snippet + after;
-      const newPos = before.length + snippet.length;
-      onChangeBody(next);
-      setSelection({ start: newPos, end: newPos });
+  // Body change handler
+  const handleBodyChange = useCallback(
+    (text: string) => {
+      if (isProcessingCommand.current) return;
+
+      const estimatedCursorPos = text.length;
+      isProcessingCommand.current = true;
+      const wasCommandProcessed = processCommand(text, estimatedCursorPos);
+      isProcessingCommand.current = false;
+
+      if (!wasCommandProcessed) {
+        lastProcessedBody.current = text;
+        onChangeBody(text);
+      }
     },
-    [body, selection, onChangeBody],
+    [processCommand, onChangeBody]
   );
+
+  // Selection change handler - show toolbar on selection
+  const handleSelectionChange = useCallback(
+    (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+      const newSelection = e.nativeEvent.selection;
+      setSelection(newSelection);
+
+      // Show toolbar if text is selected
+      if (newSelection.start !== newSelection.end && mode === 'write') {
+        setShowToolbar(true);
+      } else {
+        setShowToolbar(false);
+      }
+    },
+    [mode]
+  );
+
+  // Watch for programmatic body changes
+  useEffect(() => {
+    if (
+      body === lastProcessedBody.current ||
+      isProcessingCommand.current ||
+      !body
+    ) {
+      return;
+    }
+
+    const commandMatch = body.match(/(?:^|[\s\n])(\/[a-zA-Z0-9]+)\s$/);
+    if (commandMatch) {
+      isProcessingCommand.current = true;
+      processCommand(body, body.length);
+      isProcessingCommand.current = false;
+    } else {
+      lastProcessedBody.current = body;
+    }
+  }, [body, processCommand]);
+
+  // Dismiss toolbar on mode change
+  useEffect(() => {
+    if (mode === 'preview') {
+      setShowToolbar(false);
+    }
+  }, [mode]);
+
+  // Colors
+  const placeholderColor = isDark ? 'rgba(161, 161, 170, 0.6)' : 'rgba(107, 107, 114, 0.6)';
+  const textColor = isDark ? '#F5F5F7' : '#111111';
+  const mutedColor = isDark ? '#9CA3AF' : '#6B7280';
+  const dividerColor = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)';
 
   return (
-    <View 
-      className="flex-1"
-      style={{ 
-        paddingHorizontal: Math.max(insets.left, insets.right, 12),
-        paddingTop: Math.max(insets.top * 0.3, 4),
-      }}
-    >
-      {/* Teret Row - Simple, minimal row at the top */}
-      <TouchableOpacity
-        className="mb-2 py-2.5 px-3 flex-row items-center justify-between rounded-fomio-card"
-        onPress={onTeretPress}
-        activeOpacity={0.7}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={
-          selectedTeret === null
-            ? 'Choose Teret'
-            : `Change Teret. Current Teret: ${selectedTeret.name}`
-        }
-        style={{
-          backgroundColor: inputBg,
-          borderColor: tokens.colors.border,
-          borderWidth: 1,
-          shadowColor: tokens.colors.shadow,
-          shadowOpacity: 0.14,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 6,
-        }}
+    <View style={styles.container}>
+      {/* Segmented Control - Write/Preview */}
+      <Animated.View
+        entering={FadeInDown.delay(50).springify()}
+        style={styles.segmentContainer}
       >
-        <Text
-          className={
-            selectedTeret === null
-              ? 'text-body text-fomio-muted dark:text-fomio-muted-dark'
-              : 'text-body text-fomio-foreground dark:text-fomio-foreground-dark'
-          }
-        >
-          {selectedTeret === null ? (
-            'Choose Teret'
-          ) : (
-            <>
-              In: <Text className="font-semibold">{selectedTeret.name}</Text>
-            </>
-          )}
-        </Text>
-        <CaretRight
-          size={16}
-          color={isDark ? '#A1A1AA' : '#6B6B72'}
-          weight="regular"
+        <SegmentedControl
+          segments={[
+            { value: 'write', label: 'Write', icon: <PencilSimple size={16} color={mode === 'write' ? textColor : mutedColor} weight={mode === 'write' ? 'bold' : 'regular'} /> },
+            { value: 'preview', label: 'Preview', icon: <Eye size={16} color={mode === 'preview' ? textColor : mutedColor} weight={mode === 'preview' ? 'bold' : 'regular'} /> },
+          ]}
+          selectedValue={mode}
+          onValueChange={(value) => {
+            onModeChange(value);
+            if (value === 'preview') {
+              Keyboard.dismiss();
+            }
+          }}
+          size="sm"
         />
-      </TouchableOpacity>
+      </Animated.View>
 
-      {/* Title Input - Minimal inline, editor-first styling */}
-      <View className="mb-2">
+      {/* Teret Chip */}
+      <Animated.View
+        entering={FadeInDown.delay(100).springify()}
+        style={styles.teretContainer}
+      >
+        <TeretChip
+          selectedTeret={selectedTeret}
+          onPress={onTeretPress}
+          error={!!titleError && !selectedTeret}
+        />
+      </Animated.View>
+
+      {/* Title Input - Hero Style */}
+      <Animated.View
+        entering={FadeInDown.delay(150).springify()}
+        style={[styles.titleContainer, titleBorderStyle]}
+      >
         <TextInput
-          className="text-body text-fomio-foreground dark:text-fomio-foreground-dark rounded-fomio-card px-3 py-3"
-          placeholder="Add title"
-          placeholderTextColor="rgba(161, 161, 170, 0.8)"
+          ref={titleInputRef}
           value={title}
           onChangeText={onChangeTitle}
+          onFocus={() => setTitleFocused(true)}
+          onBlur={() => setTitleFocused(false)}
+          placeholder="Your title here..."
+          placeholderTextColor={placeholderColor}
           maxLength={255}
+          style={[styles.titleInput, { color: textColor }]}
           accessible
-          accessibilityLabel="Post title input"
-          style={{
-            fontSize: 17,
-            lineHeight: 24,
-            minHeight: 50,
-            backgroundColor: inputBg,
-          }}
+          accessibilityLabel="Post title"
+          accessibilityHint="Enter a compelling title for your post"
         />
-        {titleError ? (
-          <Text className="mt-1 text-caption text-fomio-danger dark:text-fomio-danger-dark">
-            {titleError}
-          </Text>
-        ) : null}
-      </View>
+        
+        {/* Title character indicator */}
+        {titleFocused && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={styles.charIndicator}
+          >
+            <Text
+              style={[
+                styles.charCount,
+                {
+                  color:
+                    titleLength >= minTitle
+                      ? isDark
+                        ? '#26A69A'
+                        : '#009688'
+                      : mutedColor,
+                },
+              ]}
+            >
+              {titleLength}
+            </Text>
+          </Animated.View>
+        )}
+      </Animated.View>
 
-      {/* Body Input or Preview - Full height */}
-      <View className="flex-1">
+      {/* Title error */}
+      {titleError && (
+        <Animated.View entering={FadeIn.duration(200)} style={styles.errorContainer}>
+          <Text style={styles.errorText}>{titleError}</Text>
+        </Animated.View>
+      )}
+
+      {/* Subtle divider */}
+      <Animated.View
+        entering={FadeIn.delay(200)}
+        style={[styles.divider, { backgroundColor: dividerColor }]}
+      />
+
+      {/* Body Editor or Preview */}
+      <Animated.View
+        entering={FadeInDown.delay(200).springify()}
+        style={[styles.bodyContainer, bodyBorderStyle]}
+      >
         {mode === 'write' ? (
-          <TextInput
-            className="text-body text-fomio-foreground dark:text-fomio-foreground-dark rounded-fomio-card px-3 py-4"
-            placeholder="Start writing…"
-            placeholderTextColor="rgba(161, 161, 170, 0.8)"
-            value={body}
-            onChangeText={handleBodyChange}
-            multiline
-            textAlignVertical="top"
-            accessible
-            accessibilityLabel="Post body input"
-            onContentSizeChange={(e) => {
-              const h = e.nativeEvent.contentSize.height;
-              setBodyHeight(Math.max(h, 120));
-            }}
-            selection={selection}
-            onSelectionChange={(e) => {
-              setSelection(e.nativeEvent.selection);
-            }}
-            style={{
-              fontSize: 17,
-              lineHeight: 24,
-              minHeight: 120,
-              flexGrow: 1,
-              backgroundColor: inputBg,
-            }}
-          />
+          <>
+            <TextInput
+              ref={bodyInputRef}
+              value={body}
+              onChangeText={handleBodyChange}
+              onFocus={() => setBodyFocused(true)}
+              onBlur={() => setBodyFocused(false)}
+              onSelectionChange={handleSelectionChange}
+              onLayout={(e) => {
+                const { x, y, width, height } = e.nativeEvent.layout;
+                setBodyInputLayout({ x, y, width, height });
+              }}
+              selection={selection}
+              placeholder="Start writing your thoughts..."
+              placeholderTextColor={placeholderColor}
+              multiline
+              textAlignVertical="top"
+              style={[styles.bodyInput, { color: textColor, minHeight: 180, lineHeight: Platform.OS === 'android' ? 30 : 28 }]}
+              onContentSizeChange={(e) => {
+                const h = e.nativeEvent.contentSize.height;
+                setBodyHeight(Math.max(h, 180));
+              }}
+              accessible
+              accessibilityLabel="Post body"
+              accessibilityHint="Write your post content. Use slash commands for formatting."
+            />
+
+            {/* Floating Toolbar - positioned above body input */}
+            <FloatingToolbar
+              visible={showToolbar}
+              position={{ x: bodyInputLayout.width / 2, y: 0 }}
+              onAction={handleToolbarAction}
+              onDismiss={() => setShowToolbar(false)}
+            />
+          </>
         ) : (
           <ScrollView
-            className="flex-1 rounded-fomio-card px-3 py-4 bg-fomio-card dark:bg-fomio-card-dark"
+            style={styles.previewScroll}
             showsVerticalScrollIndicator={true}
             keyboardShouldPersistTaps="handled"
           >
             {body ? (
               <MarkdownContent content={body} isRawMarkdown linkMetadata={undefined} />
             ) : (
-              <Text className="text-body text-fomio-muted dark:text-fomio-muted-dark">
-                _Nothing to preview yet._
+              <Text style={[styles.emptyPreview, { color: mutedColor }]}>
+                Nothing to preview yet. Switch to Write mode and start typing!
               </Text>
             )}
           </ScrollView>
         )}
-      </View>
-      {bodyError ? (
-        <Text className="mt-1 text-caption text-fomio-danger dark:text-fomio-danger-dark">
-          {bodyError}
-        </Text>
-      ) : null}
+      </Animated.View>
+
+      {/* Body error */}
+      {bodyError && (
+        <Animated.View entering={FadeIn.duration(200)} style={styles.errorContainer}>
+          <Text style={styles.errorText}>{bodyError}</Text>
+        </Animated.View>
+      )}
+
+      {/* Body character indicator (when writing) */}
+      {mode === 'write' && bodyFocused && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={styles.bodyCharIndicator}
+        >
+          <Text
+            style={[
+              styles.charCount,
+              {
+                color:
+                  bodyLength >= minBody
+                    ? isDark
+                      ? '#26A69A'
+                      : '#009688'
+                    : mutedColor,
+              },
+            ]}
+          >
+            {bodyLength} characters
+          </Text>
+        </Animated.View>
+      )}
+
+      {/* Slash command hint */}
+      {mode === 'write' && bodyFocused && bodyLength < 10 && (
+        <Animated.View
+          entering={FadeIn.delay(300).duration(200)}
+          style={[
+            styles.hintContainer,
+            { backgroundColor: isDark ? 'rgba(38, 166, 154, 0.1)' : 'rgba(0, 150, 136, 0.08)' },
+          ]}
+        >
+          <Text style={[styles.hintText, { color: mutedColor }]}>
+            💡 Type <Text style={[styles.hintCode, { color: isDark ? '#26A69A' : '#009688' }]}>/help</Text> for formatting commands
+          </Text>
+        </Animated.View>
+      )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  segmentContainer: {
+    marginBottom: Platform.OS === 'android' ? 12 : 16,
+    alignSelf: 'center',
+    width: '60%',
+    maxWidth: 240,
+    minWidth: 180,
+  },
+  teretContainer: {
+    marginBottom: Platform.OS === 'android' ? 14 : 20,
+  },
+  titleContainer: {
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'transparent',
+  },
+  titleInput: {
+    fontSize: 26,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+    lineHeight: 34,
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    backgroundColor: 'transparent',
+  },
+  charIndicator: {
+    position: 'absolute',
+    right: 0,
+    bottom: 14,
+  },
+  charCount: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  errorContainer: {
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 13,
+    color: '#EF4444',
+    fontWeight: '500',
+  },
+  divider: {
+    height: 1,
+    marginVertical: 16,
+  },
+  bodyContainer: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  bodyInput: {
+    fontSize: 17,
+    lineHeight: 28,
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    backgroundColor: 'transparent',
+    flexGrow: 1,
+  },
+  previewScroll: {
+    flex: 1,
+    paddingHorizontal: 4,
+    paddingVertical: 16,
+  },
+  emptyPreview: {
+    fontSize: 15,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 40,
+  },
+  bodyCharIndicator: {
+    marginTop: 8,
+    alignItems: 'flex-end',
+  },
+  hintContainer: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  hintText: {
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  hintCode: {
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+});

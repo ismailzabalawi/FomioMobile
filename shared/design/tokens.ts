@@ -111,11 +111,12 @@ export function getTokens(mode: ThemeMode) {
   const themeKey = isAmoled ? 'amoled' : isDark ? 'dark' : 'light';
 
   // Surface background per theme/platform (safe fallback to light values)
+  // Access palette directly using mode to avoid TypeScript union type issues
   const surfaceBg = isAmoled
-    ? c.surfaceBgAmoled?.[platform] ?? palette.darkAmoled.surfaceBgAmoled[platform]
+    ? palette.darkAmoled.surfaceBgAmoled[platform]
     : isDark
-    ? c.surfaceBgDark?.[platform] ?? palette.dark.surfaceBgDark[platform]
-    : c.surfaceBgLight?.[platform] ?? palette.light.surfaceBgLight[platform];
+    ? palette.dark.surfaceBgDark[platform]
+    : palette.light.surfaceBgLight[platform];
 
   return {
     colors: c,
@@ -150,3 +151,20 @@ export function getTokens(mode: ThemeMode) {
 }
 
 export type Tokens = ReturnType<typeof getTokens>;
+
+/**
+ * Utility function to add alpha transparency to a hex color
+ * @param color - Hex color string (e.g., '#FF0000' or 'FF0000')
+ * @param alpha - Alpha value between 0 and 1
+ * @returns Hex color string with alpha (e.g., '#FF000040' for 25% opacity)
+ */
+export function withAlpha(color: string, alpha: number): string {
+  // Remove # if present
+  const hex = color.replace('#', '');
+  
+  // Convert alpha to hex (0-255 range)
+  const alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
+  
+  // Return color with alpha appended
+  return `#${hex}${alphaHex}`;
+}

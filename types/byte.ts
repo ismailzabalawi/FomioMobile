@@ -34,9 +34,21 @@ export interface Byte {
   media?: string[]; // images / videos URLs
   linkPreview?: {
     url: string;
-    title: string;
+    title?: string;
     description?: string;
     image?: string;
+    favicon?: string;
+    siteName?: string;
+    provider: 'youtube' | 'twitter' | 'github' | 'wikipedia' | 'article' | 'generic';
+    // Provider-specific metadata
+    videoId?: string;      // YouTube
+    duration?: string;     // YouTube
+    tweetId?: string;      // Twitter
+    repoStats?: {          // GitHub
+      stars: number;
+      forks: number;
+      language?: string;
+    };
   };
   stats: {
     likes: number;

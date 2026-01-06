@@ -1,6 +1,7 @@
 import type { Byte } from '@/types/byte';
 import { discourseApi } from '../discourseApi';
 import { extractMedia } from '@/lib/utils/media';
+import { extractLinkPreview } from '@/lib/utils/linkPreview';
 
 /**
  * Adapter to transform full Topic (from GET /t/{topic_id}.json) → Byte
@@ -58,6 +59,9 @@ export function mapTopicToFullByte(topic: any): Byte {
   // Extract media from cooked HTML
   const cooked = firstPost.cooked || '';
   const media = extractMedia(cooked);
+  
+  // Extract link preview from cooked HTML (first onebox only)
+  const linkPreview = extractLinkPreview(cooked);
 
   // Map category to teret
   // Discourse API returns color as hex string (e.g., "FF6B6B") - add # prefix if needed
@@ -92,7 +96,7 @@ export function mapTopicToFullByte(topic: any): Byte {
     updatedAt: firstPost.updated_at || topic.updated_at || topic.created_at || new Date().toISOString(),
     origin: 'hydrated',
     media: media.length > 0 ? media : undefined,
-    linkPreview: undefined, // TODO: Extract from cooked HTML
+    linkPreview,
     stats: {
       likes: likeCount,
       replies: Math.max(0, (topic.posts_count || 1) - 1),

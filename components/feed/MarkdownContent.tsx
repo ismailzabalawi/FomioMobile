@@ -8,6 +8,9 @@ import { useTheme } from '@/components/theme';
 import { getMarkdownStyles } from '@/shared/markdown-styles';
 import * as WebBrowser from 'expo-web-browser';
 import { getTokens } from '@/shared/design/tokens';
+import { LinkPreviewCard } from '@/components/shared/link-preview';
+import { extractLinkPreview } from '@/lib/utils/linkPreview';
+import type { LinkPreview } from '@/components/shared/link-preview';
 
 export interface MarkdownContentProps {
   content: string; // HTML from Discourse `cooked` field
@@ -25,6 +28,7 @@ export interface MarkdownContentProps {
     }
   >;
   lazyLoadVideos?: boolean; // If true, videos are only rendered when in viewport
+  readingMode?: boolean; // If true, applies premium reading typography (larger font, better spacing, drop cap)
 }
 
 // Lazy-loaded video embed component to avoid rendering heavy WebViews until needed
@@ -79,6 +83,67 @@ function LazyVideoEmbed({
   );
 }
 
+/**
+ * Extract onebox description from tree node
+ */
+function extractOneboxDescription(tnode: any): string | null {
+  if (!tnode || !tnode.children) return null;
+  
+  const children = Array.isArray(tnode.children) ? tnode.children : [];
+  
+  // Search for element with onebox-description class
+  for (const child of children) {
+    const className = child.attributes?.class || '';
+    if (className.split(' ').includes('onebox-description')) {
+      return extractTextContent(child);
+    }
+    // Recursively search in nested children
+    const found = extractOneboxDescription(child);
+    if (found) return found;
+  }
+  
+  return null;
+}
+
+/**
+ * Serialize tnode to HTML string for extraction
+ * This converts the tree node back to HTML so we can use extractLinkPreview utility
+ */
+function serializeTNodeToHtml(tnode: any): string {
+  if (!tnode) return '';
+  
+  // If it's a text node, return the text (escape HTML entities)
+  if (tnode.type === 'text' && tnode.data) {
+    return tnode.data
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+  
+  // Build the opening tag
+  const tagName = tnode.tagName || 'div';
+  const attrs = tnode.attributes || {};
+  const attrString = Object.entries(attrs)
+    .map(([key, value]) => {
+      const val = String(value).replace(/"/g, '&quot;');
+      return `${key}="${val}"`;
+    })
+    .join(' ');
+  const openTag = attrString ? `<${tagName} ${attrString}>` : `<${tagName}>`;
+  
+  // Recursively serialize children
+  const children = Array.isArray(tnode.children) ? tnode.children : [];
+  const childrenHtml = children.map((child: any) => serializeTNodeToHtml(child)).join('');
+  
+  // Self-closing tags
+  const selfClosingTags = ['img', 'br', 'hr', 'input', 'meta', 'link'];
+  if (selfClosingTags.includes(tagName.toLowerCase())) {
+    return openTag.replace('>', ' />');
+  }
+  
+  return `${openTag}${childrenHtml}</${tagName}>`;
+}
+
 // Onebox renderer component for Discourse link previews
 function OneboxRenderer({ 
   tnode, 
@@ -103,16 +168,37 @@ function OneboxRenderer({
   }>;
   oneboxContainerStyle: any;
 }) {
-  // Extract URL from data-url attribute or find first href
+  // Serialize tnode to HTML and use extractLinkPreview utility (same as ByteCard)
+  const oneboxHtml = serializeTNodeToHtml(tnode);
+  const preview = extractLinkPreview(oneboxHtml);
+  
+  // If we successfully extracted preview, use LinkPreviewCard
+  if (preview) {
+    // Merge with linkMetadata if available
+    const url = preview.url;
+    const metadata = url ? linkMetadata?.[url] : undefined;
+    
+    if (metadata) {
+      preview.title = metadata.title || preview.title;
+      preview.description = metadata.description || preview.description;
+      preview.image = metadata.image || preview.image;
+      preview.favicon = metadata.favicon || preview.favicon;
+      preview.siteName = metadata.siteName || preview.siteName;
+    }
+    
+    const handlePress = () => {
+      if (url) {
+        renderLink.onPress(undefined, url);
+      }
+    };
+    
+    return <LinkPreviewCard preview={preview} onPress={handlePress} />;
+  }
+  
+  // Fallback to original HTML rendering if extraction fails
   const url = extractOneboxUrl(tnode);
+  const title = extractOneboxTitle(tnode) || url || 'Link preview';
   
-  // Extract metadata if available
-  const metadata = url ? linkMetadata?.[url] : undefined;
-  
-  // Extract title for accessibility
-  const title = metadata?.title || extractOneboxTitle(tnode) || url || 'Link preview';
-  
-  // Handle press - open link in browser
   const handlePress = () => {
     if (url) {
       renderLink.onPress(undefined, url);
@@ -122,7 +208,7 @@ function OneboxRenderer({
   return (
     <TouchableOpacity
       onPress={handlePress}
-      activeOpacity={0.85} // Slightly more visible press state
+      activeOpacity={0.85}
       style={[oneboxContainerStyle]}
       accessible
       accessibilityRole="link"
@@ -217,13 +303,18 @@ function MarkdownContentComponent({
   isRawMarkdown = false,
   linkMetadata,
   lazyLoadVideos = true,
+  readingMode = false,
 }: MarkdownContentProps) {
   const { isDark, isAmoled } = useTheme();
   const mode = isDark ? (isAmoled ? 'darkAmoled' : 'dark') : 'light';
   const tokens = useMemo(() => getTokens(mode), [mode]);
   const { width } = useWindowDimensions();
   const markdownStyles = useMemo(() => getMarkdownStyles(mode), [mode]);
-  const contentWidth = Math.max(320, width - 32); // keep nice margins even on small screens
+  // In reading mode, constrain to 680px max for optimal reading width
+  // Otherwise, use responsive width with margins
+  const contentWidth = readingMode 
+    ? Math.min(680, Math.max(320, width - 40)) 
+    : Math.max(320, width - 32);
   const baseTextColor = tokens.colors.text;
   const codeFont = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
@@ -404,6 +495,16 @@ function MarkdownContentComponent({
         
         return <TDefaultRenderer {...props} />;
       },
+      // Paragraph renderer: enhanced typography for reading mode
+      // Note: Drop cap can be added later if desired, but requires more complex text parsing
+      p: readingMode ? (props: any) => {
+        const { tnode, TNodeChildrenRenderer } = props;
+        return (
+          <View style={{ marginBottom: 24 }}>
+            <TNodeChildrenRenderer tnode={tnode} />
+          </View>
+        );
+      } : undefined,
       a: (props: any) => {
         const { tnode, TDefaultRenderer, TNodeChildrenRenderer } = props;
         const href = tnode?.attributes?.href;
@@ -453,11 +554,20 @@ function MarkdownContentComponent({
           );
         }
         
-        // Regular link with enhanced styling - use default renderer but with better styles
+        // Regular link - make it pressable
+        // Render Text directly with onPress to maintain inline text flow
+        // TDefaultRenderer would render Text, so we render Text directly to avoid nesting
         return (
-          <TDefaultRenderer {...props}>
+          <Text
+            onPress={() => renderLink.onPress(undefined, href)}
+            style={{
+              color: tokens.colors.accent,
+              textDecorationLine: 'underline',
+              textDecorationColor: tokens.colors.accent + '40',
+            }}
+          >
             <TNodeChildrenRenderer tnode={tnode} />
-          </TDefaultRenderer>
+          </Text>
         );
       },
       div: (props: any) => {
@@ -623,10 +733,40 @@ function MarkdownContentComponent({
         // backgroundColor will be handled by inline styles if present
         backgroundColor: 'transparent',
       },
-      p: markdownStyles.paragraph,
-      h1: markdownStyles.heading1,
-      h2: markdownStyles.heading2,
-      h3: markdownStyles.heading3,
+      // Paragraph styles: use reading mode typography if enabled, otherwise default
+      p: readingMode ? {
+        fontSize: 19,
+        lineHeight: 32,
+        color: baseTextColor,
+        marginTop: 0,
+        marginBottom: 24,
+        paddingHorizontal: 0,
+        letterSpacing: 0.2,
+      } : markdownStyles.paragraph,
+      h1: readingMode ? {
+        ...markdownStyles.heading1,
+        fontSize: 36,
+        lineHeight: 44,
+        marginTop: 40,
+        marginBottom: 20,
+        fontWeight: '800' as const,
+      } : markdownStyles.heading1,
+      h2: readingMode ? {
+        ...markdownStyles.heading2,
+        fontSize: 28,
+        lineHeight: 36,
+        marginTop: 36,
+        marginBottom: 16,
+        fontWeight: '700' as const,
+      } : markdownStyles.heading2,
+      h3: readingMode ? {
+        ...markdownStyles.heading3,
+        fontSize: 22,
+        lineHeight: 30,
+        marginTop: 28,
+        marginBottom: 14,
+        fontWeight: '600' as const,
+      } : markdownStyles.heading3,
       h4: markdownStyles.heading4,
       h5: markdownStyles.heading5,
       h6: markdownStyles.heading6,
@@ -727,8 +867,9 @@ function MarkdownContentComponent({
       enableCSSInlineProcessing={true} // Enable inline CSS for colored text support
       baseStyle={{
         color: baseTextColor, // Default color, can be overridden by inline styles
-        lineHeight: 24,
-        fontSize: 16,
+        lineHeight: readingMode ? 32 : 24,
+        fontSize: readingMode ? 19 : 16,
+        letterSpacing: readingMode ? 0.2 : 0,
       }}
       // Allow color and backgroundColor from inline styles, but control other styles
       ignoredStyles={[
@@ -745,7 +886,11 @@ function MarkdownContentComponent({
       defaultTextProps={{ selectable: false, style: { color: baseTextColor } }}
       tagsStyles={tagsStyles}
       classesStyles={classesStyles as any}
-      renderers={htmlRenderers as any}
+      renderers={{
+        ...htmlRenderers,
+        // Only override paragraph renderer if reading mode is enabled
+        ...(readingMode && htmlRenderers.p ? { p: htmlRenderers.p } : {}),
+      } as any}
       renderersProps={{
         a: {
           onPress: (_event: any, href: string) => renderLink.onPress?.(_event, href),

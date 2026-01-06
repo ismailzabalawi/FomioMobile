@@ -1,6 +1,7 @@
 import type { Byte as DiscourseByte } from '../discourseApi';
 import type { Byte } from '@/types/byte';
 import { extractMedia } from '@/lib/utils/media';
+import { extractLinkPreview } from '@/lib/utils/linkPreview';
 import { isContentUnavailable, isPostRemoved } from '../utils/content-helpers';
 import type { UserData } from '../utils/user-helpers';
 
@@ -49,6 +50,11 @@ export function discourseByteToByte(
     ? extractMedia(cooked) 
     : [];
   
+  // Extract link preview from cooked HTML (first onebox only, only if we have real content)
+  const linkPreview = !isRemoved && !isContentUnavailable(cooked)
+    ? extractLinkPreview(cooked)
+    : undefined;
+  
   // Map rawContent to raw (only if available)
   const raw = byte.rawContent || '';
   
@@ -87,7 +93,7 @@ export function discourseByteToByte(
     updatedAt: (byte as any).updatedAt || createdAt,
     origin: isSummary ? 'summary' : 'hydrated', // Set origin based on data source
     media: media.length > 0 ? media : undefined,
-    linkPreview: undefined, // TODO: Extract from cooked HTML
+    linkPreview,
     stats: {
       likes: byte.likeCount || 0,
       replies: byte.replyCount || 0,

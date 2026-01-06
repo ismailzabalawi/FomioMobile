@@ -1,5 +1,6 @@
 import type { Byte } from '@/types/byte';
 import { extractMedia } from '@/lib/utils/media';
+import { extractLinkPreview } from '@/lib/utils/linkPreview';
 import { discourseApi } from '../discourseApi';
 import type { Byte as DiscourseByte, AppUser } from '../discourseApi';
 
@@ -292,6 +293,9 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
   // Extract images from content/excerpt
   const media = extractMedia(cooked);
   
+  // Extract link preview from cooked HTML (first onebox only)
+  const linkPreview = extractLinkPreview(cooked);
+  
   // Normalize media URLs (convert relative to absolute)
   const normalizedMedia = media.map((url: string) => {
     if (!url) return url;
@@ -341,7 +345,7 @@ export function searchResultToByte(result: DiscourseByte | any): Byte {
     updatedAt,
     origin: 'hydrated', // Search results are hydrated (have content)
     media: normalizedMedia.length > 0 ? normalizedMedia : undefined,
-    linkPreview: undefined,
+    linkPreview,
     stats: {
       likes: likeCount,
       replies: replyCount,

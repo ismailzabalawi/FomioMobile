@@ -162,10 +162,54 @@ async function fetchTopic(topicId: number): Promise<TopicData> {
     return action?.acted === true;
   };
 
+  /**
+   * Extract first image from HTML, excluding onebox images and emoji images
+   * This ensures cover images are actual content images, not link preview thumbnails
+   */
   const extractFirstImage = (html: string): string | undefined => {
     if (!html) return undefined;
-    const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-    return imgMatch ? imgMatch[1] : undefined;
+    
+    // Remove onebox sections before extracting images
+    // This prevents onebox preview images from being selected as cover images
+    const withoutOneboxes = html.replace(/<aside[^>]*class="[^"]*onebox[^"]*"[^>]*>[\s\S]*?<\/aside>/gi, '');
+    
+    // Extract all images from cleaned HTML
+    const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+    let match;
+    
+    while ((match = imgRegex.exec(withoutOneboxes)) !== null) {
+      const src = match[1];
+      const matchIndex = match.index;
+      
+      // Get context around the image to check for emoji
+      const contextStart = Math.max(0, matchIndex - 100);
+      const contextEnd = Math.min(withoutOneboxes.length, matchIndex + match[0].length + 100);
+      const context = withoutOneboxes.substring(contextStart, contextEnd);
+      
+      // Skip emoji images (same logic as extractMedia)
+      if (context.includes('emoji') || context.includes('class="emoji"')) {
+        continue;
+      }
+      
+      // Skip images that are explicitly small (likely icons/avatars, not cover images)
+      const imgTag = match[0];
+      const widthMatch = imgTag.match(/width=["'](\d+)["']/i);
+      const heightMatch = imgTag.match(/height=["'](\d+)["']/i);
+      
+      if (widthMatch && heightMatch) {
+        const width = parseInt(widthMatch[1], 10);
+        const height = parseInt(heightMatch[1], 10);
+        // Skip very small images (likely icons/avatars)
+        if (width < 200 && height < 200) {
+          continue;
+        }
+      }
+      
+      // Found a valid cover image candidate
+      return src;
+    }
+    
+    return undefined;
   };
 
   // Extract topic-level fields

@@ -7,3 +7,10 @@ export { useImagePicker } from './useImagePicker';
 export type { MediaItem } from './MediaGrid';
 export { HelpSheet } from './HelpSheet';
 
+// Premium UI components
+export { SegmentedControl } from './SegmentedControl';
+export { FloatingToolbar } from './FloatingToolbar';
+export { TeretChip } from './TeretChip';
+export { DraftStatusBadge } from './DraftStatusBadge';
+export { PremiumPostButton } from './PremiumPostButton';
+
