@@ -61,6 +61,7 @@
     "react-native-collapsible-tab-view": "^8.0.1",
     "react-native-dropdown-picker": "^5.4.6",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-keyboard-controller": "1.18.5",
     "react-native-markdown-display": "^7.0.2",
     "react-native-pager-view": "6.9.1",
     "react-native-quick-crypto": "^0.7.17",
@@ -104,6 +105,13 @@
         "@types/react",
         "react-native-worklets"
       ]
+    },
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@logicwind/react-native-fold-detection"
+        ]
+      }
     }
   },
   "private": true

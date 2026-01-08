@@ -136,6 +136,17 @@ export const DEEP_LINK_ROUTES: DeepLinkRoute[] = [
     toPath: (m) => `/profile/${m[1]}`,
     discourseType: 'user',
   },
+  // Account activation (unauthenticated flow)
+  {
+    pattern: /^activate-account$/,
+    toPath: (_, p) => {
+      const token = p.get('token');
+      return token
+        ? `/(auth)/activate-account?token=${encodeURIComponent(token)}`
+        : `/(auth)/activate-account`;
+    },
+    discourseType: 'user',
+  },
   // Legacy user alias
   {
     pattern: /^u\/([^/]+)$/,
@@ -205,4 +216,3 @@ export const DEEP_LINK_ROUTES: DeepLinkRoute[] = [
     toPath: () => '/(tabs)',
   },
 ];
-

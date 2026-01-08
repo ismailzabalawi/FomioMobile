@@ -156,6 +156,13 @@ function convertHttpsUrlToFomioUrl(url: string): string | null {
       return `fomio://byte/${topicShortMatch[1]}`;
     }
     
+    // Account activation: /u/activate-account/{token}
+    const activationMatch = path.match(/^\/u\/activate-account\/([^/]+)/);
+    if (activationMatch) {
+      const token = activationMatch[1];
+      return `fomio://activate-account?token=${encodeURIComponent(token)}`;
+    }
+
     // User profile: /u/{username}
     const userMatch = path.match(/^\/u\/([^/]+)/);
     if (userMatch) {
@@ -411,4 +418,3 @@ export function deepLinkRequiresAuth(url: string): boolean {
 
 // Re-export requiresAuth for direct path checking
 export { requiresAuth } from './deep-linking';
-

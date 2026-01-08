@@ -39,7 +39,9 @@ function isExplicitAuthScreen(pathname: string): boolean {
     pathname.includes('/auth-modal') ||
     pathname.includes('/auth/callback') ||
     pathname.includes('/callback') ||
-    pathname.includes('/auth_redirect')
+    pathname.includes('/auth_redirect') ||
+    pathname.includes('/activate-account') ||
+    pathname.includes('/u/activate-account')
   );
 }
 
@@ -128,12 +130,14 @@ export default function AuthLayout(): React.ReactElement {
 
   if (isAuthenticated) {
     redirectTo = '/(tabs)';
+  } else if (isExplicitAuth) {
+    // Allow explicit auth screens (signin, signup, activate-account, etc.) to render
+    // regardless of onboarding state. This is critical for activation links from emails.
+    redirectTo = null;
   } else if (!hasCompletedOnboarding) {
     redirectTo = isOnboarding ? null : '/(auth)/onboarding';
   } else if (isOnboarding || isAuthIndex) {
     redirectTo = '/(auth)/signin';
-  } else if (isExplicitAuth) {
-    redirectTo = null;
   } else {
     redirectTo = '/(auth)/signin';
   }
@@ -149,6 +153,7 @@ export default function AuthLayout(): React.ReactElement {
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="signin" />
       <Stack.Screen name="signup" />
+      <Stack.Screen name="activate-account" />
       <Stack.Screen 
         name="auth-modal" 
         options={{ 

@@ -12,12 +12,10 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   Keyboard,
   Platform,
   StyleSheet,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -25,12 +23,13 @@ import Animated, {
   FadeInDown,
   FadeOut,
   SlideInUp,
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import {
+  KeyboardAwareScrollView,
+  KeyboardStickyView,
+} from 'react-native-keyboard-controller';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -69,7 +68,6 @@ interface ValidationErrors {
 const COMPOSE_DRAFT_META_KEY = 'compose_draft_meta_v1';
 const NEW_TOPIC_DRAFT_KEY = 'new_topic';
 const DEFAULT_HIT_SLOP = Platform.OS === 'ios' ? 16 : 20;
-const SPRING_CONFIG = { damping: 16, stiffness: 220 };
 
 export default function ComposeScreen(): React.ReactElement {
   const { isDark, isAmoled } = useTheme();
@@ -105,7 +103,6 @@ export default function ComposeScreen(): React.ReactElement {
   const [isCreating, setIsCreating] = useState(false);
   const [postSuccess, setPostSuccess] = useState(false);
   const [allowBack, setAllowBack] = useState(false);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isTeretSheetOpen, setIsTeretSheetOpen] = useState(false);
   const [isHelpSheetOpen, setIsHelpSheetOpen] = useState(false);
@@ -176,19 +173,6 @@ export default function ComposeScreen(): React.ReactElement {
       setErrors((prev) => ({ ...prev, hub: undefined }));
     }
   }, [selectedTeret, errors.hub]);
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => {
-      setIsKeyboardVisible(true);
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      setIsKeyboardVisible(false);
-    });
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   const persistDraftMeta = useCallback(async (key: string, sequence: number) => {
     try {
@@ -822,23 +806,19 @@ export default function ComposeScreen(): React.ReactElement {
     <ScreenContainer variant="card">
       {renderFrostedHeader()}
 
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      <KeyboardAwareScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingBottom: insets.bottom + 140,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        bottomOffset={insets.bottom + 100}
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={[
-            styles.scrollContent,
-            {
-              paddingBottom: insets.bottom + (isKeyboardVisible ? 24 : 140),
-            },
-          ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-        >
         {/* General Error Message */}
         {errors.general && (
           <Animated.View
@@ -898,48 +878,47 @@ export default function ComposeScreen(): React.ReactElement {
             </Text>
           </Animated.View>
         )}
-      </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
 
-      {/* Sticky Post Button Area */}
-      <Animated.View
-        entering={SlideInUp.delay(200).springify()}
-        style={[
-          styles.postButtonContainer,
-          {
-            paddingBottom: insets.bottom + (isKeyboardVisible ? 12 : 24),
-          },
-        ]}
-      >
-        {Platform.OS === 'ios' ? (
-          <BlurView
-            intensity={isDark ? 40 : 30}
-            tint={isDark ? 'dark' : 'light'}
-            style={StyleSheet.absoluteFill}
-          />
-        ) : (
-          <LinearGradient
-            colors={
-              isDark
-                ? ['rgba(0, 0, 0, 0.95)', 'rgba(0, 0, 0, 0.98)']
-                : ['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.98)']
+      {/* Sticky Post Button - Sticks above keyboard */}
+      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+        <Animated.View
+          entering={SlideInUp.delay(200).springify()}
+          style={[
+            styles.postButtonContainer,
+            { paddingBottom: insets.bottom + 24 },
+          ]}
+        >
+          {Platform.OS === 'ios' ? (
+            <BlurView
+              intensity={isDark ? 40 : 30}
+              tint={isDark ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : (
+            <LinearGradient
+              colors={
+                isDark
+                  ? ['rgba(0, 0, 0, 0.95)', 'rgba(0, 0, 0, 0.98)']
+                  : ['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.98)']
+              }
+              style={StyleSheet.absoluteFill}
+            />
+          )}
+          <PremiumPostButton
+            onPress={handlePost}
+            disabled={postDisabled}
+            loading={isCreating}
+            success={postSuccess}
+            hint={!canPost ? 'Add a title, body, and choose a Teret to post' : undefined}
+            characterCount={
+              bodyLen < minPost
+                ? { current: bodyLen, min: minPost }
+                : undefined
             }
-            style={StyleSheet.absoluteFill}
           />
-        )}
-        <PremiumPostButton
-          onPress={handlePost}
-          disabled={postDisabled}
-          loading={isCreating}
-          success={postSuccess}
-          hint={!canPost ? 'Add a title, body, and choose a Teret to post' : undefined}
-          characterCount={
-            bodyLen < minPost
-              ? { current: bodyLen, min: minPost }
-              : undefined
-          }
-        />
-      </Animated.View>
+        </Animated.View>
+      </KeyboardStickyView>
 
       {/* Teret Picker Bottom Sheet */}
       <TeretPickerSheet
@@ -970,9 +949,6 @@ export default function ComposeScreen(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  keyboardAvoidingView: {
-    flex: 1,
-  },
   header: {
     position: 'absolute',
     top: 0,
@@ -1105,10 +1081,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   postButtonContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     paddingHorizontal: 24,
     paddingTop: 16,
     borderTopWidth: 1,

@@ -8,7 +8,11 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "image": "latest"
+        "image": "latest",
+        "autoIncrement": true
+      },
+      "ios": {
+        "autoIncrement": true
       }
     },
     "preview": {

@@ -8,6 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { queryClient, asyncStoragePersister } from '@/shared/query-client';
 import '../global.css';
 import { FoldingFeatureProvider } from '@logicwind/react-native-fold-detection';
@@ -116,26 +117,28 @@ export default function RootLayout(): React.ReactElement | null {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PersistQueryClientProvider
-        client={queryClient}
-        persistOptions={{
-          persister: asyncStoragePersister,
-          maxAge: 24 * 60 * 60 * 1000, // 24 hours
-          buster: '1.0.0', // Increment to invalidate cache on app updates
-        }}
-      >
-        <BottomSheetModalProvider>
-          <FoldingFeatureProvider>
-            <ThemeProvider defaultTheme="system">
-              <AuthProvider>
-                <InitializationCoordinator>
-                  <RootLayoutNav />
-                </InitializationCoordinator>
-              </AuthProvider>
-            </ThemeProvider>
-          </FoldingFeatureProvider>
-        </BottomSheetModalProvider>
-      </PersistQueryClientProvider>
+      <KeyboardProvider>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: asyncStoragePersister,
+            maxAge: 24 * 60 * 60 * 1000, // 24 hours
+            buster: '1.0.0', // Increment to invalidate cache on app updates
+          }}
+        >
+          <BottomSheetModalProvider>
+            <FoldingFeatureProvider>
+              <ThemeProvider defaultTheme="system">
+                <AuthProvider>
+                  <InitializationCoordinator>
+                    <RootLayoutNav />
+                  </InitializationCoordinator>
+                </AuthProvider>
+              </ThemeProvider>
+            </FoldingFeatureProvider>
+          </BottomSheetModalProvider>
+        </PersistQueryClientProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }
@@ -145,10 +148,25 @@ function RootLayoutNav(): React.ReactElement {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const insets = useSafeAreaInsets();
   const isInitializedRef = useRef(false);
+  const [initialUrl, setInitialUrl] = useState<string | null>(null);
+  const hasProcessedInitialUrlRef = useRef(false);
 
   // Set up intent replay for deep links that required auth
   // This listens for auth:signed-in and replays any pending navigation intent
   useIntentReplay();
+
+  // Capture initial URL immediately on mount (before auth loads)
+  // This prevents race conditions where the initial URL is missed
+  useEffect(() => {
+    Linking.getInitialURL().then((url) => {
+      if (url && isFomioDeepLink(url)) {
+        logger.info('Initial URL captured (will process after auth loads)', { url });
+        setInitialUrl(url);
+      }
+    }).catch((error) => {
+      logger.error('Error getting initial URL', error);
+    });
+  }, []); // Only run once on mount
 
   // Set up unified deep link listener for all fomio:// URLs
   // Handles: bytes, terets, hubs, profiles, search, compose, settings, notifications, home
@@ -159,6 +177,18 @@ function RootLayoutNav(): React.ReactElement {
     // Wait for auth state to be ready before processing deep links
     if (authLoading) {
       return;
+    }
+
+    // Process initial URL if we captured one and haven't processed it yet
+    if (initialUrl && !hasProcessedInitialUrlRef.current) {
+      hasProcessedInitialUrlRef.current = true;
+      logger.info('Processing captured initial URL (cold start)', { url: initialUrl, isAuthenticated });
+      // Delay slightly to ensure router is ready
+      setTimeout(() => {
+        // Cold start uses replace() for clean back stack, pass auth state
+        handleDeepLink(initialUrl, true, isAuthenticated);
+        setInitialUrl(null); // Clear after processing
+      }, 150);
     }
 
     // Skip if already initialized globally (prevents conflicts on foldable remounts)
@@ -185,25 +215,11 @@ function RootLayoutNav(): React.ReactElement {
       }
     });
 
-    // Handle initial URL (cold start)
-    Linking.getInitialURL().then((url) => {
-      if (url && isFomioDeepLink(url)) {
-        logger.info('Deep link received (cold start)', { url, isAuthenticated });
-        // Delay slightly to ensure router is ready
-        setTimeout(() => {
-          // Cold start uses replace() for clean back stack, pass auth state
-          handleDeepLink(url, true, isAuthenticated);
-        }, 150);
-      }
-    }).catch((error) => {
-      logger.error('Error getting initial URL', error);
-    });
-
     return () => {
       subscription.remove();
       // Don't reset global flag on cleanup - prevents re-initialization on foldable changes
     };
-  }, [authLoading, isAuthenticated]);
+  }, [authLoading, isAuthenticated, initialUrl]);
 
   // Set up intent replay for anonymous user actions
   useEffect(() => {
@@ -372,6 +388,7 @@ function RootLayoutContent({ insets }: { insets: { top: number } }): React.React
           <Stack.Screen name="(debug)" />
           <Stack.Screen name="auth/callback" />
           <Stack.Screen name="auth_redirect" />
+          <Stack.Screen name="u" />
           <Stack.Screen
             name="compose"
             options={{ presentation: 'modal' }}
