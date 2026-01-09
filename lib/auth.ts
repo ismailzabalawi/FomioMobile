@@ -148,7 +148,27 @@ export async function signIn(): Promise<boolean> {
     // UNIFIED APPROACH: Use WebBrowser.openAuthSessionAsync for both platforms
     // - iOS: Uses ASWebAuthenticationSession
     // - Android: Uses Chrome Custom Tabs
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+    let result;
+    try {
+      // Try to dismiss any existing browser session first (iOS fix)
+      try {
+        await WebBrowser.dismissBrowser();
+      } catch {
+        // Ignore - may not have been open
+      }
+      
+      result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+    } catch (browserError: any) {
+      // Handle "Another web browser is already open" error
+      const errorMessage = browserError?.message || String(browserError || 'Unknown browser error');
+      if (errorMessage.toLowerCase().includes('another web browser') || 
+          errorMessage.toLowerCase().includes('already open')) {
+        logger.warn('Browser session conflict, user may need to retry', { errorMessage });
+        throw new Error('Please close any open browser windows and try again.');
+      }
+      // Re-throw other browser errors
+      throw new Error(errorMessage || 'Failed to open browser. Please try again.');
+    }
     
     if (result.type !== 'success') {
       // Handle user-initiated cancellations (cancel/dismiss) as info, not errors
@@ -232,6 +252,12 @@ export async function signIn(): Promise<boolean> {
 
     return true;
   } catch (error: any) {
+    // Handle null/undefined errors gracefully
+    if (!error) {
+      logger.error('Sign in failed', new Error('Unknown error (null/undefined)'));
+      throw new Error('Sign in failed. Please try again.');
+    }
+
     // Don't log cancellations as errors - they're expected user actions
     const isCancellation = error?.message?.toLowerCase().includes('cancel') || 
                           error?.message?.toLowerCase().includes('cancelled');
@@ -239,8 +265,11 @@ export async function signIn(): Promise<boolean> {
       // Cancellation already logged as info above, just re-throw
       throw error;
     }
-    logger.error('Sign in failed', error);
-    throw error;
+    
+    // Ensure error is a proper Error object before logging
+    const errorToLog = error instanceof Error ? error : new Error(String(error || 'Unknown error'));
+    logger.error('Sign in failed', errorToLog);
+    throw errorToLog;
   }
 }
 

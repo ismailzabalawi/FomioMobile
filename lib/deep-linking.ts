@@ -67,6 +67,7 @@ export interface DeepLinkRoute {
  * - fomio://settings → Settings
  * - fomio://settings/profile → Edit profile
  * - fomio://settings/notifications → Notification settings
+ * - fomio://signup-complete → Post-activation success (Ricochet from Discourse)
  * - fomio://home → Home feed
  * - fomio:// → Home feed (default)
  */
@@ -146,6 +147,12 @@ export const DEEP_LINK_ROUTES: DeepLinkRoute[] = [
         : `/(auth)/activate-account`;
     },
     discourseType: 'user',
+  },
+  // Signup complete - Ricochet landing after Discourse activation
+  // This catches fomio://signup-complete from in-app browsers (Gmail, Outlook, etc.)
+  {
+    pattern: /^signup-complete$/,
+    toPath: () => '/(auth)/signup-complete',
   },
   // Legacy user alias
   {

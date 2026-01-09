@@ -36,6 +36,7 @@ function isExplicitAuthScreen(pathname: string): boolean {
   return (
     pathname.includes('/signin') ||
     pathname.includes('/signup') ||
+    pathname.includes('/signup-complete') ||
     pathname.includes('/auth-modal') ||
     pathname.includes('/auth/callback') ||
     pathname.includes('/callback') ||
@@ -154,6 +155,7 @@ export default function AuthLayout(): React.ReactElement {
       <Stack.Screen name="signin" />
       <Stack.Screen name="signup" />
       <Stack.Screen name="activate-account" />
+      <Stack.Screen name="signup-complete" />
       <Stack.Screen 
         name="auth-modal" 
         options={{ 

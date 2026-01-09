@@ -21,8 +21,7 @@
           "autoVerify": false,
           "data": [
             {
-              "scheme": "fomio",
-              "host": "auth_redirect"
+              "scheme": "fomio"
             }
           ],
           "category": [

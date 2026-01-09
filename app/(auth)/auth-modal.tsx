@@ -131,6 +131,14 @@ export default function AuthModalScreen(): React.ReactElement {
       } catch (err: any) {
         if (!mounted) return;
         
+        // Handle null/undefined errors gracefully
+        if (!err) {
+          logger.error('AuthModal: Sign-in failed', new Error('Unknown error (null/undefined)'));
+          setError('Sign in failed. Please try again.');
+          setIsLoading(false);
+          return;
+        }
+        
         const displayError = mapAuthError(err);
         const isCancellation = displayError.toLowerCase().includes('cancel') || 
                                displayError.toLowerCase().includes('cancelled');
@@ -142,8 +150,9 @@ export default function AuthModalScreen(): React.ReactElement {
           return;
         }
         
-        // Only log actual errors
-        logger.error('AuthModal: Sign-in failed', err);
+        // Only log actual errors - ensure err is a proper Error object
+        const errorToLog = err instanceof Error ? err : new Error(String(err || 'Unknown error'));
+        logger.error('AuthModal: Sign-in failed', errorToLog);
 
         setError(displayError);
         setIsLoading(false);

@@ -388,7 +388,6 @@ function RootLayoutContent({ insets }: { insets: { top: number } }): React.React
           <Stack.Screen name="(debug)" />
           <Stack.Screen name="auth/callback" />
           <Stack.Screen name="auth_redirect" />
-          <Stack.Screen name="u" />
           <Stack.Screen
             name="compose"
             options={{ presentation: 'modal' }}
