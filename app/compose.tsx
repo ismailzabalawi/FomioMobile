@@ -308,17 +308,10 @@ export default function ComposeScreen(): React.ReactElement {
   const titleLen = title.trim().length;
   const bodyLen = body.trim().length;
 
-  const titleValidationMessage =
-    errors.title ||
-    (titleLen > 0 && titleLen < minTitle
-      ? `Title must be at least ${minTitle} characters (${titleLen}/${minTitle})`
-      : undefined);
+  // Only show validation errors when explicitly set (on submit attempt), not while typing
+  const titleValidationMessage = errors.title;
 
-  const bodyValidationMessage =
-    errors.content ||
-    (bodyLen > 0 && bodyLen < minPost
-      ? `Content must be at least ${minPost} characters (${bodyLen}/${minPost})`
-      : undefined);
+  const bodyValidationMessage = errors.content;
 
   // Track latest draft state
   useEffect(() => {
@@ -432,6 +425,7 @@ export default function ComposeScreen(): React.ReactElement {
   }, [titleLen, bodyLen, minTitle, minPost, selectedTeret, isAuthenticated, isAuthLoading, isCreating, settingsLoading]);
 
   const postDisabled = !canPost || isCreating || isUploadingImages;
+  const hasStarted = titleLen > 0 || bodyLen > 0 || images.length > 0;
 
   // Save on screen blur
   useFocusEffect(
@@ -498,7 +492,7 @@ export default function ComposeScreen(): React.ReactElement {
     if (titleLen < minTitle) {
       setErrors((prev) => ({
         ...prev,
-        title: `Title must be at least ${minTitle} characters (${titleLen}/${minTitle})`,
+        title: `Title must be at least ${minTitle} characters`,
       }));
       return;
     }
@@ -506,7 +500,7 @@ export default function ComposeScreen(): React.ReactElement {
     if (bodyLen < minPost) {
       setErrors((prev) => ({
         ...prev,
-        content: `Content must be at least ${minPost} characters (${bodyLen}/${minPost})`,
+        content: `Content must be at least ${minPost} characters`,
       }));
       return;
     }
@@ -677,12 +671,14 @@ export default function ComposeScreen(): React.ReactElement {
   const headerBg = isDark ? 'rgba(0, 0, 0, 0.85)' : 'rgba(255, 255, 255, 0.85)';
   const iconColor = isDark ? '#e4e4e7' : '#1e293b';
   const mutedColor = isDark ? '#A1A1AA' : '#6B6B72';
+  const showDraftStatus = draftStatus !== 'idle';
 
   // Frosted Header Component
   const renderFrostedHeader = () => (
     <Animated.View
-      entering={SlideInUp.springify().damping(20)}
-      style={[styles.header, { paddingTop: insets.top }]}
+      // Use a subtle fade instead of a spring slide to avoid jumpiness on mount
+      entering={FadeIn.duration(160)}
+      style={[styles.header, { paddingTop: Math.max(insets.top - 36, 0) }]}
     >
       {Platform.OS === 'ios' ? (
         <BlurView
@@ -737,10 +733,14 @@ export default function ComposeScreen(): React.ReactElement {
         </Pressable>
       </View>
 
-      {/* Status badge - Absolutely positioned below header */}
-      <View style={[styles.statusBadgeContainer, { top: insets.top + (Platform.OS === 'ios' ? 48 : 52) }]}>
-        <DraftStatusBadge status={draftStatus} errorMessage={draftError || undefined} />
-      </View>
+      {showDraftStatus && (
+        <View style={styles.statusBadgeInline}>
+          <DraftStatusBadge
+            status={draftStatus}
+            errorMessage={draftError || undefined}
+          />
+        </View>
+      )}
     </Animated.View>
   );
 
@@ -886,7 +886,7 @@ export default function ComposeScreen(): React.ReactElement {
           entering={SlideInUp.delay(200).springify()}
           style={[
             styles.postButtonContainer,
-            { paddingBottom: insets.bottom + 24 },
+            { paddingBottom: 12 },
           ]}
         >
           {Platform.OS === 'ios' ? (
@@ -905,17 +905,40 @@ export default function ComposeScreen(): React.ReactElement {
               style={StyleSheet.absoluteFill}
             />
           )}
+          <View style={styles.postHelperRow}>
+            {!hasStarted ? (
+              <Text style={[styles.postHelperText, { color: mutedColor }]}>
+                Add a title, body, and choose a Teret to post
+              </Text>
+            ) : (
+              <Text style={[styles.postHintText, { color: mutedColor }]}>
+                💡 Type <Text style={{ color: isDark ? '#26A69A' : '#009688' }}>/help</Text> for formatting
+              </Text>
+            )}
+            {hasStarted && (
+              <Text
+                style={[
+                  styles.postCharCount,
+                  {
+                    color: bodyLen >= minPost
+                      ? isDark
+                        ? '#26A69A'
+                        : '#009688'
+                      : '#f59e0b',
+                  },
+                ]}
+              >
+                {bodyLen}/{minPost}
+              </Text>
+            )}
+          </View>
           <PremiumPostButton
             onPress={handlePost}
             disabled={postDisabled}
             loading={isCreating}
             success={postSuccess}
-            hint={!canPost ? 'Add a title, body, and choose a Teret to post' : undefined}
-            characterCount={
-              bodyLen < minPost
-                ? { current: bodyLen, min: minPost }
-                : undefined
-            }
+            hint={undefined}
+            characterCount={undefined}
           />
         </Animated.View>
       </KeyboardStickyView>
@@ -965,8 +988,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'ios' ? 4 : 6,
-    minHeight: Platform.OS === 'ios' ? 40 : 44,
+    paddingVertical: Platform.OS === 'ios' ? 2 : 4,
+    minHeight: Platform.OS === 'ios' ? 36 : 40,
   },
   headerButton: {
     padding: 6,
@@ -989,28 +1012,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: -0.3,
   },
-  statusBadgeContainer: {
-    position: 'absolute',
+  statusBadgeInline: {
     left: 0,
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 99,
-    paddingTop: 8,
+    paddingBottom: 8,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: Platform.OS === 'ios' ? 110 : 95, // Account for header + status badge + extra spacing
+    paddingTop: Platform.OS === 'ios' ? 86 : 76,
   },
   centerContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
-    paddingTop: Platform.OS === 'ios' ? 110 : 95,
+    paddingTop: Platform.OS === 'ios' ? 86 : 76,
   },
   loadingText: {
     fontSize: 16,
@@ -1081,9 +1102,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   postButtonContainer: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(128, 128, 128, 0.1)',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    borderTopWidth: 0.5,
+    borderTopColor: 'rgba(128, 128, 128, 0.12)',
+  },
+  postHelperRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingBottom: 10,
+    minHeight: 32,
+  },
+  postHelperText: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  postHintText: {
+    fontSize: 13,
+    flex: 1,
+  },
+  postCharCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 12,
   },
 });

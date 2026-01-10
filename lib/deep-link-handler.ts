@@ -369,10 +369,12 @@ export function handleDeepLink(
     if (isColdStart) {
       router.replace(result.path as any);
     } else {
-      // For warm start, use replace() for feed routes to prevent navigation stack issues
-      // Feed routes are nested stacks, and push() can cause "screen doesn't exist" on back navigation
+      // For warm start, use replace() for certain routes to prevent navigation stack issues:
+      // - Feed routes: nested stacks, push() can cause "screen doesn't exist" on back navigation
+      // - Auth routes: signup-complete should replace the signup screen to clear stale state
+      //   (user was on "Almost There!" screen when Ricochet triggers after email verification)
       // Using replace() maintains a clean navigation state
-      if (result.path.startsWith('/feed')) {
+      if (result.path.startsWith('/feed') || result.path.startsWith('/(auth)')) {
         router.replace(result.path as any);
       } else {
         // For other routes, use push() to maintain navigation stack

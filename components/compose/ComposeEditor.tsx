@@ -144,9 +144,7 @@ export function ComposeEditor({
 
   // Character counts
   const titleLength = title.trim().length;
-  const bodyLength = body.trim().length;
   const titleProgress = Math.min(titleLength / minTitle, 1);
-  const bodyProgress = Math.min(bodyLength / minBody, 1);
 
   // Animated border styles
   const titleBorderStyle = useAnimatedStyle(() => {
@@ -586,79 +584,83 @@ export function ComposeEditor({
       {/* Segmented Control - Write/Preview */}
       <Animated.View
         entering={FadeInDown.delay(50).springify()}
-        style={styles.segmentContainer}
+        style={styles.controlRow}
       >
-        <SegmentedControl
-          segments={[
-            { value: 'write', label: 'Write', icon: <PencilSimple size={16} color={mode === 'write' ? textColor : mutedColor} weight={mode === 'write' ? 'bold' : 'regular'} /> },
-            { value: 'preview', label: 'Preview', icon: <Eye size={16} color={mode === 'preview' ? textColor : mutedColor} weight={mode === 'preview' ? 'bold' : 'regular'} /> },
-          ]}
-          selectedValue={mode}
-          onValueChange={(value) => {
-            onModeChange(value);
-            if (value === 'preview') {
-              Keyboard.dismiss();
-            }
-          }}
-          size="sm"
-        />
+        <View style={styles.teretInline}>
+          <View style={styles.teretFill}>
+            <TeretChip
+              selectedTeret={selectedTeret}
+              onPress={onTeretPress}
+              error={!!titleError && !selectedTeret}
+            />
+          </View>
+        </View>
+
+        <View style={styles.segmentContainer}>
+          <SegmentedControl
+            segments={[
+              { value: 'write', label: '', icon: <PencilSimple size={14} color={mode === 'write' ? textColor : mutedColor} weight={mode === 'write' ? 'bold' : 'regular'} /> },
+              { value: 'preview', label: '', icon: <Eye size={14} color={mode === 'preview' ? textColor : mutedColor} weight={mode === 'preview' ? 'bold' : 'regular'} /> },
+            ]}
+            selectedValue={mode}
+            onValueChange={(value) => {
+              onModeChange(value);
+              if (value === 'preview') {
+                Keyboard.dismiss();
+              }
+            }}
+            size="sm"
+          />
+        </View>
       </Animated.View>
 
-      {/* Teret Chip */}
-      <Animated.View
-        entering={FadeInDown.delay(100).springify()}
-        style={styles.teretContainer}
-      >
-        <TeretChip
-          selectedTeret={selectedTeret}
-          onPress={onTeretPress}
-          error={!!titleError && !selectedTeret}
-        />
-      </Animated.View>
-
-      {/* Title Input - Hero Style */}
+      {/* Title */}
       <Animated.View
         entering={FadeInDown.delay(150).springify()}
-        style={[styles.titleContainer, titleBorderStyle]}
+        style={[styles.titleRow, titleBorderStyle]}
       >
-        <TextInput
-          ref={titleInputRef}
-          value={title}
-          onChangeText={onChangeTitle}
-          onFocus={() => setTitleFocused(true)}
-          onBlur={() => setTitleFocused(false)}
-          placeholder="Your title here..."
-          placeholderTextColor={placeholderColor}
-          maxLength={255}
-          style={[styles.titleInput, { color: textColor }]}
-          accessible
-          accessibilityLabel="Post title"
-          accessibilityHint="Enter a compelling title for your post"
-        />
-        
-        {/* Title character indicator */}
-        {titleFocused && (
-          <Animated.View
-            entering={FadeIn.duration(200)}
-            style={styles.charIndicator}
-          >
-            <Text
-              style={[
-                styles.charCount,
-                {
-                  color:
-                    titleLength >= minTitle
-                      ? isDark
-                        ? '#26A69A'
-                        : '#009688'
-                      : mutedColor,
-                },
-              ]}
+        <View style={styles.titleInputWrapper}>
+          <TextInput
+            ref={titleInputRef}
+            value={title}
+            onChangeText={onChangeTitle}
+            onFocus={() => setTitleFocused(true)}
+            onBlur={() => setTitleFocused(false)}
+            multiline
+            scrollEnabled
+            placeholder="Your title here..."
+            placeholderTextColor={placeholderColor}
+            maxLength={255}
+            style={[styles.titleInput, { color: textColor }]}
+            accessible
+            accessibilityLabel="Post title"
+            accessibilityHint="Enter a compelling title for your post"
+          />
+          
+          {/* Title character indicator */}
+          {titleFocused && (
+            <Animated.View
+              entering={FadeIn.duration(200)}
+              style={styles.charIndicator}
             >
-              {titleLength}
-            </Text>
-          </Animated.View>
-        )}
+              <Text
+                style={[
+                  styles.charCount,
+                  {
+                    color:
+                      titleLength >= minTitle
+                        ? isDark
+                          ? '#26A69A'
+                          : '#009688'
+                        : mutedColor,
+                  },
+                ]}
+              >
+                {titleLength}
+              </Text>
+            </Animated.View>
+          )}
+        </View>
       </Animated.View>
 
       {/* Title error */}
@@ -738,45 +740,6 @@ export function ComposeEditor({
           <Text style={styles.errorText}>{bodyError}</Text>
         </Animated.View>
       )}
-
-      {/* Body character indicator (when writing) */}
-      {mode === 'write' && bodyFocused && (
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          style={styles.bodyCharIndicator}
-        >
-          <Text
-            style={[
-              styles.charCount,
-              {
-                color:
-                  bodyLength >= minBody
-                    ? isDark
-                      ? '#26A69A'
-                      : '#009688'
-                    : mutedColor,
-              },
-            ]}
-          >
-            {bodyLength} characters
-          </Text>
-        </Animated.View>
-      )}
-
-      {/* Slash command hint */}
-      {mode === 'write' && bodyFocused && bodyLength < 10 && (
-        <Animated.View
-          entering={FadeIn.delay(300).duration(200)}
-          style={[
-            styles.hintContainer,
-            { backgroundColor: isDark ? 'rgba(38, 166, 154, 0.1)' : 'rgba(0, 150, 136, 0.08)' },
-          ]}
-        >
-          <Text style={[styles.hintText, { color: mutedColor }]}>
-            💡 Type <Text style={[styles.hintCode, { color: isDark ? '#26A69A' : '#009688' }]}>/help</Text> for formatting commands
-          </Text>
-        </Animated.View>
-      )}
     </View>
   );
 }
@@ -784,29 +747,49 @@ export function ComposeEditor({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 16,
     paddingTop: 8,
   },
+  controlRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: Platform.OS === 'android' ? 8 : 12,
+  },
   segmentContainer: {
-    marginBottom: Platform.OS === 'android' ? 12 : 16,
-    alignSelf: 'center',
-    width: '60%',
-    maxWidth: 240,
-    minWidth: 180,
+    flexBasis: '15%',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
   },
-  teretContainer: {
-    marginBottom: Platform.OS === 'android' ? 14 : 20,
+  teretInline: {
+    flexBasis: '85%',
+    flexGrow: 1,
+    alignSelf: 'stretch',
+    alignItems: 'flex-start',
   },
-  titleContainer: {
-    marginBottom: 4,
+  teretFill: {
+    width: '100%',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: 'transparent',
+  },
+  titleInputWrapper: {
+    flex: 1,
+    paddingRight: 8,
   },
   titleInput: {
     fontSize: 26,
     fontWeight: '700',
     letterSpacing: -0.5,
     lineHeight: 34,
+    maxHeight: 160,
+    textAlignVertical: 'top',
     paddingVertical: 12,
     paddingHorizontal: 0,
     backgroundColor: 'transparent',
@@ -814,7 +797,7 @@ const styles = StyleSheet.create({
   charIndicator: {
     position: 'absolute',
     right: 0,
-    bottom: 14,
+    bottom: 8,
   },
   charCount: {
     fontSize: 12,
@@ -831,22 +814,23 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    marginVertical: 16,
+    marginVertical: 10,
   },
   bodyContainer: {
     flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    flexGrow: 1,
+    minHeight: 240,
+    borderRadius: 10,
+    borderWidth: 0,
     overflow: 'hidden',
   },
   bodyInput: {
     fontSize: 17,
     lineHeight: 28,
-    paddingVertical: 16,
-    paddingHorizontal: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 0,
     backgroundColor: 'transparent',
-    flexGrow: 1,
+    flex: 1,
   },
   previewScroll: {
     flex: 1,
@@ -858,10 +842,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 40,
-  },
-  bodyCharIndicator: {
-    marginTop: 8,
-    alignItems: 'flex-end',
   },
   hintContainer: {
     marginTop: 12,

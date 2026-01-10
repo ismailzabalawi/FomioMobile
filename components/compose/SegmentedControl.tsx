@@ -80,7 +80,8 @@ export function SegmentedControl<T extends string>({
 
   // Size variants - Android gets significantly reduced padding for lighter feel
   const isAndroid = Platform.OS === 'android';
-  const paddingY = size === 'sm' ? (isAndroid ? 3 : 6) : (isAndroid ? 4 : 8);
+  // Slightly taller on both platforms so icon-only pills align with adjacent controls
+  const paddingY = size === 'sm' ? (isAndroid ? 6 : 10) : (isAndroid ? 4 : 8);
   const paddingX = size === 'sm' ? (isAndroid ? 8 : 12) : (isAndroid ? 10 : 16);
   const fontSize = size === 'sm' ? 13 : 14;
 
@@ -119,6 +120,7 @@ export function SegmentedControl<T extends string>({
       {/* Segments */}
       {segments.map((segment, index) => {
         const isSelected = segment.value === selectedValue;
+        const hasLabel = segment.label && segment.label.length > 0;
 
         return (
           <Pressable
@@ -131,26 +133,30 @@ export function SegmentedControl<T extends string>({
             accessibilityLabel={segment.label}
           >
             {segment.icon && (
-              <View style={styles.segmentIcon}>{segment.icon}</View>
+              <View style={[styles.segmentIcon, !hasLabel && styles.segmentIconSolo]}>
+                {segment.icon}
+              </View>
             )}
-            <Text
-              style={[
-                styles.segmentText,
-                {
-                  fontSize,
-                  color: isSelected
-                    ? isDark
-                      ? '#FFFFFF'
-                      : '#000000'
-                    : isDark
-                    ? 'rgba(255, 255, 255, 0.5)'
-                    : 'rgba(0, 0, 0, 0.45)',
-                  fontWeight: isSelected ? '600' : '500',
-                },
-              ]}
-            >
-              {segment.label}
-            </Text>
+            {hasLabel && (
+              <Text
+                style={[
+                  styles.segmentText,
+                  {
+                    fontSize,
+                    color: isSelected
+                      ? isDark
+                        ? '#FFFFFF'
+                        : '#000000'
+                      : isDark
+                      ? 'rgba(255, 255, 255, 0.5)'
+                      : 'rgba(0, 0, 0, 0.45)',
+                    fontWeight: isSelected ? '600' : '500',
+                  },
+                ]}
+              >
+                {segment.label}
+              </Text>
+            )}
           </Pressable>
         );
       })}
@@ -184,8 +190,10 @@ const styles = StyleSheet.create({
   segmentIcon: {
     marginRight: 6,
   },
+  segmentIconSolo: {
+    marginRight: 0,
+  },
   segmentText: {
     textAlign: 'center',
   },
 });
-
